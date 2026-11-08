@@ -136,7 +136,10 @@ export const AVATAR_SIZE = 512;
  * upload is a WebP file named by a random uuid.
  */
 const UPLOAD_KINDS = {
-	uploads: { key: 'uploads/', path: '/uploads/' }
+	// post images, public
+	uploads: { key: 'uploads/', path: '/uploads/' },
+	// message images, only served to the conversation (src/routes/dm-uploads)
+	dm: { key: 'dm/', path: '/dm-uploads/' }
 } as const;
 
 export type UploadKind = keyof typeof UPLOAD_KINDS;
@@ -161,12 +164,22 @@ export async function storeUpload(kind: UploadKind, data: Uint8Array): Promise<s
 	return UPLOAD_KINDS[kind].path + file;
 }
 
-/** Writes a post or message image; returns the URL path stored with it. */
+/** Writes a post image; returns the URL path stored with it. */
 export const saveUpload = (buf: Buffer) => storeUpload('uploads', buf);
 
-/** Removes uploaded files by their URL path. Paths that aren't ours are ignored. */
+/** Writes a message image; returns the URL path stored with it. */
+export const saveMessageUpload = (buf: Buffer) => storeUpload('dm', buf);
+
+/**
+ * Removes uploaded files by their URL path. Paths that aren't ours are ignored. A message image
+ * is served from `uploads/` until its file is moved to `dm/`, so both are removed.
+ */
 export async function removeUploads(urls: string[]) {
-	const keys = urls.map(uploadKey).filter((key): key is string => key !== null);
+	const keys = urls.flatMap((url) => {
+		const key = uploadKey(url);
+		if (!key) return [];
+		return key.startsWith('dm/') ? [key, 'uploads/' + key.slice('dm/'.length)] : [key];
+	});
 	try {
 		await storage.remove(keys);
 	} catch (e) {

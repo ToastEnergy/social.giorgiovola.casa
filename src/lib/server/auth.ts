@@ -167,11 +167,19 @@ function foreignOrigin(event: RequestEvent) {
 }
 
 /**
+ * Where bearer tokens are read: the API, and uploads, since a message image is only served to
+ * whoever can read its conversation. The bot API (`/api/bot/*`) authenticates on its own.
+ */
+const readsBearer = (pathname: string) =>
+	(pathname.startsWith('/api/') && !pathname.startsWith('/api/bot/')) ||
+	pathname.startsWith('/uploads/') ||
+	pathname.startsWith('/dm-uploads/');
+
+/**
  * Authenticates the request and fills `event.locals`. Returns an error response when a bearer
  * token was sent but is invalid (a wrong token never silently falls back to anonymous).
  *
- * The bot API (`/api/bot/*`) authenticates on its own, so bearer tokens are only read elsewhere
- * under `/api/`.
+ * Bearer tokens are only read where readsBearer says.
  */
 export async function authenticate(event: RequestEvent): Promise<Response | null> {
 	const { locals, request, url, cookies } = event;
@@ -180,7 +188,7 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 	const header = request.headers.get('authorization');
 	// only our schemes count: another one (Basic auth from a proxy) is not ours to refuse
 	const isOurs = header !== null && /^(?:Bearer|Bot)(?: |$)/i.test(header);
-	if (isOurs && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/bot/')) {
+	if (isOurs && readsBearer(url.pathname)) {
 		const match = /^(?:Bearer|Bot) (\S+)$/i.exec(header);
 		const token = match?.[1] ?? '';
 		if (token.startsWith('sgc_')) {

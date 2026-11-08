@@ -27,6 +27,8 @@ services:
     volumes:
       - avatars:/app/static/avatars
       - uploads:/app/static/uploads
+      # message images, served only to their conversation (kept outside static/)
+      - dm-uploads:/app/data/dm
     depends_on:
       db:
         condition: service_healthy
@@ -50,3 +52,4 @@ volumes:
   postgres-data:
   avatars:
   uploads:
+  dm-uploads:

@@ -599,7 +599,7 @@
 						>
 					</button>
 				</div>
-				<div class="max-h-[calc(var(--fh)-160px)] cursor-pointer overflow-auto hover:underline">
+				<div class="max-h-[calc(var(--fh)-160px)] overflow-auto">
 					{#key showing}
 						<Likes postId={post.id} kind={showing} />
 					{/key}

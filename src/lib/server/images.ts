@@ -172,3 +172,18 @@ export async function imagesOfPostTrees(where: ReturnType<typeof sql>): Promise<
 	`);
 	return rows.map((r) => r.image);
 }
+
+/**
+ * Images of the direct messages the profile sent or received and of the group messages it sent:
+ * they go away with it (ON DELETE CASCADE). Call before deleting, then pass the result to
+ * removeUploads once the delete succeeded.
+ */
+export async function imagesOfMessagesOf(userId: number): Promise<string[]> {
+	const rows = await db.execute<{ image: string }>(sql`
+		SELECT unnest(images) AS image FROM messages
+		WHERE sender_id = ${userId} OR recipient_id = ${userId}
+		UNION ALL
+		SELECT unnest(images) AS image FROM group_messages WHERE sender_id = ${userId}
+	`);
+	return rows.map((r) => r.image);
+}

@@ -8,6 +8,7 @@ import { db, follows, likes, polls, post_hashtags, posts, regiorgs, users } from
 import type { PollInput } from './validation.js';
 import { imagesOfPostTrees, removeUploads } from './images.js';
 import { linkedPosts } from './linkedPosts.js';
+import { linkPreviews, warmLinkPreview } from './linkPreviews.js';
 import { publishDeleted, publishLikes, publishPost, publishRegiorg } from './realtime.js';
 
 export type GetPostsOptions = {
@@ -169,12 +170,19 @@ export async function getPosts({
 	return withLinkedPosts((await query) as unknown as Post[]);
 }
 
-/** Fills `linked_post`, except on a post that already quotes one or links to itself. */
+/**
+ * Fills `linked_post`, except on a post that already quotes one or links to itself, and
+ * `link_preview` (the first external link).
+ */
 async function withLinkedPosts(found: Post[]): Promise<Post[]> {
-	const linked = await linkedPosts(found.map((post) => (post.quote ? '' : post.content)));
+	const [linked, previews] = await Promise.all([
+		linkedPosts(found.map((post) => (post.quote ? '' : post.content))),
+		linkPreviews(found.map((post) => post.content))
+	]);
 	return found.map((post, i) => ({
 		...post,
-		linked_post: linked[i]?.id === post.id ? null : linked[i]
+		linked_post: linked[i]?.id === post.id ? null : linked[i],
+		link_preview: previews[i]
 	}));
 }
 
@@ -328,6 +336,8 @@ export async function createPost(
 		return row;
 	});
 
+	// so the post shows up with its link preview, unless the site is slow
+	await warmLinkPreview(content);
 	// read back like everywhere else, with the quoted post and the counts
 	const [post] = await getPosts({ postId: created.id, loggedUser: user });
 

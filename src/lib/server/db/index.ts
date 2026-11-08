@@ -31,5 +31,6 @@ export const {
 	settings,
 	push_subscriptions,
 	passkeys,
-	bots
+	bots,
+	link_previews
 } = schema;

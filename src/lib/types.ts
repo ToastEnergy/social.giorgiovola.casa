@@ -73,6 +73,18 @@ export type QuotedPost = {
 	is_quote: boolean;
 };
 
+/** The Open Graph preview of the first external link in a post. */
+export type LinkPreview = {
+	/** the link, without its #fragment */
+	url: string;
+	title: string;
+	description: string | null;
+	/** an absolute https URL on the linked site, or null */
+	image: string | null;
+	/** og:site_name, or the host name */
+	site_name: string;
+};
+
 /** A poll attached to a post. */
 export type Poll = {
 	options: string[];
@@ -114,6 +126,8 @@ export type Post = {
 	quote: QuotedPost | { deleted: true } | null;
 	/** the first post on this instance linked in the content, shown like a quote */
 	linked_post?: QuotedPost | null;
+	/** the preview of the first external link in the content, null when there's none (yet) */
+	link_preview?: LinkPreview | null;
 	/** a poll attached to the post, null when it has none */
 	poll: Poll | null;
 	replies_count: number;

@@ -232,6 +232,13 @@
       "when": 1794093725164,
       "tag": "0032_message_edits",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794133205561,
+      "tag": "0033_link_previews",
+      "breakpoints": true
     }
   ]
 }

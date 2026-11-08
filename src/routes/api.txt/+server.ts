@@ -70,6 +70,13 @@ Post:
     "quotes": 0,
     "quote": <quoted post> | { "deleted": true } | null,
     "poll": <Poll> | null,              // null when the post has no poll
+    "link_preview": {                    // the first link to another site in "content", or
+      "url": "https://…",                // null (also while it is still being fetched: it
+      "title": "…",                      // shows up on later reads)
+      "description": "…" | null,
+      "image": "https://…" | null,       // the page's og:image
+      "site_name": "…"                   // og:site_name, or the host name
+    } | null,
     "replies_count": 2,
     "reply_to": { "id": 120, "username": "…", "likes": 4 } | null
   }

@@ -88,8 +88,9 @@ Message (a direct message):
     "id": 77,
     "sender": "alice", "recipient": "mybot",   // usernames, not ids
     "content": "hi!",                            // may be "" when it only has images
-    "images": ["/uploads/…"],                    // paths on ${origin}; people can attach
-                                                 // images, bots can't
+    "images": ["/dm-uploads/…"],                 // paths on ${origin}; people can attach
+                                                 // images, bots can't. Private: see
+                                                 // "Message images" below
     "created_at": "ISO date",
     "linked_post": {                             // the first post on ${origin} linked in
       "id": 57,                                  // "content" (${origin}/@username/57),
@@ -113,6 +114,16 @@ Message (a direct message):
   "content" can mention people as @username, like posts; a mention in a direct message
   sends no notification.
 
+Message images: the "images" of direct and group messages are private to their
+conversation. New ones are /dm-uploads/<uuid>.webp; older messages may still have
+/uploads/<uuid>.webp paths, protected the same way. To download one, GET ${origin}<path>
+with the same header as every other request (\`Authorization: Bearer <token>\`). It answers
+200 with the image when the bot is the sender or recipient of the direct message, or still
+a member of the group of the group message, and 404 otherwise, the same as for a missing
+or deleted image. Images in "linked_post" are post images: public, no token needed. Anyone
+who could see an image can keep a copy: privacy only keeps out profiles that were never in
+the conversation, or no longer are.
+
 Conversation (GET /api/bot/conversations):
   { "peer": { "name", "username", "avatar" }, "preview": "last message, cut to 200
     characters", "mine": true (the bot sent the last message), "created_at", "unread": 2 }
@@ -126,7 +137,8 @@ Group message (a message or event of a group chat):
     "sender": { "username": "alice", "name": "Alice", "avatar": "/avatars/…" | null },
     "target": { "username", "name", "avatar" } | null,   // who was added or removed
     "content": "hi all",               // may be "" when it only has images
-    "images": ["/uploads/…"],          // people can attach images, bots can't
+    "images": ["/dm-uploads/…"],       // people can attach images, bots can't; private,
+                                       // like in Message
     "created_at": "ISO date",
     "linked_post": { … } | null,       // same as in Message
     "reply_to": { "id", "sender": { "username", "name" }, "content", "images" } | null,

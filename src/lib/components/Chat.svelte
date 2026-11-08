@@ -105,6 +105,8 @@
 	const SEND_IN_MS = 380;
 	/** the visible height, which shrinks while the on-screen keyboard is open */
 	let viewportHeight = $state<number | null>(null);
+	/** the on-screen keyboard is open (the visual viewport is well short of the layout one) */
+	let keyboardOpen = $state(false);
 	// the header's three dots menu: mute, block or the group's info
 	let optionsOpen = $state(false);
 	let options: HTMLDivElement | undefined = $state();
@@ -1071,6 +1073,7 @@
 			// pinch zoom also shrinks it, and must stay free to pan
 			if (!vv || vv.scale > 1.01) return;
 			viewportHeight = vv.height;
+			keyboardOpen = vv.height < window.innerHeight - 100;
 			// the browser scrolls the page to show the focused input; the chat now fits, undo that
 			if (window.scrollY !== 0) window.scrollTo(0, 0);
 		};
@@ -1301,9 +1304,12 @@
 {/if}
 
 <!-- 120px: the fixed header's offset and the padding of the layout's main column; narrow screens
-	hide the header in a chat (+layout), leaving only the padding -->
+	hide the header in a chat (+layout), leaving only the padding. With the keyboard open the bottom
+	padding shrinks to 5px (the negative margin eats the rest), so the input sits just above it -->
 <div
-	class="flex h-[calc(var(--vh,100dvh)-120px)] flex-col gap-2.5 max-lg:h-[calc(var(--vh,100dvh)-40px)]"
+	class="flex h-[calc(var(--vh,100dvh)-120px)] flex-col gap-2.5 {keyboardOpen
+		? 'max-lg:-mb-[15px] max-lg:h-[calc(var(--vh,100dvh)-25px)]'
+		: 'max-lg:h-[calc(var(--vh,100dvh)-40px)]'}"
 	style:--vh={viewportHeight ? `${viewportHeight}px` : undefined}
 >
 	<div class="flex items-center gap-2.5 border-b border-line pb-2.5">

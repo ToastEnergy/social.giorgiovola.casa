@@ -164,7 +164,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 - **Auth:** `POST /api/v1/auth/login` with `{ "username", "password" }` answers a bearer token (`sgu_…`, valid 90 days). Personal access tokens can be created in `/settings` → _Sessions and API tokens_ or with `POST /api/v1/auth/tokens`. Bot tokens (`sgc_…`) work too. Send `Authorization: Bearer <token>`; the web UI uses its session cookie instead, which is ignored on requests from other origins. Only hashes of tokens are stored, and every session and token can be listed and revoked.
 - **Identities:** a token acts as one profile at a time; `POST /api/v1/auth/switch` with `{ "username" }` moves it to the account or one of its identities.
 - **Conventions:** JSON in and out, errors are `{ "error": "…" }`, lists are `{ "items": [...], "next_cursor": "…" | null }` with `?limit=` and `?cursor=`. Send `Content-Type: application/json` on every write, even without a body, and upload images as the raw request body: SvelteKit refuses body-less and form writes that don't come from the site. CORS is open (`*`, no credentials).
-- **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else. See [message images](#message-images).
+- **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else (401 when the token is invalid). Post images ignore the token, even an invalid one. See [message images](#message-images).
 - **Compatibility:** v1 only changes additively; the original bot API under `/api/bot` (below) keeps working unchanged.
 
 **Instance and signing in**
@@ -274,7 +274,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `DELETE`           | `/api/v1/groups/:id/members/:username`                  | owner (or yourself)   | remove someone, or leave                                                              |
 | `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                 |
 | `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                      |
-| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 when missing or not yours                      |
+| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token        |
 
 **Moderation and realtime**
 
@@ -291,7 +291,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 ## message images
 
-Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token.
+Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token. An invalid (revoked, expired or unknown) token gets a 401 for a message image, like the API; post images under `/uploads/` ignore the header and load whatever token is sent.
 
 Images of messages sent before this keep their `/uploads/…` paths and get the same check. They used to be served publicly and cached as immutable, so purge those URLs from a cache in front of the app (such as Cloudflare) once after upgrading.
 

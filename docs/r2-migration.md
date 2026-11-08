@@ -213,6 +213,21 @@ Flags: `--dry-run` (report only), `--delete-local` (remove the local files after
 verification), `--delete-orphans`, `--purge`, `--purge-only` (step 6 alone, usable before the
 bucket is configured).
 
+As built, beyond the steps above:
+
+- Step 2 also uploads `data/dm/*` to `dm/<file>` (message images written by the fs driver after PR
+  4), and copies message images that are only in the bucket under `uploads/` (stored by PR 1 with a
+  bucket configured) to `dm/<file>`. The `uploads/` copy is then an orphan.
+- Step 5 reads the database again and leaves alone anything stored less than an hour ago, which may
+  belong to a post or message that was being sent. `--delete-orphans` also deletes the local copy.
+- Step 6 lists `/uploads/<file>` for every message image, whatever its stored path, plus orphans
+  from `uploads/`. Orphaned avatars aren't purged: their URLs carry a `?hash=` that isn't known.
+  Requests carry 100 URLs (Cloudflare's per-request limit below Enterprise), 429s are retried.
+  `--purge-only` purges when `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_API_TOKEN` are set and only
+  prints otherwise; `--purge` refuses to run without them.
+- The Cloudflare variables are script-only: they aren't passed to the container by
+  `docker-compose.yaml`, so they're given with `docker compose exec -e`.
+
 ### PR 6: cleanup
 
 After production runs from the bucket and the migration is verified: remove the read fallback from

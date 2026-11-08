@@ -22,6 +22,8 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `S3_REGION`            | `auto`                  | bucket region (`auto` for R2)                                                                                                                         |
 | `S3_ACCESS_KEY_ID`     | empty                   | access key of the API token, required with `S3_BUCKET`                                                                                                |
 | `S3_SECRET_ACCESS_KEY` | empty                   | secret of the API token, required with `S3_BUCKET`                                                                                                    |
+| `CLOUDFLARE_ZONE_ID`   | empty                   | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                        |
+| `CLOUDFLARE_API_TOKEN` | empty                   | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)              |
 | `BIND_ADDRESS`         | `127.0.0.1`             | interface the port is published on                                                                                                                    |
 | `POSTGRES_PASSWORD`    | `postgres`              | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
 | `POSTGRES_PORT`        | `5432`                  | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
@@ -48,7 +50,49 @@ S3_SECRET_ACCESS_KEY=…
 
 `S3_BUCKET` needs the endpoint and both keys: the app refuses to start when one of them is missing. Other S3-compatible services (AWS S3, MinIO, Backblaze B2…) work the same way with their endpoint and region; requests use path-style URLs (`<endpoint>/<bucket>/<key>`). Objects are stored under `uploads/`, `avatars/` and `dm/` (message images).
 
-Files still in the volumes keep being served while the bucket is configured (the app looks there when the bucket doesn't have a file, and deletes both copies), so switching doesn't break existing images; a script to copy them into the bucket is planned. `scripts/backup.sh` doesn't include the bucket yet.
+Files still in the volumes keep being served while the bucket is configured (the app looks there when the bucket doesn't have a file, and deletes both copies), so switching doesn't break existing images; copy them into the bucket with the migration script (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)). `scripts/backup.sh` doesn't include the bucket yet.
+
+## moving existing assets to the bucket
+
+`scripts/migrate-assets.ts` copies the files in the volumes into the bucket and makes images of messages sent before images became private (stored as `/uploads/…`) private too. Run it in the container:
+
+```
+docker compose exec web bun scripts/migrate-assets.ts --dry-run
+```
+
+It reads the same `S3_*` variables as the app, plus `DATABASE_URL` and `PUBLIC_URL`, and runs these steps, printing a summary of each:
+
+1. **message images**: reads every image path of direct and group messages.
+2. **upload**: `uploads` volume files go to `dm/<file>` when they belong to a message and to `uploads/<file>` otherwise, the `avatars` volume to `avatars/<file>` and the `dm-uploads` volume to `dm/<file>`. Objects already in the bucket with the same size are skipped, so it can be stopped and run again.
+3. **verify**: every image path of posts and messages and every avatar (`users.avatar` without `?hash=`) must be in the bucket, under the key the app reads. If anything is missing, it prints the list and stops with an error before changing anything else.
+4. **rewrite**: message rows with `/uploads/x` paths are rewritten to `/dm-uploads/x`, in one transaction. A second run finds nothing left.
+5. **orphans**: objects and local files nothing references (such as images of deleted messages, or avatars in an old format). Only reported, unless `--delete-orphans` is passed, which deletes them from the bucket (and the volume) right away. Anything stored less than an hour ago is left alone, as it may belong to a post or message being sent.
+6. **Cloudflare purge**: prints the `${PUBLIC_URL}/uploads/…` URLs of message images and orphans, which a cache in front of the app may still hold from when they were public. With `--purge`, they are purged through Cloudflare's purge-by-URL API (100 URLs per request).
+
+| flag               | effect                                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`        | report what would happen; nothing is written to the bucket, the database, the volumes or Cloudflare                                                  |
+| `--delete-local`   | after a successful verification, delete the local files whose copy in the bucket is confirmed                                                        |
+| `--delete-orphans` | delete the orphans (step 5)                                                                                                                          |
+| `--purge`          | purge the URLs of step 6 from Cloudflare                                                                                                             |
+| `--purge-only`     | only step 6, which works without the `S3_*` variables: prints the URLs, and purges them when `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_API_TOKEN` are set |
+
+Steps 2–5 refuse to run without the `S3_*` variables. Purging needs `CLOUDFLARE_ZONE_ID` (on the zone's overview page in the dashboard) and `CLOUDFLARE_API_TOKEN`, an API token (My Profile > API Tokens > Create Token, custom) with the **Zone > Cache Purge** permission on that zone. The app doesn't read either of them, so pass them to the script only:
+
+```
+docker compose exec -e CLOUDFLARE_ZONE_ID=… -e CLOUDFLARE_API_TOKEN=… web bun scripts/migrate-assets.ts --purge
+```
+
+Moving an existing instance to the bucket, in order:
+
+1. Update and deploy without the `S3_*` variables. Nothing changes, except that message images are now only served to their conversation.
+2. Purge the old message image URLs from Cloudflare, since it may still have public copies: `--purge-only` (no bucket needed yet).
+3. Create the bucket and its token ([storing assets in S3 / R2](#storing-assets-in-s3--r2)), set the `S3_*` variables and restart with `docker compose up -d`. Files are read from the bucket, falling back to the volumes.
+4. Run the script with `--dry-run`, then without it, then with `--purge`.
+5. Run a backup and check it includes the bucket.
+6. Run it with `--delete-orphans`, and with `--delete-local` once you're satisfied. Keep a tarball of the volumes for a while.
+
+If step 3 reports missing files that you can't find anymore (in an old volume or a backup), the posts or messages pointing at them show broken images either way; the script won't go further until the paths are fixed or removed from the database.
 
 ## backups
 
@@ -293,7 +337,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token.
 
-Images of messages sent before this keep their `/uploads/…` paths and get the same check. They used to be served publicly and cached as immutable, so purge those URLs from a cache in front of the app (such as Cloudflare) once after upgrading.
+Images of messages sent before this keep their `/uploads/…` paths and get the same check. They used to be served publicly and cached as immutable, so purge those URLs from a cache in front of the app (such as Cloudflare) once after upgrading: `scripts/migrate-assets.ts --purge-only` lists and purges them (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)).
 
 This keeps out people who were never in the conversation, or no longer are. Anyone who could see an image can still keep a copy.
 

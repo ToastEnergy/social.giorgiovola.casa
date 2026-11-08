@@ -105,7 +105,7 @@
 	const SEND_IN_MS = 380;
 	/** the visible height, which shrinks while the on-screen keyboard is open */
 	let viewportHeight = $state<number | null>(null);
-	/** the on-screen keyboard is open (the visual viewport is well short of the layout one) */
+	/** the on-screen keyboard is open (the visible height is well short of the tallest seen) */
 	let keyboardOpen = $state(false);
 	// the header's three dots menu: mute, block or the group's info
 	let optionsOpen = $state(false);
@@ -1069,11 +1069,17 @@
 		// fit the chat to what's visible above the keyboard: iOS (and Android without
 		// interactive-widget) only shrink the visual viewport, leaving the input under the keyboard
 		const vv = window.visualViewport;
+		// the tallest visible height at this width: iOS shrinks innerHeight with the keyboard too, so
+		// that can't tell whether it is open
+		let fullHeight = 0;
+		let fullWidth = 0;
 		const fit = () => {
 			// pinch zoom also shrinks it, and must stay free to pan
 			if (!vv || vv.scale > 1.01) return;
 			viewportHeight = vv.height;
-			keyboardOpen = vv.height < window.innerHeight - 100;
+			if (vv.width !== fullWidth) [fullWidth, fullHeight] = [vv.width, 0];
+			fullHeight = Math.max(fullHeight, vv.height);
+			keyboardOpen = vv.height < fullHeight - 100;
 			// the browser scrolls the page to show the focused input; the chat now fits, undo that
 			if (window.scrollY !== 0) window.scrollTo(0, 0);
 		};

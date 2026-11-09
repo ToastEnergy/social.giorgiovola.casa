@@ -603,7 +603,7 @@ async function fullRun(s3: S3Client) {
 	return purgeUrls(purgeList(refs.messages, orphanUploads));
 }
 
-let ok = false;
+let ok: boolean;
 try {
 	ok = client ? await fullRun(client) : await purgeOnlyRun();
 } finally {

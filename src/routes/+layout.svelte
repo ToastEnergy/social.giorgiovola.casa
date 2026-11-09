@@ -71,6 +71,7 @@
 	let mounted = false;
 	$: userId = data.user?.id ?? null;
 	$: if (mounted) {
+		// eslint-disable-next-line @typescript-eslint/no-unused-expressions -- reruns on profile change
 		userId;
 		connectRealtime();
 	}

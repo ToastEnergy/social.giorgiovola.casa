@@ -287,7 +287,7 @@
 		<div
 			class="w-full {isWide(page.route.id)
 				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
-				: 'max-w-160 p-5'}"
+				: 'max-w-160 p-5 max-nav:max-w-none'}"
 		>
 			<slot />
 		</div>

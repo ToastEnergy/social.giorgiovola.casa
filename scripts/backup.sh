@@ -120,6 +120,12 @@ else
 	restic backup --tag files "${file_paths[@]}"
 fi
 
+# a restic command run by hand and interrupted (ctrl-c, piped into head, dropped ssh) leaves its
+# lock behind, which would block forget --prune. plain unlock only removes stale locks (dead
+# process on this host, or older than 30 minutes), never a live one
+log "removing stale locks"
+restic unlock
+
 log "applying retention"
 restic forget --prune --group-by host,tags \
 	--keep-daily "$KEEP_DAILY" --keep-weekly "$KEEP_WEEKLY" --keep-monthly "$KEEP_MONTHLY"

@@ -105,6 +105,10 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
+          # keep the runner's own DNS: with the tailnet's (MagicDNS forwarding to its nameservers,
+          # which tag:ci may not reach) the runner can't resolve github.com once connected, and
+          # the post-run steps and the final log upload hang. The server is reached by IP anyway
+          args: --accept-dns=false
       - name: Deploy on the server
         # the server waits up to 3 minutes for the new version, the rest is the image pull
         timeout-minutes: 15

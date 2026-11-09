@@ -21,6 +21,7 @@
 	import { getAvatar } from '#lib/utils.js';
 	import { connectRealtime, disconnectRealtime, onRealtime } from '#lib/realtime.js';
 	import { syncPush } from '#lib/push.js';
+	import { syncTimeCookies } from '#lib/time.svelte.js';
 
 	export let data: LayoutData;
 
@@ -91,6 +92,7 @@
 
 	onMount(() => {
 		mounted = true;
+		syncTimeCookies(data.time);
 		const offNotifications = onRealtime('notifications', ({ count }) => ($notisCount = count));
 		const offMessages = onRealtime(
 			'messages_unread',

@@ -17,6 +17,7 @@
 	import { api, allPages, ApiError, errorOf, messageOf, type Page } from '#lib/api.js';
 	import Likes from './Likes.svelte';
 	import Avatar from './Avatar.svelte';
+	import LocalTime from './LocalTime.svelte';
 	import PostComposer from './PostComposer.svelte';
 	import QuoteCard from './QuoteCard.svelte';
 	import PollCard from './PollCard.svelte';
@@ -721,9 +722,7 @@
 							>
 						{/if}
 					</p>
-					<p class="text-[0.8rem] opacity-70">
-						{new Date(post.created_at).toLocaleString()}
-					</p>
+					<LocalTime class="text-[0.8rem] opacity-70" date={post.created_at} />
 				</div>
 				<div class="flex flex-col gap-2.5">
 					{#if contentParts.join('').trim()}

@@ -3,6 +3,7 @@
 	import Button from '#lib/components/Button.svelte';
 	import { page } from '$app/state';
 	import type { PageProps } from './$types';
+	import { formatDate } from '#lib/time.svelte.js';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		WebAuthnError,
@@ -69,8 +70,9 @@
 		}).catch(() => null);
 	});
 
+	// in the reader's zone on the server too (see time.svelte.ts), so it doesn't change on hydration
 	const date = (d: Date | string) =>
-		new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+		formatDate(d, { year: 'numeric', month: 'short', day: 'numeric' });
 
 	async function addPasskey(e: SubmitEvent) {
 		e.preventDefault();

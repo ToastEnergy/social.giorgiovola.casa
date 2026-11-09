@@ -34,6 +34,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
     steps:
@@ -57,6 +58,8 @@ jobs:
   deploy:
     needs: check
     runs-on: ubuntu-latest
+    # a hung step otherwise holds the deploy concurrency group for hours (the default is 6)
+    timeout-minutes: 30
     environment:
       name: ${{ github.event_name == 'push' && 'staging' || inputs.environment }}
       url: ${{ vars.PUBLIC_URL }}
@@ -81,6 +84,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        env:
+          # the post-run step that uploads the build record and writes the job summary hung once,
+          # keeping the run alive after it had already failed: neither is needed here
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           push: true
@@ -98,6 +106,8 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
       - name: Deploy on the server
+        # the server waits up to 3 minutes for the new version, the rest is the image pull
+        timeout-minutes: 15
         env:
           SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
           SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}

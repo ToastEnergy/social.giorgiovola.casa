@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { QuotedPost } from '#lib/types.js';
 	import Avatar from './Avatar.svelte';
+	import LocalTime from './LocalTime.svelte';
+	import { DATE } from '#lib/time.svelte.js';
 
 	// the post a quote regiorg quotes, embedded in the quote (or in the composer, as a preview).
 	// Post.svelte leaves clicks on links inside it alone, so this one opens the quoted post.
@@ -30,9 +32,11 @@
 			<span class="truncate font-bold"
 				>{quote.user.name} <span class="font-medium opacity-80">@{quote.user.username}</span></span
 			>
-			<span class="ml-auto shrink-0 text-[0.8em] opacity-70"
-				>{new Date(quote.created_at).toLocaleDateString()}</span
-			>
+			<LocalTime
+				class="ml-auto shrink-0 text-[0.8em] opacity-70"
+				date={quote.created_at}
+				options={DATE}
+			/>
 		</div>
 		{#if text}
 			<p class="line-clamp-6 text-[0.95em] wrap-anywhere whitespace-pre-line">{text}</p>

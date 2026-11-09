@@ -2,8 +2,9 @@ import type { LayoutServerLoad } from './$types';
 import { apiGet } from '#lib/apiLoad.js';
 import { userOf, type Me } from '#lib/me.js';
 import type { SwitcherAccount } from '#lib/types.js';
+import { readTimeCookies } from '#lib/time.svelte.js';
 
-export const load = (async ({ fetch }) => {
+export const load = (async ({ fetch, cookies, request }) => {
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
 	const [me, accounts, instance] = await Promise.all([
 		fetch('/api/v1/me').then((res) => (res.ok ? (res.json() as Promise<Me>) : null)),
@@ -21,6 +22,8 @@ export const load = (async ({ fetch }) => {
 		// reactions to your messages make a chat unread too
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),
 		accounts,
-		motd: instance.motd
+		motd: instance.motd,
+		// the reader's zone and locale (UI preference cookies), so dates render as in the browser
+		time: readTimeCookies(cookies, request.headers.get('accept-language'))
 	};
 }) satisfies LayoutServerLoad;

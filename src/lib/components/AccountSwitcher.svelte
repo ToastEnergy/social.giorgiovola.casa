@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LogIn from '@lucide/svelte/icons/log-in';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
@@ -194,4 +195,19 @@
 			</div>
 		{/if}
 	</div>
+{:else}
+	<!-- signed out: a login icon where the profile would be, with its name in the rail (badge) -->
+	<a
+		class="flex shrink-0 items-center text-foreground hover:text-accent hover:no-underline {badge
+			? 'gap-2.5 self-start font-bold'
+			: 'justify-center'}"
+		style:width={badge ? undefined : `${size}px`}
+		style:height="{size}px"
+		href="/login"
+		title="Log in"
+		aria-label="Log in"
+	>
+		<LogIn size={Math.round(size * 0.6)} />
+		{#if badge}Login{/if}
+	</a>
 {/if}

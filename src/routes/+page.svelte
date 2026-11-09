@@ -71,10 +71,6 @@
 		</nav>
 	{/if}
 	<PostComposer oncreated={add} />
-{:else}
-	<form class="mb-5 flex">
-		<input class="input" type="text" placeholder="Log in to post" disabled />
-	</form>
 {/if}
 
 {#each pinned as post (post.id)}

@@ -2,7 +2,7 @@
 	import Search from '@lucide/svelte/icons/search';
 	import { page } from '$app/state';
 	import { countLabel, homeItem, isActive, navItems, navLabel, type NavItem } from '#lib/nav.js';
-	import { messagesCount, notisCount } from '#lib/store.js';
+	import { messagesCount, notisCount, user } from '#lib/store.js';
 	import AccountSwitcher from './AccountSwitcher.svelte';
 
 	// in a chat the bar continues the message input above it: in the flow, full width, no border
@@ -12,7 +12,9 @@
 	// home, search, chat, notifications, then the profile (settings is in the profile menu)
 	const [notifications, messages] = navItems;
 	const searchItem: NavItem = { href: '/search', label: 'Search', icon: Search };
-	const items = [homeItem, searchItem, messages, notifications];
+	const items = $derived(
+		$user ? [homeItem, searchItem, messages, notifications] : [homeItem, searchItem]
+	);
 
 	const itemClass = (active: boolean) =>
 		`flex h-14 flex-1 items-center justify-center hover:no-underline [-webkit-tap-highlight-color:transparent] ${

@@ -5,12 +5,15 @@
 	import { page } from '$app/state';
 	import { fade } from 'svelte/transition';
 	import { countLabel, homeItem, isActive, moderationItem, navItems, navLabel } from '#lib/nav.js';
-	import { messagesCount, notisCount } from '#lib/store.js';
+	import { messagesCount, notisCount, user } from '#lib/store.js';
 	import SocialLinks from './SocialLinks.svelte';
 
 	// moderation sits before settings for staff (the profile menu has it on touch devices only)
+	// signed-out visitors only have home (the login icon replaces the profile)
 	const items = $derived(
-		page.data.role && page.data.role !== 'user'
+		!$user
+			? [homeItem]
+			: page.data.role && page.data.role !== 'user'
 			? [homeItem, ...navItems.slice(0, -1), moderationItem, ...navItems.slice(-1)]
 			: [homeItem, ...navItems]
 	);

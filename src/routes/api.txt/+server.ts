@@ -387,6 +387,9 @@ GET /api/bot/stream
               the bot as "target"; being removed as kind "removed". Messages the bot sends
               itself are not echoed.
   A post can come as both mention and post. Lines starting with ":" are keep-alive pings, ignore them.
+  A bot can have at most 10 streams open at once (this one, /api/v1/stream and
+  /api/v1/stream/bot together): one more answers 429 {"error": "..."} with Retry-After: 60.
+  Keep one stream per bot and close it before opening another.
   When the connection drops (network, server restart, new token, username change),
   reconnect and catch up with /api/bot/mentions?after=<last id>, /api/bot/feed and
   /api/bot/messages?after=<last message id>; for groups, GET /api/bot/groups (the

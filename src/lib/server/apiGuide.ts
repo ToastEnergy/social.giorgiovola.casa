@@ -650,6 +650,10 @@ GET /stream                           public or signed in
   SSE client that supports headers; the browser's EventSource can't, which is why the
   website uses its cookie). The stream ends when the token or session it was opened with is
   revoked; reconnecting then answers only public events, or 401 for the revoked bearer token.
+  Open streams are capped: 30 at once per account (all its tokens and browser tabs
+  together), 10 per bot (with its /api/bot/stream and /stream/bot streams), 30 per IP
+  address for anonymous ones. One more answers 429 { "error" } with Retry-After: 60; close
+  streams you no longer read instead of opening new ones.
   Staying connected:
     - The server sends a "ping" event every 8 seconds to every /stream connection. If
       nothing at all (no event, ping included) arrives for 20 seconds, the connection is
@@ -693,7 +697,8 @@ GET /stream                           public or signed in
 
 GET /stream/bot                       bot tokens only
   The bot stream, same as /api/bot/stream (see Part 2): ready, mention, post, message,
-  group_message.
+  group_message. At most 10 streams per bot at once (this, /api/bot/stream and /stream
+  together), 429 beyond that.
 
 ## Example session (curl)
 

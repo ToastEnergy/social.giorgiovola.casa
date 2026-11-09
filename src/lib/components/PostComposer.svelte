@@ -26,6 +26,9 @@
 		placeholder?: string;
 		/** focuses the input when mounted (the full screen composer) */
 		autofocus?: boolean;
+		/** the reply bar fixed at the bottom of an open post (touch devices): a single field, with
+		 * the buttons in a row under it once tapped */
+		docked?: boolean;
 		oncreated?: (post: Post) => void;
 	};
 
@@ -34,6 +37,7 @@
 		quoteOf = null,
 		placeholder: placeholderProp,
 		autofocus = false,
+		docked = false,
 		oncreated
 	}: Props = $props();
 
@@ -73,6 +77,10 @@
 	let dragDepth = 0;
 	let fileInput: HTMLInputElement | undefined = $state();
 	let textarea: HTMLTextAreaElement | undefined = $state();
+	let form: HTMLFormElement | undefined = $state();
+	// docked: the buttons show once the field is tapped, until a tap elsewhere with nothing written
+	let expanded = $state(false);
+	const tools = $derived(!docked || expanded);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();
@@ -82,6 +90,14 @@
 		replyTo != null ? `reply:${replyTo}` : quoteOf ? `quote:${quoteOf.id}` : 'post';
 
 	const isEmpty = () => !content.trim() && attachments.length === 0 && !pollOptions;
+
+	/**
+	 * Tapping a button would move focus off the field and close the on-screen keyboard (iOS doesn't
+	 * focus buttons, so the bar would also fold before the tap lands). Keeps the focus where it is.
+	 */
+	function keepFocus(e: MouseEvent) {
+		if (docked && document.activeElement === textarea) e.preventDefault();
+	}
 
 	function showError(message: string) {
 		error = message;
@@ -187,6 +203,11 @@
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('dragleave', onDragLeave);
 		window.addEventListener('drop', onDrop);
+		// a tap outside the bar folds it back, unless something is written
+		const onPointerDown = (e: PointerEvent) => {
+			if (docked && !form?.contains(e.target as Node) && isEmpty()) expanded = false;
+		};
+		window.addEventListener('pointerdown', onPointerDown);
 
 		let destroyed = false;
 		// written before a profile switch (which reloads the page): put it back
@@ -219,6 +240,7 @@
 			window.removeEventListener('dragover', onDragOver);
 			window.removeEventListener('dragleave', onDragLeave);
 			window.removeEventListener('drop', onDrop);
+			window.removeEventListener('pointerdown', onPointerDown);
 			clearTimeout(errorTimeout);
 			clearAttachments();
 			for (const draft of pending) for (const a of draft.attachments) a.release();
@@ -311,13 +333,15 @@
 {/if}
 
 {#if error}
-	<div class="mb-5 rounded-[5px] bg-danger p-2.5">
+	<div class="{docked ? 'mb-[5px]' : 'mb-5'} rounded-[5px] bg-danger p-2.5">
 		<p>{error}</p>
 	</div>
 {/if}
 
 <form
-	class="mb-5 flex flex-col gap-2.5"
+	bind:this={form}
+	class="flex flex-col {docked ? 'gap-[5px]' : 'mb-5 gap-2.5'}"
+	onfocusin={() => (expanded = true)}
 	onsubmit={(e) => {
 		e.preventDefault();
 		const sending = submit();
@@ -332,10 +356,14 @@
 			bind:element={textarea}
 			required={attachments.length === 0 || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
-			inputClass="bg-transparent p-2.5 outline-none"
+			placement={docked ? 'above' : 'below'}
+			maxHeight={docked ? 'max-h-[30vh]' : undefined}
+			inputClass={docked
+				? 'rounded-[15px] bg-black px-2.5 py-2 outline-none'
+				: 'bg-transparent p-2.5 outline-none'}
 		/>
 	</div>
-	<div class="flex items-center gap-[5px]">
+	<div class="flex items-center gap-[5px] {tools ? '' : 'hidden'}">
 		<input
 			bind:this={fileInput}
 			onchange={onFilesSelected}
@@ -349,6 +377,7 @@
 			title="Attach images"
 			aria-label="Attach images"
 			disabled={attachments.length >= MAX_IMAGES}
+			onmousedown={keepFocus}
 			onclick={() => fileInput?.click()}
 			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
 			><ImageIcon size={20} strokeWidth={1.8} /></button
@@ -358,6 +387,7 @@
 			title={pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-label={pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-pressed={!!pollOptions}
+			onmousedown={keepFocus}
 			onclick={() => (pollOptions = pollOptions ? null : ['', ''])}
 			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent"
 			><ChartNoAxesColumn
@@ -366,11 +396,17 @@
 				class={pollOptions ? 'text-accent' : ''}
 			/></button
 		>
+		{#if docked && pending.length > 0}
+			<span class="ml-auto flex" aria-busy="true"><LoadingScreen size={20} /></span>
+		{/if}
 		<Button
 			type="submit"
 			variant="primary"
 			size="sm"
-			class="ml-auto w-10 transition-transform duration-200 ease-out hover:scale-115 hover:rotate-15 hover:bg-accent! hover:text-background!"
+			onmousedown={keepFocus}
+			class="{docked && pending.length > 0
+				? ''
+				: 'ml-auto'} w-10 transition-transform duration-200 ease-out hover:scale-115 hover:rotate-15 hover:bg-accent! hover:text-background!"
 			aria-label="Post"
 			title="Post"><SendHorizontal size={18} strokeWidth={1.8} /></Button
 		>
@@ -443,12 +479,15 @@
 	{#if quoteOf}
 		<QuoteCard quote={quoteOf} link={false} />
 	{/if}
-	<!-- divides the composer from the posts below: thin and rounded -->
-	<!-- prettier-ignore -->
-	<div class="-mx-5 mt-2.5 h-px scale-y-50 rounded-full bg-foreground/60"></div>
+	{#if !docked}
+		<!-- divides the composer from the posts below: thin and rounded -->
+		<!-- prettier-ignore -->
+		<div class="-mx-5 mt-2.5 h-px scale-y-50 rounded-full bg-foreground/60"></div>
+	{/if}
 </form>
 
-{#each pending as draft (draft.key)}
+<!-- docked, the bar only shows the loading mark: the reply shows up in the list once it lands -->
+{#each docked ? [] : pending as draft (draft.key)}
 	<!-- on its way: dimmed, with the loading mark, until the real post replaces it -->
 	<div class="mb-5 flex gap-2.5 opacity-70" aria-busy="true">
 		{#if $user}

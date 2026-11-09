@@ -4,12 +4,16 @@
 	import { flushSync } from 'svelte';
 	import { openCompose } from '#lib/compose.svelte.js';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { countLabel, homeItem, isActive, navItems, navLabel, type NavItem } from '#lib/nav.js';
 	import { messagesCount, notisCount, user } from '#lib/store.js';
+	import { focusSearch } from '#lib/searchFocus.js';
 
 	// in a chat the bar continues the message input above it: in the flow, full width, no border
 	let { joined = false }: { joined?: boolean } = $props();
 
+	// an open post has the reply bar right above (ReplyDock), which takes over the top border
+	const docked = $derived(!!$user && page.route.id === '/@[username]/[post]' && !page.error);
 	const counts = $derived({ notifications: $notisCount, messages: $messagesCount });
 	// home, search, chat and notifications (the profile and settings are at the top of home)
 	const [notifications, messages] = navItems;
@@ -32,7 +36,7 @@
 	aria-label="Main"
 	class="flex bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? '-mx-5 -mb-5 shrink-0'
-		: 'fixed right-0 bottom-0 left-0 z-998 border-t border-line pt-1'}"
+		: `fixed right-0 bottom-0 left-0 z-998 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >
 	{#snippet link(item: NavItem)}
 		{@const active = isActive(page.url.pathname, item.href)}
@@ -43,6 +47,16 @@
 			title={navLabel(item, count)}
 			aria-label={navLabel(item, count)}
 			aria-current={active ? 'page' : undefined}
+			onclick={(e) => {
+				if (item !== searchItem) return;
+				e.preventDefault();
+				// already there: no navigation (which would drop the query), just the field
+				const field = document.querySelector<HTMLInputElement>('[data-search-field]');
+				if (active && field) return field.focus();
+				focusSearch();
+				// reset would blur the stand-in, closing the keyboard (the page scrolls up itself)
+				goto(item.href, { reset: false });
+			}}
 		>
 			<span class="relative flex">
 				<item.icon size={24} strokeWidth={active ? 2.5 : 2} />

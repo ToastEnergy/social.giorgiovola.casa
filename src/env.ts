@@ -12,6 +12,11 @@ export const variables = defineEnvVars({
 		public: true,
 		schema: (input: string | undefined) => input || 'Giorgiocerca qualcosa'
 	},
+	// the placeholder of the reply bar on an open post (touch devices)
+	PUBLIC_REPLY_PLACEHOLDER: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Giorgia un commento'
+	},
 	SIGNUP_PASSWORD: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },

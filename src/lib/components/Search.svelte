@@ -173,8 +173,10 @@
 				? 'h-11.25 rounded-[15px] bg-black px-2.5'
 				: 'border-b border-foreground px-[5px]'}"
 		>
-			{@render searchIcon('shrink-0 text-muted')}
-			<input
+			<!-- a label, so a click on the icon focuses the field too -->
+			<label class="flex min-w-0 flex-1 cursor-text items-center gap-2.5">
+				{@render searchIcon('shrink-0 text-muted')}
+				<input
 				bind:this={input}
 				bind:value={query}
 				class="w-full bg-transparent py-[5px] outline-none [&::-webkit-search-cancel-button]:appearance-none"
@@ -193,6 +195,7 @@
 				onfocus={onFocus}
 				onkeydown={onKeydown}
 			/>
+			</label>
 			{#if query}
 				<!-- replaces the browser's own clear button; the small-screen bar has its close button -->
 				<button

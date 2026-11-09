@@ -15,6 +15,7 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `PORT`                      | `7777`                  | port the app listens on                                                                                                                               |
 | `PUBLIC_URL`                | `http://localhost:PORT` | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
 | `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa` | placeholder text of the search box                                                                                                                    |
+| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`   | placeholder of the reply bar on an open post (touch devices)                                                                                          |
 | `DISCORD_WEBHOOK_URL`       | empty                   | optional, new posts are announced to this webhook                                                                                                     |
 | `SIGNUP_PASSWORD`           | empty                   | password required to register; registration is closed if empty                                                                                        |
 | `ADDRESS_HEADER`            | empty                   | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |

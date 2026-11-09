@@ -4,11 +4,16 @@
 	import type { PageProps } from './$types';
 	import Posts from '#lib/components/Posts.svelte';
 	import PostComposer from '#lib/components/PostComposer.svelte';
+	import ReplyDock from '#lib/components/ReplyDock.svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { user } from '#lib/store.js';
 	import LoadingScreen from '#lib/components/LoadingScreen.svelte';
 	import { onRealtime } from '#lib/realtime.js';
 
 	let { data }: PageProps = $props();
+
+	// touch devices reply from a bar above the bottom one instead of the composer above the replies
+	const touch = new MediaQuery('(pointer: coarse)');
 
 	let replies: PostType[] = $state([]);
 	let loaded = $state(false);
@@ -21,7 +26,8 @@
 		replies = [];
 		pending.then((list) => {
 			if (!current) return;
-			replies = list;
+			// replies sent from the bar while the list was loading stay
+			replies = [...list, ...replies.filter((r) => !list.some((l) => l.id === r.id))];
 			loaded = true;
 		});
 		return () => (current = false);
@@ -47,9 +53,13 @@
 	</div>
 {:else}
 	<div class="mt-5">
-		{#if $user}
+		{#if $user && !touch.current}
 			<PostComposer replyTo={data.post.id} oncreated={onCreated} />
 		{/if}
 		<Posts scrollToNew={true} loadReplies={true} replies={true} posts={replies} />
 	</div>
+{/if}
+
+{#if $user && touch.current}
+	<ReplyDock replyTo={data.post.id} oncreated={onCreated} />
 {/if}

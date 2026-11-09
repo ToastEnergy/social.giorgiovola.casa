@@ -8,11 +8,10 @@
 	import { page } from '$app/state';
 	import { api, messageOf } from '#lib/api.js';
 	import { switchTo } from '#lib/accounts.js';
+	import { hintClass, sectionClass } from '#lib/settings.js';
 
 	let { data }: PageProps = $props();
 
-	const sectionClass = 'mb-10 flex flex-col gap-3';
-	const hintClass = 'text-[0.85em] text-muted';
 	const rowClass = 'flex flex-col gap-2.5 rounded-md border p-2';
 
 	let accounts = $derived(data.accounts as SwitcherAccount[]);
@@ -236,7 +235,7 @@
 		</ul>
 
 		{#if canCreate}
-			<form method="POST" class="mt-2.5 flex flex-col gap-3" onsubmit={create}>
+			<form class="mt-2.5 flex flex-col gap-3" onsubmit={create}>
 				<h3>New identity</h3>
 				<input
 					class="input"
@@ -293,7 +292,7 @@
 						<Button
 							size="sm"
 							disabled={busy}
-							onclick={() => switchProfile(account.username, '/accounts')}>Switch</Button
+							onclick={() => switchProfile(account.username, '/settings/accounts')}>Switch</Button
 						>
 					</div>
 				</li>

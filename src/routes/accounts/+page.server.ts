@@ -1,18 +1,7 @@
 import type { PageServerLoad } from './$types';
-import { apiGet } from '#lib/apiLoad.js';
-import type { User } from '#lib/types.js';
+import { redirect } from '@sveltejs/kit';
 
-type Member = Pick<User, 'name' | 'username' | 'avatar'>;
-
-export const load = (async ({ fetch }) => {
-	const identities = await apiGet<{
-		max_identities: number;
-		max_members: number;
-		owned: (Member & { members: Member[] })[];
-	}>(fetch, '/me/identities');
-	return {
-		maxIdentities: identities.max_identities,
-		maxMembers: identities.max_members,
-		owned: identities.owned
-	};
+// identities and accounts moved to a section of the settings; old links and bookmarks still work
+export const load = (({ url }) => {
+	redirect(308, `/settings/accounts${url.search}`);
 }) satisfies PageServerLoad;

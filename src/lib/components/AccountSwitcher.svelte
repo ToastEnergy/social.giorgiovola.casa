@@ -191,7 +191,7 @@
 							>Moderation</a
 						>
 					{/if}
-					<a class={linkClass} href="/accounts" role="menuitem">+ New identity / manage</a>
+					<a class={linkClass} href="/settings/accounts" role="menuitem">+ New identity / manage</a>
 					<a class="{linkClass} not-pointer-coarse:hidden" href="/settings" role="menuitem"
 						>Settings</a
 					>

@@ -78,7 +78,7 @@
 				type="button"
 				title="New post"
 				aria-label="New post"
-				class="flex size-11 cursor-pointer items-center justify-center rounded-full bg-accent text-background outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+				class="flex h-9 w-14 cursor-pointer items-center justify-center rounded-[5px] bg-accent text-background outline-none [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				onclick={() => {
 					// mounted right away, so the composer can focus within the tap (iOS keyboard)
 					flushSync(openCompose);

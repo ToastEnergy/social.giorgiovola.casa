@@ -10,26 +10,29 @@ That's it: the database is created and migrated automatically on every start. Th
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
-| variable                    | default                           | description                                                                                                                                           |
-| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                      | `7777`                            | port the app listens on                                                                                                                               |
-| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
-| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                    |
-| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                          |
-| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                      |
-| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                     |
-| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                        |
-| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
-| `S3_BUCKET`                 | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                        |
-| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                      |
-| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                         |
-| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                |
-| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                    |
-| `CLOUDFLARE_ZONE_ID`        | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                        |
-| `CLOUDFLARE_API_TOKEN`      | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)              |
-| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                    |
-| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
-| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
+| variable                    | default                           | description                                                                                                                                                                     |
+| --------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `7777`                            | port the app listens on                                                                                                                                                         |
+| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it                           |
+| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                                              |
+| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                                                    |
+| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                                                |
+| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                                               |
+| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                                                  |
+| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                                           |
+| `S3_BUCKET`                 | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                                                  |
+| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                                                |
+| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                                                   |
+| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                                          |
+| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                                              |
+| `LINK_PREVIEWS`             | `local`                           | who downloads linked pages for previews: `local` (this server, shows its IP address to the sites), `remote` (a Cloudflare Worker) or `off`; see [link previews](#link-previews) |
+| `LINK_PREVIEWS_URL`         | empty                             | URL of the link preview worker, required with `LINK_PREVIEWS=remote`                                                                                                            |
+| `LINK_PREVIEWS_SECRET`      | empty                             | secret shared with the worker, required with `LINK_PREVIEWS=remote`                                                                                                             |
+| `CLOUDFLARE_ZONE_ID`        | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                                                  |
+| `CLOUDFLARE_API_TOKEN`      | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)                                        |
+| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                                              |
+| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                                            |
+| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                                                 |
 
 Data lives in the `postgres-data`, `avatars`, `uploads` and `dm-uploads` docker volumes (`uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
 
@@ -143,6 +146,35 @@ The count next to the arrows is regiorgios plus quotes; click it to see who regi
 ## polls
 
 The bars button in the composer adds a poll to a post (or a reply, or a quote): 2 to 4 options of up to 80 characters, open for 1 hour to 7 days. The post's text is the question. Every profile gets one vote, which can be changed until the poll ends; the results show once you have voted or the poll has ended, and update live. Polls can't be edited, only deleted with their post.
+
+## link previews
+
+The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never visit the page, only load the image from the site; the page itself is downloaded once on the server side and cached for 7 days (1 day when it had no preview). `LINK_PREVIEWS` picks who downloads it:
+
+- `local` (the default): the app does. Simple, but **every linked site sees your server's IP address**, and anyone can post a link to a site of their own to learn it. That's fine if the server's address isn't secret, and defeats the point if it's hidden behind Cloudflare or another proxy.
+- `remote`: a [Cloudflare Worker](https://developers.cloudflare.com/workers/) does, so linked sites see a Cloudflare address. The worker is in `workers/link-preview` and runs on the free plan.
+- `off`: no previews, and the app never contacts linked sites.
+
+To use the worker (needs a Cloudflare account and [Bun](https://bun.sh)):
+
+```sh
+cd workers/link-preview
+bun install
+bunx wrangler login
+bun run deploy                              # prints the worker's URL (https://link-preview.<you>.workers.dev)
+openssl rand -hex 32                        # a new secret
+bunx wrangler secret put LINK_PREVIEWS_SECRET   # paste it
+```
+
+Then set these in `.env` and restart with `docker compose up -d`:
+
+```
+LINK_PREVIEWS=remote
+LINK_PREVIEWS_URL=https://link-preview.<you>.workers.dev
+LINK_PREVIEWS_SECRET=<the same secret>
+```
+
+The app refuses to start with `LINK_PREVIEWS=remote` and no URL or secret. The worker answers only requests carrying the secret, so it can't be used as an open proxy. When it can't be reached (or refuses the secret), the app logs it, stops calling it for a minute and shows no previews for new links in the meantime; it never falls back to downloading the pages itself. Some sites refuse requests from Cloudflare's addresses, so a few links that have a preview with `local` may not have one with `remote`.
 
 ## group chats
 

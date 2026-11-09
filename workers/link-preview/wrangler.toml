@@ -1,0 +1,10 @@
+# Cloudflare Worker that downloads link previews for an instance with LINK_PREVIEWS=remote.
+# Deploy with `bun run deploy`, then `bunx wrangler secret put LINK_PREVIEWS_SECRET` (see README.md)
+name = "link-preview"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# optional: your instance's public URL, named in the user agent of the requests
+SITE_URL = ""

@@ -17,6 +17,7 @@ import {
 import { actionsLimited, canDeletePostOf } from './moderation.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
 import { broadcast } from './realtime.js';
+import { warmLinkPreview } from './linkPreviews.js';
 
 /** Writing posts: the input of a new post, editing and deleting. */
 
@@ -153,6 +154,7 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 		if (tags.length)
 			await tx.insert(post_hashtags).values(tags.map((tag) => ({ post_id: postId, tag })));
 	});
+	await warmLinkPreview(content);
 	const [updated] = await getPosts({ postId, loggedUser: user });
 	const [anonymous] = await getPosts({ postId });
 	if (anonymous) broadcast('post_edited', anonymous);

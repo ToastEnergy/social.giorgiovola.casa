@@ -552,3 +552,16 @@ export const bots = pgTable('bots', {
 	created_at: timestamptz('created_at').notNull().defaultNow(),
 	last_used_at: timestamptz('last_used_at')
 });
+
+// Open Graph metadata of external links posted in posts, fetched server side and shared by every
+// post linking the same URL (see src/lib/server/linkPreviews.ts). A row without a title is a
+// failed fetch, kept so the URL isn't retried on every read.
+export const link_previews = pgTable('link_previews', {
+	url: text('url').primaryKey(),
+	title: text('title'),
+	description: text('description'),
+	// an absolute https URL, or null
+	image: text('image'),
+	site_name: text('site_name'),
+	fetched_at: timestamptz('fetched_at').notNull().defaultNow()
+});

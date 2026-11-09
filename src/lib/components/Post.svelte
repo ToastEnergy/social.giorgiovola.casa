@@ -20,6 +20,7 @@
 	import LocalTime from './LocalTime.svelte';
 	import PostComposer from './PostComposer.svelte';
 	import QuoteCard from './QuoteCard.svelte';
+	import LinkPreviewCard from './LinkPreviewCard.svelte';
 	import PollCard from './PollCard.svelte';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
@@ -795,6 +796,8 @@
 						<QuoteCard {quote} />
 					{:else if linkedPost}
 						<QuoteCard quote={linkedPost} />
+					{:else if post.link_preview && !post.poll}
+						<LinkPreviewCard preview={post.link_preview} showImage={gallery.length === 0} />
 					{/if}
 				</div>
 				<div class="mt-2.5 flex w-full items-center gap-2.5">

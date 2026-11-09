@@ -134,6 +134,7 @@ Post:
     "quotes": 0,                          // posts quoting this one
     "quote": <QuotedPost> | { "deleted": true } | null,   // this post quotes another one
     "linked_post": <QuotedPost> | null,   // first post of ${origin} linked in the text
+    "link_preview": <LinkPreview> | null, // first link to another site in the text
     "poll": <Poll> | null,
     "replies_count": 2,
     "reply_to": { "id": 120, "username": "…", "likes": 4 } | null,
@@ -145,6 +146,9 @@ Post:
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
 QuotedPost: { "id", "user": User, "content", "images", "created_at", "is_quote" }
+LinkPreview: { "url", "title", "description": "…" | null, "image": "https://…" | null, "site_name" }
+  The Open Graph card of a link, fetched by the server. null while it is still being
+  fetched (it shows up on later reads), and for pages without a title.
 
 Poll:
   { "options": ["Tea", "Coffee"], "votes": [3, 5], "ends_at": "…", "closed": false,

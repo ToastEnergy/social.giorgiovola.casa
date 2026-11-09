@@ -13,3 +13,6 @@ static/avatars/*
 static/uploads/*
 # private files of the local storage driver (src/lib/server/storage.ts)
 /data
+# wrangler state and local secrets of the workers in workers/
+.wrangler
+.dev.vars

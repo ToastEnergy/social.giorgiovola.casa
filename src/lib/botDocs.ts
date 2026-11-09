@@ -366,6 +366,12 @@ export const postShape = (origin: string) => `{
     "ends_at": "ISO date", "closed": false,
     "voted": 1 | null                   // index the bot voted for
   } | null,
+  "link_preview": {                     // the first link to another site in "content", or null
+    "url": "https://…", "title": "…",   // (also while it is still being fetched: it shows up
+    "description": "…" | null,          // on later reads)
+    "image": "https://…" | null,        // the page's og:image
+    "site_name": "…"                    // og:site_name, or the host name
+  } | null,
   "replies_count": 2,
   "reply_to": { "id": 120, "username": "…", "likes": 4 } | null
 }`;

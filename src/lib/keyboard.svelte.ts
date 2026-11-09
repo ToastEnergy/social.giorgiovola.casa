@@ -50,10 +50,14 @@ export const bottomBar = $state({ height: 0 });
 
 /**
  * focusin / focusout for the element holding a field written in at the bottom of the screen.
- * Moving between its own fields, or a tap on its buttons (which keep the focus), isn't leaving.
+ * Writing starts in one of its fields, not on its buttons: a tap on a button focuses it on
+ * Android, and hiding the bar then would shift the button away before the tap's click lands
+ * (the chat's GIF button took two taps). Moving to its own fields or buttons isn't leaving.
  */
 export const writingHandlers = {
-	onfocusin: () => keyboard.setWriting(true),
+	onfocusin: (e: FocusEvent) => {
+		if (isField(e.target)) keyboard.setWriting(true);
+	},
 	onfocusout: (e: FocusEvent) => {
 		const to = e.relatedTarget;
 		if (to instanceof Node && (e.currentTarget as Element).contains(to)) return;

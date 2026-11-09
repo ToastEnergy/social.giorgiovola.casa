@@ -93,9 +93,13 @@
 	let fileInput: HTMLInputElement | undefined = $state();
 	let textarea: HTMLTextAreaElement | undefined = $state();
 	let form: HTMLFormElement | undefined = $state();
-	// docked: the buttons show once the field is tapped, until a tap elsewhere with nothing written
+	// docked: the buttons show once the field is tapped, until a tap elsewhere with nothing written.
+	// always with something written: a draft put back (coming back to the post, reopening the app)
+	// fills the field without focusing it, and would have no way to be posted
 	let expanded = $state(false);
-	const tools = $derived(!docked || expanded);
+	const tools = $derived(
+		!docked || expanded || !!content.trim() || attachments.length > 0 || !!pollOptions
+	);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();

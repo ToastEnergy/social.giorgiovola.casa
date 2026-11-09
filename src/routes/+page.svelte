@@ -7,6 +7,7 @@
 	import { user } from '#lib/store.js';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
+	import { onComposed } from '#lib/compose.svelte.js';
 
 	let { data }: PageProps = $props();
 
@@ -43,7 +44,10 @@
 	onMount(() => {
 		const offPost = onRealtime('post', add);
 		const offRegiorg = onRealtime('regiorg', addRegiorg);
+		// written in the full screen composer (touch devices)
+		const offComposed = onComposed(add);
 		return () => {
+			offComposed();
 			offPost();
 			offRegiorg();
 		};
@@ -70,28 +74,30 @@
 			>
 		</nav>
 	{/if}
-	<PostComposer oncreated={add} />
-{:else}
-	<form class="mb-5 flex">
-		<input class="input" type="text" placeholder="Log in to post" disabled />
-	</form>
+	<!-- touch devices write posts from the button in the bottom bar instead -->
+	<div class="pointer-coarse:hidden">
+		<PostComposer oncreated={add} />
+	</div>
 {/if}
 
-{#each pinned as post (post.id)}
-	<Post
-		pinned
-		pinnedLabel="Pinned for everyone"
-		{post}
-		onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
-	/>
-{/each}
+<!-- on touch devices the timeline reaches closer to the screen's edges -->
+<div class="pointer-coarse:-mx-2.5">
+	{#each pinned as post (post.id)}
+		<Post
+			pinned
+			pinnedLabel="Pinned for everyone"
+			{post}
+			onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
+		/>
+	{/each}
 
-{#if data.feed === 'following' && posts.length === 0}
-	<p class="text-center text-muted">
-		Nothing here yet. Follow people from their profile to see their posts.
-	</p>
-{/if}
+	{#if data.feed === 'following' && posts.length === 0}
+		<p class="text-center text-muted">
+			Nothing here yet. Follow people from their profile to see their posts.
+		</p>
+	{/if}
 
-{#key data.feed}
-	<Posts source={data.source} next={data.next} {posts} />
-{/key}
+	{#key data.feed}
+		<Posts source={data.source} next={data.next} {posts} />
+	{/key}
+</div>

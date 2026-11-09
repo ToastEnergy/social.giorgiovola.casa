@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LogIn from '@lucide/svelte/icons/log-in';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
@@ -17,8 +18,10 @@
 		above?: boolean;
 		/** a wide badge with the name and username next to the avatar */
 		badge?: boolean;
+		/** open the menu below, aligned to the button's left edge (top left of the screen) */
+		start?: boolean;
 	};
-	let { size = 50, up = false, above = false, badge = false }: Props = $props();
+	let { size = 50, up = false, above = false, badge = false, start = false }: Props = $props();
 
 	const menuPlace = $derived(
 		// against the rail's badge + search wrapper, so it opens under the search box
@@ -28,6 +31,8 @@
 			? 'right-2.5 bottom-[calc(100%+10px)] w-71'
 			: above
 			? 'bottom-[calc(100%+10px)] left-0 w-71'
+			: start
+			? 'top-[calc(100%+10px)] left-0 w-71'
 			: 'top-[calc(100%+10px)] right-0 w-71'
 	);
 
@@ -194,4 +199,19 @@
 			</div>
 		{/if}
 	</div>
+{:else}
+	<!-- signed out: a login icon where the profile would be, with its name in the rail (badge) -->
+	<a
+		class="flex shrink-0 items-center text-foreground hover:text-accent hover:no-underline {badge
+			? 'gap-2.5 self-start font-bold'
+			: 'justify-center'}"
+		style:width={badge ? undefined : `${size}px`}
+		style:height="{size}px"
+		href="/login"
+		title="Log in"
+		aria-label="Log in"
+	>
+		<LogIn size={Math.round(size * 0.6)} />
+		{#if badge}Login{/if}
+	</a>
 {/if}

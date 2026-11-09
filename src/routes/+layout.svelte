@@ -2,11 +2,11 @@
 	import '@fontsource-variable/manrope';
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import Header from '#lib/components/Header.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import Rail from '#lib/components/Rail.svelte';
 	import TopBar from '#lib/components/TopBar.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
+	import MobileHeader from '#lib/components/MobileHeader.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
 	import { navigating, page } from '$app/state';
@@ -14,6 +14,7 @@
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
+	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -31,8 +32,7 @@
 	// the messages index is wide too: conversation list beside an empty chat
 	const isWide = (id: string | null) => isChat(id) || id === '/messages';
 	// sizes of the centred group on mouse devices (app.css)
-	const frame = (signedIn: unknown, id: string | null) =>
-		`frame ${signedIn ? 'frame-sidebar' : ''} ${isWide(id) ? 'frame-wide' : ''}`;
+	const frame = (id: string | null) => `frame frame-sidebar ${isWide(id) ? 'frame-wide' : ''}`;
 	$user = data.user;
 	$notisCount = data.notisCount;
 	$messagesCount = data.messagesCount;
@@ -133,25 +133,21 @@
 	});
 </script>
 
-<div class={frame($user, page.route.id)}>
-	<div class={isChat(page.route.id) ? 'max-lg:hidden' : ''}>
-		<Header />
-	</div>
-	{#if $user}
-		<Sidebar wide={isWide(page.route.id)} />
-		<!-- the wide pages (messages) have the search and profile on top instead -->
-		{#if !isWide(page.route.id)}
-			<Rail />
-		{/if}
-		<TopBar wide={isWide(page.route.id)} />
-		<!-- an open chat has its own input, with the bar joined under it (Chat) -->
-		{#if !isChat(page.route.id)}
-			<BottomNav />
-		{/if}
+<div class={frame(page.route.id)}>
+	<Sidebar wide={isWide(page.route.id)} />
+	<!-- the wide pages (messages) have the search and profile on top instead -->
+	{#if !isWide(page.route.id)}
+		<Rail />
+	{/if}
+	<TopBar wide={isWide(page.route.id)} />
+	<!-- an open chat has its own input, with the bar joined under it (Chat) -->
+	{#if !isChat(page.route.id)}
+		<BottomNav />
 	{/if}
 	<ImageViewer />
 	<ProfileCard />
 	<ShareDialog />
+	<ComposeSheet />
 </div>
 <svelte:head>
 	{#if page.route.id === '/@[username]/[post]' && !page.error}
@@ -256,39 +252,39 @@
 	sits on a darker, rounded panel. the window still scrolls (infinite lists watch it), so a fixed
 	frame paints the background around the panel's edges and the content scrolls under it. the
 	spread "shadow" is a mask in the page colour, not a visible shadow -->
-<div class={frame($user, page.route.id)}>
+<div class={frame(page.route.id)}>
 	<!-- prettier-ignore -->
 	<div
 		aria-hidden="true"
-		class="pointer-events-none fixed bottom-5 left-[calc(var(--left)+var(--side))] z-997 w-(--panel) rounded-[15px] shadow-[0_0_0_100vmax_var(--color-background)] pointer-coarse:hidden {$user
-			? isWide(page.route.id)
-				? 'top-[calc(20px+var(--bar))]'
-				: 'top-[calc(20px+var(--bar))] max-nav:right-0 max-nav:bottom-0 max-nav:w-auto max-nav:rounded-r-none max-nav:rounded-bl-none'
-			: 'top-20'}"
+		class="pointer-events-none fixed bottom-5 left-[calc(var(--left)+var(--side))] z-997 w-(--panel) rounded-[15px] shadow-[0_0_0_100vmax_var(--color-background)] pointer-coarse:hidden top-[calc(20px+var(--bar))] {isWide(page.route.id)
+			? ''
+			: 'max-nav:right-0 max-nav:bottom-0 max-nav:w-auto max-nav:rounded-r-none max-nav:rounded-bl-none'}"
 	></div>
 	<!-- the panel (mouse) or room for the bottom bar (touch). the wide pages (messages) have no panel
 		on mouse devices: their blocks (messages/+layout) are the black, rounded surfaces -->
 	<main
-		class="relative mt-20 flex justify-center not-pointer-coarse:mb-5 not-pointer-coarse:ml-[calc(var(--left)+var(--side))] not-pointer-coarse:w-(--panel) {$user &&
-		isWide(page.route.id)
-			? 'pointer-coarse:mt-0 not-pointer-coarse:mt-[calc(20px+var(--bar))]'
-			: $user
-			? 'pointer-coarse:mt-0 not-pointer-coarse:mt-[calc(20px+var(--bar))] not-pointer-coarse:min-h-[calc(100dvh-40px-var(--bar))] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black max-nav:not-pointer-coarse:mb-0 max-nav:not-pointer-coarse:w-auto max-nav:not-pointer-coarse:min-h-[calc(100dvh-20px-var(--bar))] max-nav:not-pointer-coarse:rounded-r-none max-nav:not-pointer-coarse:rounded-bl-none'
-			: 'not-pointer-coarse:min-h-[calc(100dvh-100px)] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black'} {isChat(
+		class="relative mt-20 flex justify-center not-pointer-coarse:mb-5 not-pointer-coarse:ml-[calc(var(--left)+var(--side))] not-pointer-coarse:w-(--panel) pointer-coarse:mt-0 not-pointer-coarse:mt-[calc(20px+var(--bar))] {isWide(
+			page.route.id
+		)
+			? ''
+			: 'not-pointer-coarse:min-h-[calc(100dvh-40px-var(--bar))] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black max-nav:not-pointer-coarse:mb-0 max-nav:not-pointer-coarse:w-auto max-nav:not-pointer-coarse:min-h-[calc(100dvh-20px-var(--bar))] max-nav:not-pointer-coarse:rounded-r-none max-nav:not-pointer-coarse:rounded-bl-none'} {isChat(
 			page.route.id
 		)
 			? 'max-lg:mt-0 max-lg:not-pointer-coarse:mt-[calc(20px+var(--bar))]'
-			: $user
-			? 'pointer-coarse:pb-[calc(56px+env(safe-area-inset-bottom))]'
-			: ''}"
+			: 'pointer-coarse:pb-[calc(56px+env(safe-area-inset-bottom))]'}"
 	>
 		<!-- an open chat takes the full width, and sits beside the conversation list on wide screens
 			(messages/+layout) -->
 		<div
 			class="w-full {isWide(page.route.id)
 				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
-				: 'max-w-160 p-5'}"
+				: 'max-w-160 p-5 max-nav:max-w-none'}"
 		>
+			<!-- touch devices: profile, logo and settings on top. messages have their own (the
+				list's search, the chat's back arrow) -->
+			{#if !isWide(page.route.id)}
+				<MobileHeader />
+			{/if}
 			<slot />
 		</div>
 		{#if navigating.to}

@@ -22,6 +22,7 @@
 	import { connectRealtime, disconnectRealtime, onRealtime } from '#lib/realtime.js';
 	import { syncPush } from '#lib/push.js';
 	import { syncTimeCookies } from '#lib/time.svelte.js';
+	import { watchKeyboard } from '#lib/keyboard.svelte.js';
 
 	export let data: LayoutData;
 
@@ -105,6 +106,8 @@
 		};
 	});
 
+	onMount(watchKeyboard);
+
 	onMount(async () => {
 		if ('ontouchstart' in document.documentElement || navigator.maxTouchPoints > 0) {
 			$isMobile = true;
@@ -129,6 +132,9 @@
 		viewport?.addEventListener('resize', () => {
 			const el = document.activeElement;
 			if (!editing() || !(el instanceof HTMLElement)) return;
+			// the reply bar and the full screen composer fit themselves to what's visible: scrolling
+			// them as well moves the visual viewport again (iOS), and they jump while typing
+			if (el.closest('[data-keyboard-fit]')) return;
 			requestAnimationFrame(() => {
 				const rect = el.getBoundingClientRect();
 				const bottom = viewport.offsetTop + viewport.height;
@@ -279,7 +285,7 @@
 			? ''
 			: 'not-pointer-coarse:bg-black'} {isChat(page.route.id)
 			? 'max-lg:mt-0 max-lg:not-pointer-coarse:mt-[calc(20px+var(--bar))]'
-			: 'pointer-coarse:pb-[calc(56px+env(safe-area-inset-bottom))]'}"
+			: 'pointer-coarse:pb-(--bottom-bar)'}"
 	>
 		<!-- an open chat takes the full width, and sits beside the conversation list on wide screens
 			(messages/+layout) -->

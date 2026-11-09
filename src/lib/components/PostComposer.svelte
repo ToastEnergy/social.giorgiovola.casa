@@ -38,6 +38,8 @@
 		docked?: boolean;
 		/** sits in a block of its own: no divider or space below it */
 		alone?: boolean;
+		/** the field's height limit (a tailwind class) */
+		maxHeight?: string;
 		oncreated?: (post: Post) => void;
 	};
 
@@ -48,6 +50,7 @@
 		autofocus = false,
 		docked = false,
 		alone = false,
+		maxHeight,
 		oncreated
 	}: Props = $props();
 
@@ -173,7 +176,9 @@
 	 * focus buttons, so the bar would also fold before the tap lands). Keeps the focus where it is.
 	 */
 	function keepFocus(e: MouseEvent) {
-		if (docked && document.activeElement === textarea) e.preventDefault();
+		// a poll option too: leaving the bar's fields brings the bottom bar back (ReplyDock)
+		if (docked && document.activeElement && form?.contains(document.activeElement))
+			e.preventDefault();
 	}
 
 	function showError(message: string) {
@@ -441,7 +446,11 @@
 			required={attachments.length === 0 || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
 			placement={docked ? 'above' : 'below'}
-			maxHeight={docked ? 'max-h-[30vh]' : undefined}
+			maxHeight={maxHeight ??
+				(docked
+					? // the buttons under it stay above the keyboard (--vv-height, keyboard.svelte.ts)
+					  'max-h-[min(30vh,calc(var(--vv-height,100dvh)-8rem))]'
+					: undefined)}
 			inputClass={docked
 				? 'rounded-[15px] bg-black px-2.5 py-2 outline-none'
 				: 'bg-transparent p-2.5 outline-none'}
@@ -509,6 +518,7 @@
 						type="button"
 						title="Remove"
 						aria-label="Remove image"
+						onmousedown={keepFocus}
 						onclick={() => removeAttachment(attachment)}
 						class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 outline-none hover:bg-danger"
 						><X size={12} /></button
@@ -535,6 +545,7 @@
 							type="button"
 							title="Remove option"
 							aria-label="Remove option {i + 1}"
+							onmousedown={keepFocus}
 							onclick={() => removeOption(i)}
 							class="flex size-6 cursor-pointer items-center justify-center rounded-full outline-none hover:bg-danger"
 							><X size={14} /></button
@@ -555,7 +566,7 @@
 					</select>
 				</label>
 				{#if pollOptions.length < MAX_POLL_OPTIONS}
-					<Button size="sm" onclick={addOption}>Add option</Button>
+					<Button size="sm" onmousedown={keepFocus} onclick={addOption}>Add option</Button>
 				{/if}
 			</div>
 		</div>

@@ -20,6 +20,9 @@
 	/* preflight sets line-height 1.5 and strips heading styles; the design relies on the defaults */
 	html {
 		line-height: normal;
+		/* what the touch bottom bar covers (56px links, 4px padding, 1px border, safe area) until
+		   BottomNav measures it, and 0 while it steps aside for the keyboard */
+		--bottom-bar: calc(61px + env(safe-area-inset-bottom));
 	}
 
 	body {

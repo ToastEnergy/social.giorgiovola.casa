@@ -10,7 +10,7 @@ Self-hosted social network (posts, replies, likes, mentions, notifications, dire
 - **Styling:** Tailwind CSS 4 (via `@tailwindcss/vite`), global styles in `src/app.css`.
 - **Database:** PostgreSQL 17 with [Drizzle ORM](https://orm.drizzle.team) (`drizzle-orm/postgres-js`, `postgres` driver).
 - **Other libs:** `sharp` and `@napi-rs/canvas` (image processing, social cards), `web-push` (push notifications).
-- **Deployment:** Docker (`Dockerfile`, `docker-compose.yaml`); `docker-compose.dev.yaml` runs only Postgres for local development.
+- **Deployment:** Docker (`Dockerfile`, `docker-compose.yaml`); `docker-compose.dev.yaml` runs only Postgres for local development. GitHub Actions (`.github/workflows/`) checks pull requests, deploys every push to `main` to staging and production by hand (README "deploying").
 
 ## Svelte: use runes
 
@@ -99,6 +99,8 @@ The project is on Prettier 2 and `prettier-plugin-svelte` 2, which can't print S
 - `src/service-worker.ts` — service worker (web push).
 - `drizzle/` — generated SQL migrations and snapshots (committed).
 - `migrate.ts` — migration runner, executed on every container start.
+- `scripts/seed.ts` — test data (accounts, posts, chats, identities) for an empty database, used by local development and run by every staging deploy. It writes SQL against the schema directly, so update it when a schema change breaks it. Self-contained: the Docker image has no `src/`.
+- `scripts/deploy.sh` — runs on the server (installed as `/usr/local/bin/social-deploy`), called over SSH by `.github/workflows/deploy.yml`. Blue-green: starts the new image on the idle one of `web` / `web-green` (both defined from the `x-web` anchor in `docker-compose.yaml`, so add new app settings there), switches caddy, stops the old one. The image is built in CI with `PUBLIC_URL` baked in, one per environment.
 - `workers/link-preview/` — optional Cloudflare Worker that downloads link previews for `LINK_PREVIEWS=remote`, so linked sites don't see the server's IP. It has its own `package.json` and `bun.lock` (not a workspace), isn't in the Docker image and isn't covered by the root `bun run check`: run `bun run check` inside it when you change it. It bundles `src/lib/linkPreviewMeta.ts`, so that file must only use web APIs: no `node:*`, `$app/*` or `#lib` imports.
 
 Import aliases: `#lib` / `#lib/*` map to `src/lib/` (defined in `package.json` `imports`); SvelteKit's `$app/*` and `$app/env/*` modules are also used. Prefer these over deep relative paths.
@@ -117,6 +119,7 @@ For things drizzle can't model (triggers, functions, data fixes) create a custom
 Notes:
 
 - Migrations are applied automatically on container start (`bun migrate.ts`, see the `Dockerfile` `CMD`) and are expected to be a no-op when up to date. Migrations must therefore be safe to run against production data — avoid destructive changes without a data-preserving path.
+- **Migrations must be backward compatible with the previous release.** Deploys are blue-green: the new container applies its migrations while the old version still serves traffic for a few seconds. Add columns as nullable or with a default, add tables freely; to rename or drop a column or table, first ship code that no longer uses it, and drop it in a later release. The same goes for changed meanings of existing data.
 - `migrate.ts` also baselines legacy databases created before migrations existed; don't remove that logic.
 - Migrations ship in the Docker image (`COPY drizzle ./drizzle`), so they must be committed.
 - `bun run db:studio` opens Drizzle Studio.
@@ -145,7 +148,7 @@ Scripts (`package.json`):
 | `bun run db:generate` | generate a drizzle migration               |
 | `bun run db:migrate`  | apply pending migrations                   |
 
-There is no test suite. Before finishing a change, run `bun run check` and `bun run format` (and `bun run lint` if relevant) and fix anything you introduced.
+There is no test suite (CI runs `bun run check` and `bun run lint`). Before finishing a change, run `bun run check` and `bun run format` (and `bun run lint` if relevant) and fix anything you introduced.
 
 ## Code style
 

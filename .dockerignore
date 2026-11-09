@@ -1,4 +1,5 @@
 .git
+.github
 .svelte-kit
 .vscode
 node_modules
@@ -15,3 +16,5 @@ static/uploads/*
 data
 # the Cloudflare Worker is deployed with wrangler, not part of the image
 workers
+.deploy.lock
+predeploy-dumps

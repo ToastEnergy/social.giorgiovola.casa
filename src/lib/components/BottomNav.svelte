@@ -48,6 +48,7 @@
 	reply bar (ReplyDock, z-998, later in the page), which the profile menu opens across -->
 <nav
 	bind:offsetHeight={height}
+	data-bottom-cover={joined ? undefined : ''}
 	aria-label="Main"
 	class="{hidden ? 'hidden' : 'flex'} bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? 'relative z-10 -mx-5 -mb-5 shrink-0'

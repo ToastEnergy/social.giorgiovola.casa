@@ -52,6 +52,7 @@
 <div
 	bind:offsetHeight={height}
 	data-keyboard-fit
+	data-bottom-cover
 	{...writingHandlers}
 	class="fixed right-0 left-0 z-998 border-t border-line bg-background p-2.5 {keyboard.inset ||
 	!keyboard.hideBar

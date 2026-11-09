@@ -145,3 +145,17 @@ export function watchKeyboard() {
 const isField = (el: EventTarget | null) =>
 	el instanceof HTMLElement && (el.isContentEditable || el.matches('input, textarea, select'));
 const editing = () => isField(document.activeElement);
+
+/**
+ * where the visible page ends for a menu opening downwards: above the bars fixed to the bottom
+ * (the bottom bar, the reply bar: `data-bottom-cover`) and the iOS keyboard
+ */
+export function visibleBottom() {
+	const vv = window.visualViewport;
+	let bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+	for (const el of document.querySelectorAll('[data-bottom-cover]')) {
+		const rect = el.getBoundingClientRect();
+		if (rect.height > 0) bottom = Math.min(bottom, rect.top);
+	}
+	return bottom;
+}

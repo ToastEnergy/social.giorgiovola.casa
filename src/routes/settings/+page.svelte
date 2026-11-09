@@ -3,7 +3,7 @@
 	import Button from '#lib/components/Button.svelte';
 	import { page } from '$app/state';
 	import type { PageProps } from './$types';
-	import { formatDate } from '#lib/time.svelte.js';
+	import LocalTime from '#lib/components/LocalTime.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import {
 		WebAuthnError,
@@ -70,9 +70,9 @@
 		}).catch(() => null);
 	});
 
-	// in the reader's zone on the server too (see time.svelte.ts), so it doesn't change on hydration
-	const date = (d: Date | string) =>
-		formatDate(d, { year: 'numeric', month: 'short', day: 'numeric' });
+	// dates in the reader's zone, through LocalTime (see time.svelte.ts): on a first visit they stay
+	// invisible until the browser knows the zone instead of jumping from UTC
+	const DAY: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };
 
 	async function addPasskey(e: SubmitEvent) {
 		e.preventDefault();
@@ -286,9 +286,11 @@
 						<div class="flex min-w-0 flex-1 flex-col">
 							<span class="truncate font-bold">{passkey.name}</span>
 							<span class="text-[0.8em] text-muted">
-								Added {date(passkey.created_at)} · {passkey.last_used_at
-									? `last used ${date(passkey.last_used_at)}`
-									: 'never used'}{passkey.backed_up ? ' · synced' : ''}
+								Added <LocalTime date={passkey.created_at} options={DAY} /> ·
+								{#if passkey.last_used_at}last used <LocalTime
+										date={passkey.last_used_at}
+										options={DAY}
+									/>{:else}never used{/if}{passkey.backed_up ? ' · synced' : ''}
 							</span>
 						</div>
 						<div class="flex items-center gap-1.5">
@@ -360,9 +362,11 @@
 								{bot.name} <span class="opacity-80">@{bot.username}</span>
 							</a>
 							<span class="text-[0.8em] text-muted">
-								Created {date(bot.created_at)} · {bot.last_used_at
-									? `last used ${date(bot.last_used_at)}`
-									: 'never used'}
+								Created <LocalTime date={bot.created_at} options={DAY} /> ·
+								{#if bot.last_used_at}last used <LocalTime
+										date={bot.last_used_at}
+										options={DAY}
+									/>{:else}never used{/if}
 							</span>
 						</div>
 						<div class="flex items-center gap-1.5">
@@ -520,11 +524,18 @@
 							>{/if}
 					</span>
 					<span class="truncate text-[0.8em] text-muted">
-						{kindLabel[session.kind]} · signed in {date(session.created_at)} · {session.last_used_at
-							? `last used ${date(session.last_used_at)}`
-							: 'never used'} · {session.expires_at
-							? `expires ${date(session.expires_at)}`
-							: 'never expires'}
+						{kindLabel[session.kind]} · signed in <LocalTime
+							date={session.created_at}
+							options={DAY}
+						/> ·
+						{#if session.last_used_at}last used <LocalTime
+								date={session.last_used_at}
+								options={DAY}
+							/>{:else}never used{/if} ·
+						{#if session.expires_at}expires <LocalTime
+								date={session.expires_at}
+								options={DAY}
+							/>{:else}never expires{/if}
 					</span>
 					{#if session.user_agent}
 						<span class="truncate text-[0.75em] text-muted" title={session.user_agent}

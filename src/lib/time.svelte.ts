@@ -16,7 +16,10 @@ export const clock = $state({ mounted: false });
 const validZone = (zone: string | undefined) => {
 	if (!zone || zone.length > 64) return null;
 	try {
-		return new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone;
+		// the name as given, not resolvedOptions(): node canonicalizes some (Europe/Kyiv → Europe/Kiev),
+		// which would never match the browser's and make it rewrite the cookie on every load
+		new Intl.DateTimeFormat('en', { timeZone: zone });
+		return zone;
 	} catch {
 		return null;
 	}

@@ -144,7 +144,7 @@ When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backu
 - **staging**: every push to `main` is checked (`bun run check`, `bun run lint`), built and deployed automatically. An empty staging database is filled with the test accounts of `scripts/seed.ts` (the same data as local development).
 - **production**: by hand, from _Actions → deploy → Run workflow_ with environment `production`. Leave _Commit_ empty to deploy the head of `main`, or paste the commit that is on staging. Only commits on `main` can be deployed. Before starting the new version the server dumps the database to `predeploy-dumps/` in the checkout (the last 5 are kept).
 
-`PUBLIC_URL` is compiled into the image, so the workflow builds one image per environment (`ghcr.io/<owner>/<repository>:<environment>-<commit>`) and pushes it to the GitHub container registry. It then connects to the server over SSH, where `scripts/deploy.sh` checks out the commit (so the compose file matches) and swaps the running version without downtime (blue-green):
+`PUBLIC_URL` is compiled into the image, so the workflow builds one image per environment (`ghcr.io/<owner>/<repository>:<environment>-<commit>`) and pushes it to the GitHub container registry. It then joins the server's [Tailscale](https://tailscale.com) network (the server's SSH isn't reachable from the internet) and connects over SSH, where `scripts/deploy.sh` checks out the commit (so the compose file matches) and swaps the running version without downtime (blue-green):
 
 1. The compose file has two copies of the app: `web` (blue, on `PORT`) and `web-green` (green, on `GREEN_PORT`). One of them is live, the other is stopped.
 2. The new image starts on the stopped colour, next to the live one. Pending migrations are applied as it starts, while the old version still serves (so a migration has to work with the previous version of the code too).
@@ -228,19 +228,37 @@ If the new version doesn't answer, the job fails with its logs and the live vers
    command="/usr/local/bin/social-deploy",restrict ssh-ed25519 AAAA… github-deploy
    ```
 
-6. The images are private on the registry the first time they are pushed. Either make the package public (_Packages → social.giorgiovola.casa → Package settings → Change visibility_; the images hold no secrets) or log the deploy user in with a token that has only `read:packages`: `sudo -u deploy docker login ghcr.io -u <user>`.
+   GitHub reaches this SSH server through Tailscale, so it must be the server's own `sshd`, listening on the Tailscale address. If the server runs Tailscale SSH (`tailscale set --ssh`), Tailscale answers port 22 itself and skips `authorized_keys` and its restrictions: turn it off with `tailscale set --ssh=false`, or let `sshd` listen on another port and set `DEPLOY_SSH_PORT`.
+
+6. In the Tailscale admin console, let the GitHub jobs reach that port and nothing else. In _Access controls_, add the tags and a grant (the server gets `tag:social`: `tailscale up --advertise-tags=tag:social`, or _Machines → … → Edit ACL tags_):
+
+   ```
+   "tagOwners": {
+   	"tag:ci":     ["autogroup:admin"],
+   	"tag:social": ["autogroup:admin"]
+   },
+   "grants": [
+   	{ "src": ["tag:ci"], "dst": ["tag:social"], "ip": ["tcp:22"] }
+   ]
+   ```
+
+   If the policy still has the default "allow all" rule, `tag:ci` can reach every machine of the tailnet: replace that rule with your own grants first. Then create an OAuth client in _Settings → OAuth clients_ with the **Auth Keys: write** scope and the tag `tag:ci`. The jobs join as ephemeral nodes and disappear when they end.
+
+7. The images are private on the registry the first time they are pushed. Either make the package public (_Packages → social.giorgiovola.casa → Package settings → Change visibility_; the images hold no secrets) or log the deploy user in with a token that has only `read:packages`: `sudo -u deploy docker login ghcr.io -u <user>`.
 
 ### setting up GitHub
 
 In _Settings → Environments_ create `staging` and `production`, each with a `PUBLIC_URL` variable (the instance's public URL). For `production`, add yourself under _Required reviewers_ and restrict _Deployment branches_ to `main`. Then add these repository secrets (_Settings → Secrets and variables → Actions_):
 
-| secret                   | value                                                     |
-| ------------------------ | --------------------------------------------------------- |
-| `DEPLOY_SSH_HOST`        | the server's address                                      |
-| `DEPLOY_SSH_PORT`        | optional, `22` by default                                 |
-| `DEPLOY_SSH_USER`        | optional, `deploy` by default                             |
-| `DEPLOY_SSH_KEY`         | the private key, the contents of `deploy_key`             |
-| `DEPLOY_SSH_KNOWN_HOSTS` | the server's host key: the output of `ssh-keyscan <host>` |
+| secret                   | value                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `TS_OAUTH_CLIENT_ID`     | the Tailscale OAuth client's id                                                                                    |
+| `TS_OAUTH_SECRET`        | the Tailscale OAuth client's secret                                                                                |
+| `DEPLOY_SSH_HOST`        | the server's Tailscale address (100.x.y.z or its MagicDNS name)                                                    |
+| `DEPLOY_SSH_PORT`        | optional, `22` by default                                                                                          |
+| `DEPLOY_SSH_USER`        | optional, `deploy` by default                                                                                      |
+| `DEPLOY_SSH_KEY`         | the private key, the contents of `deploy_key`                                                                      |
+| `DEPLOY_SSH_KNOWN_HOSTS` | the server's host key: the output of `ssh-keyscan <host>`, run from a machine on the tailnet with the same address |
 
 The first production deploy starts the registry's image on green (port `GREEN_PORT`, 7779 by default) while the container you run today (`web`, which counts as blue) keeps serving, then switches over. The data stays: both colours use the same database and volumes, which belong to the compose project. To build on the server again, set `SOCIAL_COLOR=blue`, remove `SOCIAL_IMAGE` from `.env`, run `docker compose up -d --build web` and point the upstream file back at `PORT`.
 

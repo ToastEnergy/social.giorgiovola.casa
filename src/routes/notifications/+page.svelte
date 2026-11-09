@@ -142,7 +142,7 @@
 						{@const { parts, others } = people(group)}
 						<p>
 							{#each parts as part (part.user.id)}
-								<a href={`/@${part.user.username}`}>@{part.user.username}</a>{part.sep}
+								<a href={`/@${part.user.username}`}>@{part.user.username}</a>{part.sep}{' '}
 							{/each}
 							{#if others > 0}
 								and {others}

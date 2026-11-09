@@ -3,16 +3,15 @@
 	import Avatar from './Avatar.svelte';
 	import LocalTime from './LocalTime.svelte';
 	import { DATE } from '#lib/time.svelte.js';
+	import { unwrapMarkdownImages } from '#lib/utils.js';
 
 	// the post a quote regiorg quotes, embedded in the quote (or in the composer, as a preview).
 	// Post.svelte leaves clicks on links inside it alone, so this one opens the quoted post.
 	let { quote, link = true }: { quote: QuotedPost | { deleted: true }; link?: boolean } = $props();
 
 	const href = $derived('deleted' in quote ? null : `/@${quote.user.username}/${quote.id}`);
-	// markdown-linked images (see Post.svelte) aren't loaded in a quote: drop their syntax
-	const text = $derived(
-		'deleted' in quote ? '' : quote.content.replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim()
-	);
+	// markdown-linked images show as their URL, like in a post (unwrapMarkdownImages)
+	const text = $derived('deleted' in quote ? '' : unwrapMarkdownImages(quote.content).trim());
 </script>
 
 {#if 'deleted' in quote}

@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { db } from './db/index.js';
 import * as storage from './storage.js';
+import { limitConcurrency } from './concurrency.js';
 
 /**
  * Formats accepted on upload. Everything is re-encoded to WebP before it's stored; the other
@@ -83,10 +84,48 @@ const MAX_INPUT_PIXELS = 100_000_000;
 
 export class ImageError extends Error {}
 
+// every decode holds the whole bitmap in memory: a burst of uploads queues instead
+const decoding = limitConcurrency(4);
+
+const tooLarge = (width: number, height: number) =>
+	!(width > 0 && height > 0) || width * height > MAX_INPUT_PIXELS;
+
+/**
+ * The size BMP and ICO files declare, checked before skia decodes them: it allocates the whole
+ * bitmap first (a small RLE-compressed BMP can declare gigapixels). An ICO is as large as its
+ * largest entry, whose PNG data can be any size.
+ */
+function declaredTooLarge(buf: Buffer, ext: 'bmp' | 'ico'): boolean {
+	if (ext === 'bmp') {
+		// a 12-byte core header has 16-bit sizes, the others signed 32-bit (negative = top-down)
+		const core = buf.readUInt32LE(14) === 12;
+		const width = core ? buf.readUInt16LE(18) : Math.abs(buf.readInt32LE(18));
+		const height = core ? buf.readUInt16LE(20) : Math.abs(buf.readInt32LE(22));
+		return tooLarge(width, height);
+	}
+	const count = buf.readUInt16LE(4);
+	if (buf.length < 6 + count * 16) return true;
+	for (let i = 0; i < count; i++) {
+		const entry = 6 + i * 16;
+		let width = buf[entry] || 256;
+		let height = buf[entry + 1] || 256;
+		const offset = buf.readUInt32LE(entry + 12);
+		// an embedded PNG: its IHDR has the real size
+		if (buf.length >= offset + 24 && buf.readUInt32BE(offset) === 0x89504e47) {
+			width = buf.readUInt32BE(offset + 16);
+			height = buf.readUInt32BE(offset + 20);
+		}
+		if (tooLarge(width, height)) return true;
+	}
+	return false;
+}
+
 /** A sharp pipeline for a sniffed image. libvips can't read BMP and ICO, skia decodes those. */
 async function decode(buf: Buffer, ext: string) {
 	const options = { animated: true, limitInputPixels: MAX_INPUT_PIXELS };
+	// limitInputPixels counts every frame of an animation together
 	if (ext !== 'bmp' && ext !== 'ico') return sharp(buf, options).rotate();
+	if (declaredTooLarge(buf, ext)) throw new ImageError('Image too large');
 	const img = await loadImage(buf);
 	if (img.width * img.height > MAX_INPUT_PIXELS) throw new ImageError('Image too large');
 	const ctx = createCanvas(img.width, img.height).getContext('2d');
@@ -102,7 +141,15 @@ async function decode(buf: Buffer, ext: string) {
  * animations kept, and scaled down to fit in `size` (a square crop for avatars). SVGs are
  * rasterized, so no scripts can ever be served back. Throws ImageError when it can't be decoded.
  */
-export async function toWebp(
+export function toWebp(
+	buf: Buffer,
+	ext: string,
+	options: { size: number; square?: boolean }
+): Promise<Buffer> {
+	return decoding(() => encode(buf, ext, options));
+}
+
+async function encode(
 	buf: Buffer,
 	ext: string,
 	{ size, square = false }: { size: number; square?: boolean }

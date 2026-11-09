@@ -74,20 +74,70 @@ function eventStream(
 	});
 }
 
-/** Registers a client; returns the stream body. */
+// each open stream holds a connection and a timer: one owner (an account, a bot, an IP address)
+// can only open so many at once. Generous, since every tab of the web UI keeps one open
+const MAX_STREAMS = { account: 30, bot: 10, ip: 30 } as const;
+// anonymous streams when the client address isn't known (no ADDRESS_HEADER), all together
+const MAX_ANONYMOUS_STREAMS = 2000;
+const openCounts = new Map<string, number>();
+
+/** Who a stream counts against, and how many that owner may have open. */
+export type StreamOwner = { key: string; max: number };
+
+export function streamOwner(
+	locals: Pick<App.Locals, 'auth' | 'user' | 'accountId'>,
+	ip: string | null
+): StreamOwner {
+	if (locals.auth === 'bot' && locals.user)
+		return { key: `bot:${locals.user.id}`, max: MAX_STREAMS.bot };
+	if (locals.accountId !== null)
+		return { key: `account:${locals.accountId}`, max: MAX_STREAMS.account };
+	if (ip) return { key: `ip:${ip}`, max: MAX_STREAMS.ip };
+	return { key: 'anonymous', max: MAX_ANONYMOUS_STREAMS };
+}
+
+/** Takes one of the owner's stream slots; null when they are all in use. */
+function reserve(owner: StreamOwner): (() => void) | null {
+	const count = openCounts.get(owner.key) ?? 0;
+	if (count >= owner.max) return null;
+	openCounts.set(owner.key, count + 1);
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		const left = (openCounts.get(owner.key) ?? 1) - 1;
+		if (left > 0) openCounts.set(owner.key, left);
+		else openCounts.delete(owner.key);
+	};
+}
+
+/** The 429 for an owner with every stream slot in use. */
+export const tooManyStreams = () =>
+	Response.json(
+		{ error: 'Too many open streams, close some first' },
+		{ status: 429, headers: { 'Retry-After': '60' } }
+	);
+
+/** Registers a client; returns the stream body, or null when `owner` has too many open. */
 export function openStream(
 	userId: number | null,
 	sessionKey: string | null,
 	botId: number | null,
+	owner: StreamOwner,
 	signal: AbortSignal
 ) {
+	const release = reserve(owner);
+	if (!release) return null;
 	// a real event, not a comment: clients can't see comments (EventSource drops them), and a
 	// client that hears nothing for a while knows the connection died without telling it
 	return eventStream(signal, frame('ping', {}), (send, close) => {
 		const client: Client = { userId, sessionKey, botId, send, close };
 		clients.add(client);
 		if (userId !== null) void sendUnreadCount(client);
-		return () => clients.delete(client);
+		return () => {
+			clients.delete(client);
+			release();
+		};
 	});
 }
 
@@ -118,6 +168,9 @@ const botClients = new Set<BotClient>();
  * `group_message` (in a group the bot is in) events.
  */
 export function openBotStream(bot: { id: number; username: string }, signal: AbortSignal) {
+	// counted with the bot's /api/v1/stream streams
+	const release = reserve({ key: `bot:${bot.id}`, max: MAX_STREAMS.bot });
+	if (!release) return null;
 	// a comment: the bot API's contract stays as it was
 	return eventStream(signal, ': ping\n\n', (send, close) => {
 		// usernames are [a-z0-9_], nothing to escape. same rule as MENTION_RE (#lib/mentions.ts)
@@ -129,7 +182,10 @@ export function openBotStream(bot: { id: number; username: string }, signal: Abo
 		};
 		botClients.add(client);
 		send(frame('ready', { id: bot.id, username: bot.username }));
-		return () => botClients.delete(client);
+		return () => {
+			botClients.delete(client);
+			release();
+		};
 	});
 }
 

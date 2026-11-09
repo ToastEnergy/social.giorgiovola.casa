@@ -49,6 +49,14 @@ export function isHttpLink(word: string) {
 	}
 }
 
+/**
+ * Posts used to embed images linked with markdown (`![alt](url)`), which let the image's host see
+ * the address of everyone who viewed the post. They are no longer loaded: the syntax is shown as
+ * its bare URL, a link like any other.
+ */
+export const unwrapMarkdownImages = (content: string) =>
+	content.replace(/!\[[^\]]*\]\(\s*(\S*?)(?:\s+"[^"]*")?\s*\)/g, ' $1 ');
+
 /** A profile website without the scheme, "www." or a trailing slash: example.com/blog */
 export const websiteLabel = (url: string) =>
 	url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');

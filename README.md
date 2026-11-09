@@ -368,7 +368,7 @@ Every request sends `Authorization: Bearer <token>` and gets JSON back. Errors c
 | `PUT` / `DELETE` | `/api/bot/users/:username/follow`                  | follow / unfollow                                                                                                                                                                                                                             |
 | `GET`            | `/api/bot/mentions`                                | posts that mention the bot or reply to its posts                                                                                                                                                                                              |
 | `GET`            | `/api/bot/feed`                                    | posts and replies by the profiles the bot follows                                                                                                                                                                                             |
-| `GET`            | `/api/bot/stream`                                  | server-sent events: `mention`, `post` (from a followed profile), `message` (a received DM) and `group_message` (in one of its groups), each with the post or message as data                                                                  |
+| `GET`            | `/api/bot/stream`                                  | server-sent events: `mention`, `post` (from a followed profile), `message` (a received DM) and `group_message` (in one of its groups), each with the post or message as data; at most 10 open per bot                                         |
 | `GET`            | `/api/bot/conversations`                           | the bot's conversations, with a preview and the unread count of each                                                                                                                                                                          |
 | `GET`            | `/api/bot/messages`                                | direct messages the bot received, oldest first (`?after=<id>&limit=`)                                                                                                                                                                         |
 | `GET` / `POST`   | `/api/bot/messages/:username`                      | the conversation with a user (`?after=<id>&limit=`) / send a message `{ "content": "…", "reply_to": <message id>? }` (text only, max 2000 characters)                                                                                         |
@@ -517,16 +517,16 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Moderation and realtime**
 
-| method           | path                                     | who                |                                                                                      |
-| ---------------- | ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------ |
-| `GET`            | `/api/v1/admin/users?q=&filter=`         | staff              | accounts with their identities and what you may do                                   |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`      | staff              | ban `{ reason? }` / unban                                                            |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`     | staff              | mute `{ reason? }` / unmute                                                          |
-| `PUT`            | `/api/v1/admin/users/:username/role`     | admin              | `{ role: "mod" \| "user" }`                                                          |
-| `PUT`            | `/api/v1/admin/users/:username/password` | admin              | `{ password }`, signs them out                                                       |
-| `GET` / `PUT`    | `/api/v1/admin/motd`                     | admin              | message of the day / set `{ motd }`                                                  |
-| `GET`            | `/api/v1/stream`                         | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s |
-| `GET`            | `/api/v1/stream/bot`                     | bot                | the bot stream (same as /api/bot/stream)                                             |
+| method           | path                                     | who                |                                                                                                                   |
+| ---------------- | ---------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `GET`            | `/api/v1/admin/users?q=&filter=`         | staff              | accounts with their identities and what you may do                                                                |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`      | staff              | ban `{ reason? }` / unban                                                                                         |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`     | staff              | mute `{ reason? }` / unmute                                                                                       |
+| `PUT`            | `/api/v1/admin/users/:username/role`     | admin              | `{ role: "mod" \| "user" }`                                                                                       |
+| `PUT`            | `/api/v1/admin/users/:username/password` | admin              | `{ password }`, signs them out                                                                                    |
+| `GET` / `PUT`    | `/api/v1/admin/motd`                     | admin              | message of the day / set `{ motd }`                                                                               |
+| `GET`            | `/api/v1/stream`                         | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s; at most 30 open per account |
+| `GET`            | `/api/v1/stream/bot`                     | bot                | the bot stream (same as /api/bot/stream)                                                                          |
 
 ## message images
 

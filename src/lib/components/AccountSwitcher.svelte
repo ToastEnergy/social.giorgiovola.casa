@@ -84,12 +84,15 @@
 {#if $user}
 	<div class="{up || badge ? '' : 'relative'} {badge ? 'w-full' : ''}" bind:this={root}>
 		<button
-			class="relative flex cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {badge
+			class="relative flex cursor-pointer [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {badge
 				? 'w-full items-center gap-2.5 rounded-[15px] bg-black p-2.5 text-left hover:bg-white/5'
 				: 'rounded-full'}"
 			aria-haspopup="menu"
 			aria-expanded={open}
 			title="Switch account"
+			aria-label={otherUnread() > 0
+				? 'Profile menu (unread on your other profiles)'
+				: 'Profile menu'}
 			onclick={() => (open = !open)}
 		>
 			<span class="relative flex shrink-0">

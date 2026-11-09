@@ -19,7 +19,7 @@ export const navItems: NavItem[] = [
 	{ href: '/settings', label: 'Settings', icon: Settings }
 ];
 
-// staff only, and only in the sidebar (touch devices reach it from the profile menu)
+// staff only, and only in the sidebar (touch devices reach it from the profile menu in the bottom bar)
 export const moderationItem: NavItem = { href: '/admin', label: 'Moderation', icon: Shield };
 
 // home is its own item so the bottom bar can put it first

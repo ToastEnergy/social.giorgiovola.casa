@@ -101,9 +101,11 @@ main() {
 	dc stop "$live_service" || true
 
 	if [[ $target == staging && ${STAGING_SEED:-1} == 1 ]]; then
-		# a no-op once the database has accounts
-		dc exec -T -u bun -e "SEED_PASSWORD=${SEED_PASSWORD:-}" \
-			-e "SEED_BOT_TOKEN=${SEED_BOT_TOKEN:-}" "$next_service" bun scripts/seed.ts
+		# a no-op once the database has accounts. The secrets reach docker compose through its
+		# environment (-e NAME without a value copies it), not its arguments, which every user of the
+		# host can read in ps
+		SEED_PASSWORD=${SEED_PASSWORD:-} SEED_BOT_TOKEN=${SEED_BOT_TOKEN:-} \
+			dc exec -T -u bun -e SEED_PASSWORD -e SEED_BOT_TOKEN "$next_service" bun scripts/seed.ts
 	fi
 
 	# the stopped colour keeps the previous image: a rollback is a redeploy of that commit

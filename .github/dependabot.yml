@@ -1,0 +1,26 @@
+# keeps the actions pinned in .github/workflows up to date: the workflows reference each action by
+# commit SHA (a tag can be moved to other code), and Dependabot bumps the SHA and its # vX.Y.Z comment
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  # the packages in bun.lock (security updates are on in the repo settings too): minor and patch
+  # updates come as one weekly PR, majors one by one
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Prettier 3 needs the Svelte 5 plugin migration first (AGENTS.md, "Prettier caveat")
+      - dependency-name: prettier
+        update-types: [version-update:semver-major]
+      - dependency-name: prettier-plugin-svelte
+        update-types: [version-update:semver-major]

@@ -343,7 +343,8 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 			{
 				method: 'GET',
 				path: '/api/bot/stream',
-				summary: 'Server-sent events, kept open. See Realtime below.',
+				summary:
+					'Server-sent events, kept open. See Realtime below. At most 10 open streams per bot (429 beyond).',
 				response: 'text/event-stream'
 			}
 		]
@@ -1095,7 +1096,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/stream',
 				auth: 'public / signed in',
 				summary:
-					'server-sent events: posts, counts, notifications, messages, typing, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show)'
+					'server-sent events: posts, counts, notifications, messages, typing, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show). At most 30 open per account, 10 per bot, 30 per IP when anonymous (429 beyond)'
 			},
 			{
 				method: 'GET',

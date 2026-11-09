@@ -28,6 +28,17 @@ export const LIMITS = {
 export const USERNAME_RE = /^[a-z0-9_]{1,32}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * The text of a post as it's stored: line breaks are kept (as \n), the ends are trimmed and more
+ * than one blank line in a row becomes one.
+ */
+export function normalizePostContent(content: string): string {
+	return content
+		.replace(/\r\n?/g, '\n')
+		.trim()
+		.replace(/\n[^\S\n]*(?:\n[^\S\n]*){2,}/g, '\n\n');
+}
+
 /** Parses a positive int4 id, returning null for anything else (NaN, negatives, overflow, junk). */
 export function parseId(value: unknown): number | null {
 	if (typeof value === 'number') value = String(value);

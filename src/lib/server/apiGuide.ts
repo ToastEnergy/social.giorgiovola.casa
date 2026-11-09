@@ -126,7 +126,7 @@ Post:
   {
     "id": 123,
     "user": { "id", "username", "name", "avatar", "bot": false, "created_at" },
-    "content": "text, may contain @mentions, #hashtags and links",
+    "content": "text, may contain @mentions, #hashtags, links and line breaks (\\n)",
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
@@ -383,11 +383,14 @@ POST /posts                                                    signed in, not mu
     "quote_of": 118 | null,                     (a quote regiorg; can't also reply)
     "poll": { "options": ["a", "b"] (${LIMITS.pollOptionsMin}-${LIMITS.pollOptionsMax}, distinct, max ${LIMITS.pollOption} chars),
               "duration_minutes": ${LIMITS.pollMinutesMin}-${LIMITS.pollMinutesMax} (default ${LIMITS.pollMinutesDefault}) } | null }
-  Content may be empty when there are images; a poll needs text. 201: <Post>.
+  Content may be empty when there are images; a poll needs text. Line breaks (\\n; \\r\\n is
+  turned into \\n) are kept and shown; the ends are trimmed and more than one blank line in a
+  row becomes one. 201: <Post>.
   410 when an upload expired: upload it again. 30 posts a minute.
 GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
-  Edits the text (images and poll stay). Sets "edited_at", re-reads hashtags. 200: <Post>.
+  Edits the text (images and poll stay), with the same line break rules as POST /posts.
+  Sets "edited_at", re-reads hashtags. 200: <Post>.
   400 when the text would be empty on a post without images, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204.

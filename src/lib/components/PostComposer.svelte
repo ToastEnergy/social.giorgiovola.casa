@@ -4,7 +4,7 @@
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import X from '@lucide/svelte/icons/x';
 	import { errorOf } from '#lib/api.js';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { Post, QuotedPost } from '#lib/types.js';
 	import MentionInput from './MentionInput.svelte';
 	import QuoteCard from './QuoteCard.svelte';
@@ -14,7 +14,14 @@
 	import UploadProgress from './UploadProgress.svelte';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
 	import { user } from '#lib/store.js';
-	import { onProfileSwitch, takeDraft, type ComposerDraft } from '#lib/composerDraft.js';
+	import {
+		clearDraft,
+		loadDraft,
+		onProfileSwitch,
+		saveDraft,
+		type ComposerDraft
+	} from '#lib/composerDraft.js';
+	import { get } from 'svelte/store';
 	import { page } from '$app/state';
 
 	type Props = {
@@ -88,11 +95,78 @@
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();
 
-	/** which composer a draft saved across a profile switch belongs to */
+	/** which composer a saved draft belongs to */
 	const draftKey = () =>
 		replyTo != null ? `reply:${replyTo}` : quoteOf ? `quote:${quoteOf.id}` : 'post';
 
 	const isEmpty = () => !content.trim() && attachments.length === 0 && !pollOptions;
+
+	// what's written is saved as it's typed, so leaving the composer (a tap on the bottom bar right
+	// under the reply bar, closing the full screen composer) doesn't lose it
+	const SAVE_DELAY_MS = 800;
+	/** the profile the draft is saved for; null while drafts aren't kept (hidden or signed out) */
+	let owner: { id: number; username: string } | null = null;
+	/** the composer the form holds the draft of: the open post can change under a mounted one */
+	let currentKey = '';
+	/** false until the saved draft was looked at: saving before would overwrite it */
+	let loaded = false;
+	let destroyed = false;
+	let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const snapshot = (): ComposerDraft => ({
+		key: currentKey,
+		content,
+		pollOptions: pollOptions && [...pollOptions],
+		pollMinutes,
+		files: attachments.map((a) => a.file)
+	});
+
+	/** Saves the draft now (or drops it once emptied). */
+	function persist() {
+		clearTimeout(saveTimer);
+		saveTimer = undefined;
+		// signed out or another profile meanwhile: it isn't this profile's draft anymore
+		if (!owner || !loaded || get(user)?.id !== owner.id) return;
+		if (!isEmpty()) saveDraft(owner.id, snapshot());
+		// a post on its way keeps the saved draft until it lands, in case it comes back
+		else if (pending.length === 0) clearDraft(owner.id, currentKey);
+	}
+
+	/** Puts back the draft saved for the composer `key`, if the form is still empty. */
+	async function restore(key: string) {
+		loaded = false;
+		currentKey = key;
+		const draft = owner ? await loadDraft(owner, key) : null;
+		if (destroyed || currentKey !== key) return;
+		loaded = true;
+		if (!draft || !isEmpty()) return;
+		content = draft.content;
+		pollOptions = draft.pollOptions;
+		pollMinutes = draft.pollMinutes;
+		// uploaded again: uploads are temporary, and may belong to another profile
+		addFiles(draft.files);
+	}
+
+	$effect(() => {
+		// everything a draft holds
+		void [content, pollMinutes, attachments.length, pollOptions && [...pollOptions]];
+		if (!loaded) return;
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(persist, SAVE_DELAY_MS);
+	});
+
+	// the post page keeps its reply composer when going to another post: switch drafts with it
+	$effect(() => {
+		const key = draftKey();
+		if (!currentKey || key === currentKey) return;
+		untrack(() => {
+			persist();
+			content = '';
+			pollOptions = null;
+			clearAttachments();
+			restore(key);
+		});
+	});
 
 	/**
 	 * Tapping a button would move focus off the field and close the on-screen keyboard (iOS doesn't
@@ -212,33 +286,33 @@
 		};
 		window.addEventListener('pointerdown', onPointerDown);
 
-		let destroyed = false;
-		// written before a profile switch (which reloads the page): put it back
-		takeDraft(draftKey()).then((draft) => {
-			if (!draft || destroyed || !isEmpty()) return;
-			content = draft.content;
-			pollOptions = draft.pollOptions;
-			pollMinutes = draft.pollMinutes;
-			// uploaded again: the old uploads belonged to the other profile
-			addFiles(draft.files);
-		});
-		const unregister = onProfileSwitch(async (): Promise<ComposerDraft | null> => {
+		// a hidden composer (the home one on touch devices, which write from the full screen one)
+		// would take the draft away from the visible one
+		const me = get(user);
+		if (me && form && form.getClientRects().length > 0)
+			owner = { id: me.id, username: me.username };
+		restore(draftKey());
+		// the page may be closed or killed in the background without unmounting anything
+		const onHide = () => persist();
+		const onVisibility = () => document.visibilityState === 'hidden' && persist();
+		window.addEventListener('pagehide', onHide);
+		document.addEventListener('visibilitychange', onVisibility);
+
+		const unregister = onProfileSwitch(async () => {
 			// a post on its way either lands or comes back to the form, rather than being cut off
 			await Promise.allSettled([...inflight]);
-			if (isEmpty()) return null;
+			if (!owner || isEmpty()) return null;
 			for (const a of attachments) a.unstage();
-			return {
-				key: draftKey(),
-				content,
-				pollOptions: pollOptions && [...pollOptions],
-				pollMinutes,
-				files: attachments.map((a) => a.file)
-			};
+			return { ...snapshot(), user: owner.id };
 		});
 
 		return () => {
+			// before the attachments go: their files are part of the draft
+			persist();
 			destroyed = true;
 			unregister();
+			window.removeEventListener('pagehide', onHide);
+			document.removeEventListener('visibilitychange', onVisibility);
 			window.removeEventListener('dragenter', onDragEnter);
 			window.removeEventListener('dragover', onDragOver);
 			window.removeEventListener('dragleave', onDragLeave);
@@ -254,6 +328,11 @@
 		if (!content.trim() && attachments.length === 0) return;
 		if (pollOptions && !content.trim()) return showError('A poll needs a question.');
 		if (pollOptions?.some((o) => !o.trim())) return showError('Fill in every poll option.');
+		// the saved draft is exactly what's sent, and stays until the post lands
+		persist();
+		const submittedAt = Date.now();
+		const draftOwner = owner;
+		const key = currentKey;
 		const draft: Draft = {
 			key: pendingKey++,
 			content,
@@ -292,6 +371,8 @@
 				const post: Post = await res.json();
 				settle();
 				for (const a of draft.attachments) a.release();
+				// unless something new was written meanwhile
+				if (draftOwner) clearDraft(draftOwner.id, key, submittedAt);
 				oncreated?.(post);
 				return;
 			} else if (

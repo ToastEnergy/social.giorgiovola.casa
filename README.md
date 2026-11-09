@@ -55,7 +55,7 @@ Files still in the volumes keep being served while the bucket is configured (the
 
 ## backups
 
-`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
+`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes, plus `dm-uploads` when the deployment has it (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
 
 ```
 cp scripts/backup.env.example /etc/social-backup.env   # set RESTIC_REPOSITORY and the password file
@@ -73,6 +73,19 @@ Keep a copy of the password somewhere other than the server: without it the back
 Set `HEALTHCHECK_URL` to get an alert from a service like [healthchecks.io](https://healthchecks.io) when a backup fails or stops running.
 
 `scripts/restore.sh` puts a backup back, replacing the current database, avatars and uploads (it asks first, and stops the app while restoring). By default it takes the latest snapshots; pass the ids from `restic snapshots` to pick older ones: `scripts/restore.sh <db snapshot> <files snapshot>`. On a new server, clone the repository, copy `.env` and `/etc/social-backup.env`, run `docker compose up -d` once to create the volumes, then `scripts/restore.sh`. Pending migrations are applied when the app starts again.
+
+### backing up the bucket
+
+When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backup.env` too. The backup then copies the bucket into a local mirror (`MIRROR_DIR`, `/var/lib/social-backup/assets` by default, readable by root only) with [rclone](https://rclone.org), and backs up the mirror instead of the volumes, still tagged `files`. restic keeps the versions, encrypts them and applies the retention, so deleted and overwritten objects can be restored for as long as their snapshots are kept. If the copy fails, the backup stops and reports the failure without taking a snapshot of a half-copied mirror.
+
+1. Install rclone on the server (`apt install rclone`, or see [its install page](https://rclone.org/install/)).
+2. In the Cloudflare dashboard, R2 → _Manage API tokens_ → _Create API token_: permission **Object Read only**, applied to that one bucket. Read only means that someone who gets into the backup host can't change or delete the assets.
+3. Put the token in `/etc/social-backup.env` as an rclone remote, through environment variables (no `rclone.conf` needed; the commented example in `scripts/backup.env.example` has all of them): `S3_BUCKET`, `RCLONE_CONFIG_R2_TYPE=s3`, `RCLONE_CONFIG_R2_PROVIDER=Cloudflare`, `RCLONE_CONFIG_R2_ENDPOINT`, `RCLONE_CONFIG_R2_ACCESS_KEY_ID` and `RCLONE_CONFIG_R2_SECRET_ACCESS_KEY`.
+4. Run `scripts/backup.sh` and check that `restic ls latest --tag files` lists the bucket's `uploads/`, `avatars/` and `dm/` objects.
+
+`scripts/restore.sh` then puts the files snapshot back into the bucket with `rclone sync`, which also deletes the objects that aren't in the snapshot. The read-only token can't do that, so it asks for the key pair of a token with **Object Read & Write** on the bucket (the app's token works), or takes it from `RESTORE_ACCESS_KEY_ID` / `RESTORE_SECRET_ACCESS_KEY`. Don't keep that token in the backup config. Pass a files snapshot taken in bucket mode: older snapshots of the volumes go back into the volumes, with `S3_BUCKET` unset.
+
+**Privacy:** message images that were deleted (with their message, or with a deleted profile) stay in the backups until the retention drops every snapshot that holds them: up to 12 months with the default `KEEP_MONTHLY=12`. Lower `KEEP_MONTHLY` (and `KEEP_WEEKLY` / `KEEP_DAILY`) to keep them for less time. The same goes for the volumes, and for deleted posts in the database dumps.
 
 ## regiorgios
 

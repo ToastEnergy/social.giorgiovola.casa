@@ -1404,7 +1404,8 @@
 		</div>
 	</div>
 
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (only keeps the keyboard open) -->
+	<!-- the mousedown handler only keeps the keyboard open -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="flex min-h-0 flex-1 flex-col gap-[5px] overflow-x-hidden overflow-y-auto overscroll-contain"
 		bind:this={list}

@@ -2,6 +2,7 @@
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 	import { afterNavigate, goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { tick } from 'svelte';
 	import { PUBLIC_SEARCH_PLACEHOLDER } from '$app/env/public';
 	import { hashtagHref } from '#lib/hashtags.js';
@@ -105,7 +106,8 @@
 
 	afterNavigate(() => {
 		collapse();
-		query = '';
+		// on the search page the bar shows what was searched (it is that page's field on touch)
+		query = page.url.pathname === '/search' ? page.url.searchParams.get('q') ?? '' : '';
 		resultsFor = null;
 	});
 

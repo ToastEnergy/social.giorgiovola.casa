@@ -296,7 +296,7 @@
 				? 'not-pointer-coarse:flex not-pointer-coarse:flex-col not-pointer-coarse:p-0'
 				: ''}"
 		>
-			<!-- touch devices: search (or back) and the logo on top. messages have their own (the
+			<!-- touch devices: the logo and a search bar on top. messages have their own (the
 				list's search, the chat's back arrow) -->
 			{#if !isWide(page.route.id)}
 				<MobileHeader />

@@ -74,6 +74,20 @@
 		if (open && e.key === 'Escape') open = false;
 	}
 
+	// the menu scrolls within the room left between where it opens and the window's edge (10px
+	// margin): a fixed cap can't know that, under the rail's badge and search it starts far down
+	function fit(menu: HTMLElement) {
+		const size = () => {
+			menu.style.maxHeight = '';
+			const rect = menu.getBoundingClientRect();
+			const room = up || above ? rect.bottom - 10 : window.innerHeight - rect.top - 10;
+			menu.style.maxHeight = `${Math.max(room, 120)}px`;
+		};
+		size();
+		window.addEventListener('resize', size);
+		return { destroy: () => window.removeEventListener('resize', size) };
+	}
+
 	const isActiveAccount = (a: SwitcherAccount) => a.active || a.identities.some((i) => i.active);
 	const profilesOf = (a: SwitcherAccount): SwitcherProfile[] => [a, ...a.identities];
 	const label = (p: SwitcherProfile) => `${p.name} (@${p.username})`;
@@ -121,7 +135,8 @@
 
 		{#if open}
 			<div
-				class="absolute {menuPlace} flex max-h-[calc(var(--fh,100vh)-86px)] max-w-[calc(100vw-26px)] flex-col gap-1 overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
+				use:fit
+				class="absolute {menuPlace} flex max-w-[calc(100vw-26px)] flex-col gap-1 overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
 				role="menu"
 			>
 				<a

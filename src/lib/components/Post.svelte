@@ -101,7 +101,7 @@
 		const src = match?.[1].trim();
 		return src && src.startsWith('https://') && isHttpLink(src) ? src : null;
 	});
-	const contentParts = $derived(post.content.replace(imageRegex, '').split(/(\s)/));
+	const contentParts = $derived(post.content.replace(imageRegex, '').trim().split(/(\s)/));
 	// uploaded images first, then the linked one
 	const gallery = $derived([...(post.images ?? []), ...(linkedImage ? [linkedImage] : [])]);
 
@@ -727,7 +727,8 @@
 				</div>
 				<div class="flex flex-col gap-2.5">
 					{#if contentParts.join('').trim()}
-						<p class="cursor-text wrap-anywhere">
+						<!-- pre-line: the post's line breaks show, runs of spaces still collapse -->
+						<p class="cursor-text wrap-anywhere whitespace-pre-line">
 							{#each contentParts as part}
 								{#if isHttpLink(part)}
 									<a onclick={stop} href={part} target="_blank" rel="noopener noreferrer nofollow"

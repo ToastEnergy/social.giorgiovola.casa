@@ -9,6 +9,7 @@
 	import type { ChatPeer, Conversation, GroupConversation } from '#lib/types.js';
 	import { page } from '$app/state';
 	import { listenTyping, typingIn, typingText } from '#lib/typing.svelte.js';
+	import { calendarDay, dateReady, formatDate } from '#lib/time.svelte.js';
 
 	interface Props {
 		conversations: (Conversation & { muted: boolean })[];
@@ -41,18 +42,20 @@
 		].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 	);
 
-	// telegram-style: time today, weekday this week, date otherwise
+	// telegram-style: time today, weekday this week, date otherwise. days are the reader's (see
+	// time.svelte.ts), so the server renders what the browser will
 	function shortDate(iso: string | Date) {
 		const date = new Date(iso);
 		const now = new Date();
-		if (date.toDateString() === now.toDateString())
-			return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+		const day = calendarDay(date);
+		const today = calendarDay(now);
+		if (day.day === today.day) return formatDate(date, { hour: '2-digit', minute: '2-digit' });
 		if (now.getTime() - date.getTime() < 6 * 24 * 60 * 60 * 1000)
-			return date.toLocaleDateString(undefined, { weekday: 'short' });
-		return date.toLocaleDateString(undefined, {
+			return formatDate(date, { weekday: 'short' });
+		return formatDate(date, {
 			day: 'numeric',
 			month: 'short',
-			year: date.getFullYear() === now.getFullYear() ? undefined : '2-digit'
+			year: day.year === today.year ? undefined : '2-digit'
 		});
 	}
 
@@ -191,7 +194,7 @@
 							<span class="font-medium opacity-80">{entry.group.size} members</span>
 						</p>
 					{/if}
-					<p class="shrink-0 text-[0.8em] opacity-70">
+					<p class="shrink-0 text-[0.8em] opacity-70 {dateReady() ? '' : 'invisible'}">
 						{shortDate(entry.created_at)}
 					</p>
 				</div>

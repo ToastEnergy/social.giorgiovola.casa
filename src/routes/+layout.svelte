@@ -31,8 +31,10 @@
 		id === '/messages/[username]' || id === '/messages/groups/[id]';
 	// the messages index is wide too: conversation list beside an empty chat
 	const isWide = (id: string | null) => isChat(id) || id === '/messages';
-	// the home page has no panel on mouse devices: its composer and timeline are two black blocks
-	const isSplit = (id: string | null) => id === '/';
+	// no panel on mouse devices: the page is made of black blocks of its own (home: composer and
+	// timeline; an open post: the post, the reply composer and the replies), stacked in a column
+	// as tall as the panel would be so the last block can fill the rest
+	const isSplit = (id: string | null) => id === '/' || id === '/@[username]/[post]';
 	// sizes of the centred group on mouse devices (app.css)
 	const frame = (id: string | null) => `frame frame-sidebar ${isWide(id) ? 'frame-wide' : ''}`;
 	$user = data.user;
@@ -283,7 +285,7 @@
 			class="w-full {isWide(page.route.id)
 				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
 				: 'max-w-160 p-5 max-nav:max-w-none'} {isSplit(page.route.id)
-				? 'not-pointer-coarse:p-0'
+				? 'not-pointer-coarse:flex not-pointer-coarse:flex-col not-pointer-coarse:p-0'
 				: ''}"
 		>
 			<!-- touch devices: profile, logo and settings on top. messages have their own (the

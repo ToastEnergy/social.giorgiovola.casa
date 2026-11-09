@@ -10,6 +10,8 @@ import { readJson } from './api.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
 import { hit, isLimited } from './ratelimit.js';
 import { LIMITS, parseId } from './validation.js';
+import { parseGif } from './gifs.js';
+import type { Gif } from '#lib/types.js';
 
 /** Shared by direct and group messages: reading the body, validating it and saving its images. */
 
@@ -46,6 +48,8 @@ export type MessageBody = {
 	files: File[];
 	/** ids of images uploaded beforehand (api/uploads), attached after `files` */
 	uploads: string[];
+	/** a KLIPY GIF instead of images */
+	gif: Gif | null;
 };
 
 /** Multipart when the message has images, plain JSON otherwise. */
@@ -64,7 +68,8 @@ export async function readMessageBody(request: Request): Promise<MessageBody | R
 			fields: Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === 'string')),
 			content: typeof raw === 'string' ? raw.trim() : '',
 			files: form.getAll('images').filter((f): f is File => f instanceof File && f.size > 0),
-			uploads
+			uploads,
+			gif: parseGif(form.get('gif')) ?? null
 		};
 	}
 	const fields = await readJson(request);
@@ -74,7 +79,8 @@ export async function readMessageBody(request: Request): Promise<MessageBody | R
 		fields,
 		content: typeof fields.content === 'string' ? fields.content.trim() : '',
 		files: [],
-		uploads
+		uploads,
+		gif: parseGif(fields.gif) ?? null
 	};
 }
 
@@ -93,8 +99,11 @@ export const hasImages = (body: MessageBody) => body.files.length + body.uploads
 
 /** The error to send back for a message that can't be sent as is, or null. */
 export function checkMessage(body: MessageBody, userId: number): Response | null {
-	const { content, files, uploads } = body;
-	if (!content && !hasImages(body)) return new Response('Missing content', { status: 400 });
+	const { content, files, uploads, gif } = body;
+	if (!content && !gif && !hasImages(body)) return new Response('Missing content', { status: 400 });
+	if (gif && hasImages(body)) {
+		return new Response('A message can have a GIF or images, not both', { status: 400 });
+	}
 	if (content.length > LIMITS.messageContent) {
 		return new Response(`Messages can be at most ${LIMITS.messageContent} characters`, {
 			status: 400

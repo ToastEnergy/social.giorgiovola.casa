@@ -64,12 +64,32 @@ export type FollowListEntry = Pick<User, 'username' | 'name' | 'avatar'> & {
 	self: boolean;
 };
 
+/**
+ * A GIF from KLIPY attached to a post or message. The URLs are KLIPY's, kept exactly as its API
+ * gave them: KLIPY doesn't allow copying its media, so clients load them from KLIPY directly.
+ */
+export type Gif = {
+	provider: 'klipy';
+	/** KLIPY's id of the GIF */
+	slug: string;
+	/** a short description, may be empty */
+	title: string;
+	/** the looping MP4 video to show */
+	video: string;
+	/** a still JPEG frame, shown before the video plays */
+	poster: string;
+	width: number;
+	height: number;
+};
+
 /** The post a quote regiorg quotes, as shown inside the quote. */
 export type QuotedPost = {
 	id: number;
 	user: Pick<User, 'username' | 'name' | 'avatar'>;
 	content: string;
 	images: string[];
+	/** a GIF instead of images; null or missing when there is none */
+	gif?: Gif | null;
 	created_at: Date;
 	/** it quotes another post itself (that one isn't shown) */
 	is_quote: boolean;
@@ -106,6 +126,8 @@ export type Post = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** a GIF instead of images, null when there is none */
+	gif: Gif | null;
 	created_at: Date;
 	edited_at: Date | null;
 	likes: number;
@@ -192,6 +214,8 @@ export type MessageReplyTo = {
 	content: string;
 	/** how many images it has */
 	images: number;
+	/** it is a GIF */
+	gif: boolean;
 };
 
 export type MessageReaction = {
@@ -208,6 +232,8 @@ export type ChatMessage = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** a GIF instead of images, null when there is none */
+	gif: Gif | null;
 	created_at: Date;
 	/** when the sender last changed the text, null if never */
 	edited_at: Date | null;
@@ -270,6 +296,8 @@ export type GroupMessage = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** a GIF instead of images, null when there is none */
+	gif: Gif | null;
 	created_at: Date;
 	/** when the sender last changed the text, null if never */
 	edited_at: Date | null;

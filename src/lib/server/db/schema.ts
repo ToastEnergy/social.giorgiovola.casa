@@ -5,6 +5,7 @@ import {
 	check,
 	index,
 	integer,
+	jsonb,
 	pgTable,
 	primaryKey,
 	serial,
@@ -14,6 +15,7 @@ import {
 	uniqueIndex,
 	type AnyPgColumn
 } from 'drizzle-orm/pg-core';
+import type { Gif } from '../../types.js';
 
 // Property names match the column names (snake_case) so rows line up with the types in
 // src/lib/types.ts. The triggers that create notifications can't be expressed here, they live
@@ -115,6 +117,8 @@ export const posts = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// a KLIPY GIF instead of images (src/lib/server/gifs.ts); only its URLs, never a copy
+		gif: jsonb('gif').$type<Gif>(),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		edited_at: timestamptz('edited_at'),
 		reply_to: integer('reply_to').references((): AnyPgColumn => posts.id, { onDelete: 'cascade' }),
@@ -261,6 +265,8 @@ export const messages = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// a KLIPY GIF instead of images, like posts.gif
+		gif: jsonb('gif').$type<Gif>(),
 		// the message this one answers; the reply stays when it is deleted
 		reply_to_id: integer('reply_to_id').references((): AnyPgColumn => messages.id, {
 			onDelete: 'set null'
@@ -345,6 +351,8 @@ export const group_messages = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// a KLIPY GIF instead of images, like posts.gif
+		gif: jsonb('gif').$type<Gif>(),
 		// the message this one answers; the reply stays when it is deleted
 		reply_to_id: integer('reply_to_id').references((): AnyPgColumn => group_messages.id, {
 			onDelete: 'set null'

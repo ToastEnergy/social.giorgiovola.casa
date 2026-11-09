@@ -29,6 +29,9 @@ x-web: &web
     LINK_PREVIEWS: ${LINK_PREVIEWS:-}
     LINK_PREVIEWS_URL: ${LINK_PREVIEWS_URL:-}
     LINK_PREVIEWS_SECRET: ${LINK_PREVIEWS_SECRET:-}
+    # GIFs from KLIPY (README: GIFs)
+    KLIPY_APP_KEY: ${KLIPY_APP_KEY:-}
+    KLIPY_CONTENT_FILTER: ${KLIPY_CONTENT_FILTER:-}
   volumes:
     - avatars:/app/static/avatars
     - uploads:/app/static/uploads

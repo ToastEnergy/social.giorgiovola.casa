@@ -44,6 +44,22 @@
 		{#if quote.is_quote}
 			<p class="text-[0.85em] text-muted">Quoting another post</p>
 		{/if}
+		{#if quote.gif}
+			<!-- a still frame: a quote is small, and a click opens the quoted post -->
+			<div class="relative self-start">
+				<img
+					class="max-h-50 max-w-full rounded-[5px] object-contain"
+					src={quote.gif.poster}
+					alt={quote.gif.title}
+					loading="lazy"
+					referrerpolicy="no-referrer"
+				/>
+				<span
+					class="absolute bottom-[5px] left-[5px] rounded-full bg-black/70 px-[5px] text-[0.75em] font-bold"
+					>GIF</span
+				>
+			</div>
+		{/if}
 		{#if quote.images.length > 0}
 			<div class="grid gap-1 {quote.images.length > 1 ? 'grid-cols-4' : ''}">
 				{#each quote.images.slice(0, 4) as image}

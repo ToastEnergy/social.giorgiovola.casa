@@ -108,6 +108,12 @@ application/json` on writes and upload images as the raw request body. JSON requ
   API calls does four session lookups. Fine at this scale; worth caching if it ever matters.
 - `/api/stream` and the other internal routes were removed once nothing called them;
   `/api/push` stays as an alias because installed service workers may still call it.
+- GIF search is the one feature with no `/api/v1` endpoint. KLIPY, the GIF provider, requires
+  searches and media loads to come from the user's device and forbids proxying or caching its
+  media without written approval. So `GET /api/v1/instance` hands out its (public) app key,
+  clients search KLIPY themselves, and `/api/v1` only stores and returns the chosen GIF's URLs
+  (`gif` on posts and messages, checked against KLIPY's media hosts). The server never calls
+  KLIPY.
 
 ## Endpoints
 

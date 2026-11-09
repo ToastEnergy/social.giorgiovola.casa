@@ -28,6 +28,8 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `LINK_PREVIEWS`                      | `local`                           | who downloads linked pages for previews: `local` (this server, shows its IP address to the sites), `remote` (a Cloudflare Worker) or `off`; see [link previews](#link-previews) |
 | `LINK_PREVIEWS_URL`                  | empty                             | URL of the link preview worker, required with `LINK_PREVIEWS=remote`                                                                                                            |
 | `LINK_PREVIEWS_SECRET`               | empty                             | secret shared with the worker, required with `LINK_PREVIEWS=remote`                                                                                                             |
+| `KLIPY_APP_KEY`                      | empty                             | [KLIPY](https://klipy.com) app key that turns on GIFs in posts and messages; empty turns them off (see [GIFs](#gifs)). Public: browsers search KLIPY with it                    |
+| `KLIPY_CONTENT_FILTER`               | `medium`                          | KLIPY's content safety level for GIF searches: `off`, `low`, `medium` or `high`                                                                                                 |
 | `CLOUDFLARE_ZONE_ID`                 | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                                                  |
 | `CLOUDFLARE_API_TOKEN`               | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)                                        |
 | `SOCIAL_IMAGE`                       | `social-web`                      | image of the app; set by the deploy script to the one it pulled from the registry (see [deploying](#deploying-staging-and-production)), empty to build it from the checkout     |
@@ -275,6 +277,19 @@ The count next to the arrows is regiorgios plus quotes; click it to see who regi
 
 The bars button in the composer adds a poll to a post (or a reply, or a quote): 2 to 4 options of up to 80 characters, open for 1 hour to 7 days. The post's text is the question. Every profile gets one vote, which can be changed until the poll ends; the results show once you have voted or the poll has ended, and update live. Polls can't be edited, only deleted with their post.
 
+## GIFs
+
+With `KLIPY_APP_KEY` set, the composer and the chat input get a GIF button that searches [KLIPY](https://klipy.com). A post has either a GIF or images, not both; in a chat, a picked GIF is sent right away as a message of its own (replying to the message being replied to). GIFs play as short muted looping videos while they are on screen, and stay still for readers who ask for reduced motion (a tap plays them).
+
+KLIPY's [integration requirements](https://docs.klipy.com/integration-requirements) shape how this works: searches go from the reader's browser straight to `api.klipy.com`, and GIFs are loaded straight from KLIPY's media hosts (`static.klipy.com`, `static1.klipy.com`, `static2.klipy.com`), never copied, cached or proxied by the server. A post or message only stores the chosen GIF's KLIPY URLs. As a result:
+
+- **Privacy: KLIPY sees the IP address (and browser) of everyone who searches for GIFs or views a post or message with a GIF**, including GIFs in private conversations. Because of the site's referrer policy KLIPY only learns this instance's address, not which page or conversation the GIF is on, and the app sends KLIPY no user ids. Tell your users if that matters to them, or leave `KLIPY_APP_KEY` empty.
+- The app key is public: it is in `/api/v1/instance` and in every search the browsers make.
+- When KLIPY removes a GIF, the posts and messages that used it show "This GIF is no longer available".
+- GIFs don't appear in social cards (`…/image.png`) or push notifications, which would need the server to download them.
+
+To set it up: create an account on the [KLIPY partner panel](https://partner.klipy.com), create an app key, keep ads turned off (the app doesn't show them) and set any extra content filtering there. A new key is in testing mode, limited to 100 requests an hour for the whole instance; request production access in the partner panel before opening GIFs to everyone. Then set `KLIPY_APP_KEY` (and optionally `KLIPY_CONTENT_FILTER`) in `.env` and restart; no rebuild is needed.
+
 ## link previews
 
 The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never visit the page, only load the image from the site; the page itself is downloaded once on the server side and cached for 7 days (1 day when it had no preview). `LINK_PREVIEWS` picks who downloads it:
@@ -392,7 +407,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 | method   | path                            | who       |                                                                              |
 | -------- | ------------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `GET`    | `/api/v1/instance`              | public    | message of the day, whether registration is open, limits                     |
+| `GET`    | `/api/v1/instance`              | public    | message of the day, whether registration is open, limits, GIF settings       |
 | `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`     |
 | `POST`   | `/api/v1/auth/register`         | public    | `{ signup_password, email, name, username, password }` → a token, like login |
 | `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`               |
@@ -434,7 +449,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | -------------------------- | -------------------------------------- | --------------------------------- | ----------------------------------------------------------- |
 | `GET`                      | `/api/v1/timeline?feed=all\|following` | public / signed in                | the home timeline (following brings in regiorgs)            |
 | `GET`                      | `/api/v1/timeline/pinned`              | public                            | posts staff pinned above the timeline                       |
-| `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, reply_to?, quote_of?, poll? }`        |
+| `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`  |
 | `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                 |
 | `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                |
 | `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)   |
@@ -476,29 +491,29 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Messages and groups**
 
-| method             | path                                                    | who                   |                                                                                       |
-| ------------------ | ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
-| `GET`              | `/api/v1/conversations`                                 | signed in             | direct conversations and groups, with unread messages and reactions                   |
-| `GET`              | `/api/v1/share-targets`                                 | signed in             | where a post can be shared                                                            |
-| `GET`              | `/api/v1/conversations/:username`                       | signed in             | peer, blocks, mute state and first unread message                                     |
-| `GET` / `POST`     | `/api/v1/conversations/:username/messages`              | signed in / not muted | messages, oldest first (`cursor` for older) / send `{ content, uploads?, reply_to? }` |
-| `PATCH` / `DELETE` | `/api/v1/conversations/:username/messages/:id`          | sender                | edit your message `{ content }` (within an hour) / delete it                          |
-| `PUT` / `DELETE`   | `/api/v1/conversations/:username/messages/:id/reaction` | signed in             | react `{ emoji }` / remove it                                                         |
-| `POST`             | `/api/v1/conversations/:username/read`                  | signed in             | mark messages and reactions to yours read                                             |
-| `PUT` / `DELETE`   | `/api/v1/conversations/:username/mute`                  | signed in             | mute / unmute                                                                         |
-| `POST`             | `/api/v1/conversations/:username/typing`                | signed in             | typing indicator                                                                      |
-| `GET` / `POST`     | `/api/v1/groups`                                        | signed in / not muted | your groups / create `{ name, members }`                                              |
-| `GET` / `PATCH`    | `/api/v1/groups/:id`                                    | member                | name, owner, members, first unread message / rename `{ name }`                        |
-| `GET` / `POST`     | `/api/v1/groups/:id/messages`                           | member                | messages and events / send                                                            |
-| `PATCH` / `DELETE` | `/api/v1/groups/:id/messages/:messageId`                | sender                | edit your message `{ content }` (within an hour) / delete it                          |
-| `PUT` / `DELETE`   | `/api/v1/groups/:id/messages/:messageId/reaction`       | member                | react / remove it                                                                     |
-| `POST`             | `/api/v1/groups/:id/read`                               | member                | mark messages and reactions to yours read                                             |
-| `PUT` / `DELETE`   | `/api/v1/groups/:id/mute`                               | member                | mute / unmute                                                                         |
-| `POST`             | `/api/v1/groups/:id/members`                            | member                | add `{ usernames }`                                                                   |
-| `DELETE`           | `/api/v1/groups/:id/members/:username`                  | owner (or yourself)   | remove someone, or leave                                                              |
-| `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                 |
-| `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                      |
-| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token        |
+| method             | path                                                    | who                   |                                                                                             |
+| ------------------ | ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------- |
+| `GET`              | `/api/v1/conversations`                                 | signed in             | direct conversations and groups, with unread messages and reactions                         |
+| `GET`              | `/api/v1/share-targets`                                 | signed in             | where a post can be shared                                                                  |
+| `GET`              | `/api/v1/conversations/:username`                       | signed in             | peer, blocks, mute state and first unread message                                           |
+| `GET` / `POST`     | `/api/v1/conversations/:username/messages`              | signed in / not muted | messages, oldest first (`cursor` for older) / send `{ content, uploads?, gif?, reply_to? }` |
+| `PATCH` / `DELETE` | `/api/v1/conversations/:username/messages/:id`          | sender                | edit your message `{ content }` (within an hour) / delete it                                |
+| `PUT` / `DELETE`   | `/api/v1/conversations/:username/messages/:id/reaction` | signed in             | react `{ emoji }` / remove it                                                               |
+| `POST`             | `/api/v1/conversations/:username/read`                  | signed in             | mark messages and reactions to yours read                                                   |
+| `PUT` / `DELETE`   | `/api/v1/conversations/:username/mute`                  | signed in             | mute / unmute                                                                               |
+| `POST`             | `/api/v1/conversations/:username/typing`                | signed in             | typing indicator                                                                            |
+| `GET` / `POST`     | `/api/v1/groups`                                        | signed in / not muted | your groups / create `{ name, members }`                                                    |
+| `GET` / `PATCH`    | `/api/v1/groups/:id`                                    | member                | name, owner, members, first unread message / rename `{ name }`                              |
+| `GET` / `POST`     | `/api/v1/groups/:id/messages`                           | member                | messages and events / send, like direct messages                                            |
+| `PATCH` / `DELETE` | `/api/v1/groups/:id/messages/:messageId`                | sender                | edit your message `{ content }` (within an hour) / delete it                                |
+| `PUT` / `DELETE`   | `/api/v1/groups/:id/messages/:messageId/reaction`       | member                | react / remove it                                                                           |
+| `POST`             | `/api/v1/groups/:id/read`                               | member                | mark messages and reactions to yours read                                                   |
+| `PUT` / `DELETE`   | `/api/v1/groups/:id/mute`                               | member                | mute / unmute                                                                               |
+| `POST`             | `/api/v1/groups/:id/members`                            | member                | add `{ usernames }`                                                                         |
+| `DELETE`           | `/api/v1/groups/:id/members/:username`                  | owner (or yourself)   | remove someone, or leave                                                                    |
+| `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                       |
+| `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                            |
+| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token              |
 
 **Moderation and realtime**
 

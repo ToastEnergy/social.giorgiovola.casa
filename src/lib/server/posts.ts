@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
-import type { Post, User } from '#lib/types.js';
+import type { Gif, Post, User } from '#lib/types.js';
 import { extractHashtags } from '#lib/hashtags.js';
 import { getAvatar } from '#lib/utils.js';
 import { DISCORD_WEBHOOK_URL } from '$app/env/private';
@@ -78,6 +78,7 @@ export async function getPosts({
 		.select({
 			content: posts.content,
 			images: posts.images,
+			gif: posts.gif,
 			id: posts.id,
 			created_at: posts.created_at,
 			edited_at: posts.edited_at,
@@ -101,6 +102,7 @@ export async function getPosts({
 					'id', p.id,
 					'content', p.content,
 					'images', p.images,
+					'gif', p.gif,
 					'created_at', p.created_at,
 					'is_quote', p.is_quote,
 					'user', jsonb_build_object('username', u.username, 'name', u.name, 'avatar', u.avatar)
@@ -328,12 +330,14 @@ export async function createPost(
 	{
 		content,
 		images = [],
+		gif = null,
 		reply_to,
 		quote_of = null,
 		poll = null
 	}: {
 		content: string;
 		images?: string[];
+		gif?: Gif | null;
 		reply_to: number | null;
 		quote_of?: number | null;
 		poll?: PollInput | null;
@@ -347,6 +351,7 @@ export async function createPost(
 				user_id: user.id,
 				content,
 				images,
+				gif,
 				reply_to,
 				quote_of,
 				is_quote: quote_of !== null

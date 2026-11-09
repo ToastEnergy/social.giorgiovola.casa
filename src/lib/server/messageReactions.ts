@@ -90,13 +90,14 @@ async function repliedTo(thread: Thread, ids: number[]) {
 			username: users.username,
 			name: users.name,
 			content: sql<string>`LEFT(${table.content}, ${REPLY_PREVIEW_LENGTH})`,
-			images: sql<number>`CARDINALITY(${table.images})::int`
+			images: sql<number>`CARDINALITY(${table.images})::int`,
+			gif: sql<boolean>`(${table.gif} IS NOT NULL)`
 		})
 		.from(table)
 		.innerJoin(users, eq(users.id, table.sender_id))
 		.where(inArray(table.id, [...new Set(ids)]));
-	for (const { id, username, name, content, images } of rows) {
-		byId.set(id, { id, sender: { username, name }, content, images });
+	for (const { id, username, name, content, images, gif } of rows) {
+		byId.set(id, { id, sender: { username, name }, content, images, gif });
 	}
 	return byId;
 }
@@ -280,6 +281,7 @@ export type LatestReaction = {
 	/** the message reacted to, clipped */
 	content: string;
 	images: number;
+	gif: boolean;
 	created_at: Date;
 };
 
@@ -298,6 +300,7 @@ export async function latestDirectReactions(userId: number) {
 			name: users.name,
 			content: sql<string>`LEFT(${messages.content}, ${REACTED_PREVIEW_LENGTH})`,
 			images: sql<number>`CARDINALITY(${messages.images})::int`,
+			gif: sql<boolean>`(${messages.gif} IS NOT NULL)`,
 			created_at: message_reactions.created_at
 		})
 		.from(message_reactions)
@@ -323,6 +326,7 @@ export async function latestGroupReactions(userId: number, groupIds: number[]) {
 			name: users.name,
 			content: sql<string>`LEFT(${group_messages.content}, ${REACTED_PREVIEW_LENGTH})`,
 			images: sql<number>`CARDINALITY(${group_messages.images})::int`,
+			gif: sql<boolean>`(${group_messages.gif} IS NOT NULL)`,
 			created_at: group_message_reactions.created_at
 		})
 		.from(group_message_reactions)
@@ -344,6 +348,8 @@ export function reactionPreview(reaction: LatestReaction, userId: number) {
 	const clipped = reaction.content.length >= REACTED_PREVIEW_LENGTH ? '…' : '';
 	const what = reaction.content
 		? `“${reaction.content}${clipped}”`
+		: reaction.gif
+		? 'a GIF'
 		: reaction.images > 0
 		? 'a photo'
 		: 'a message';

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db, blocks, dm_mutes, messages, users } from './db/index.js';
-import type { ChatMessage, ChatPeer, Conversation } from '#lib/types.js';
+import type { ChatMessage, ChatPeer, Conversation, Gif } from '#lib/types.js';
+import { mediaPreview } from '#lib/mediaPreview.js';
 import { linkedPosts } from './linkedPosts.js';
 import { unreadGroupCount } from './groups.js';
 import { markDirectReactionsRead, withRepliesAndReactions } from './messageReactions.js';
@@ -97,6 +98,7 @@ type Row = {
 	id: number;
 	content: string;
 	images: string[];
+	gif: Gif | null;
 	reply_to_id: number | null;
 	created_at: Date;
 	edited_at: Date | null;
@@ -108,6 +110,7 @@ const toChatMessage = (row: Row, sender: string, recipient: string) => ({
 	recipient,
 	content: row.content,
 	images: row.images,
+	gif: row.gif,
 	reply_to_id: row.reply_to_id,
 	created_at: row.created_at,
 	edited_at: row.edited_at
@@ -130,6 +133,7 @@ export async function getThread(me: Party, peer: Party, before?: number | null) 
 			sender_id: messages.sender_id,
 			content: messages.content,
 			images: messages.images,
+			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -167,6 +171,7 @@ export async function getThreadFrom(me: Party, peer: Party, { afterId, limit }: 
 			sender_id: messages.sender_id,
 			content: messages.content,
 			images: messages.images,
+			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -193,6 +198,7 @@ export async function getReceived(me: Party, { afterId, limit }: ListOptions) {
 			sender: users.username,
 			content: messages.content,
 			images: messages.images,
+			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -214,15 +220,16 @@ export async function sendMessage(
 	peer: Party,
 	content: string,
 	images: string[] = [],
-	replyTo: number | null = null
+	replyTo: number | null = null,
+	gif: Gif | null = null
 ): Promise<ChatMessage> {
 	const [row] = await db
 		.insert(messages)
-		.values({ sender_id: me.id, recipient_id: peer.id, content, images, reply_to_id: replyTo })
+		.values({ sender_id: me.id, recipient_id: peer.id, content, images, gif, reply_to_id: replyTo })
 		.returning({ id: messages.id, created_at: messages.created_at });
 	const [message] = await complete([
 		toChatMessage(
-			{ ...row, content, images, reply_to_id: replyTo, edited_at: null },
+			{ ...row, content, images, gif, reply_to_id: replyTo, edited_at: null },
 			me.username,
 			peer.username
 		)
@@ -234,6 +241,7 @@ const editedColumns = {
 	id: messages.id,
 	content: messages.content,
 	images: messages.images,
+	gif: messages.gif,
 	reply_to_id: messages.reply_to_id,
 	created_at: messages.created_at,
 	edited_at: messages.edited_at
@@ -256,12 +264,17 @@ export async function editMessage(
 		eq(messages.recipient_id, peer.id)
 	);
 	const [found] = await db
-		.select({ content: messages.content, images: messages.images, created_at: messages.created_at })
+		.select({
+			content: messages.content,
+			images: messages.images,
+			gif: messages.gif,
+			created_at: messages.created_at
+		})
 		.from(messages)
 		.where(mineTo);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
-	if (!content && found.images.length === 0) return 'empty';
+	if (!content && found.images.length === 0 && !found.gif) return 'empty';
 	// the same text: nothing to mark as edited
 	const [row] =
 		content === found.content
@@ -349,6 +362,7 @@ export async function getConversations(userId: number): Promise<Conversation[]> 
 			recipient_id: messages.recipient_id,
 			content: sql<string>`LEFT(${messages.content}, ${PREVIEW_LENGTH})`,
 			images: sql<number>`CARDINALITY(${messages.images})`,
+			gif: sql<boolean>`(${messages.gif} IS NOT NULL)`,
 			created_at: messages.created_at
 		})
 		.from(messages)
@@ -380,7 +394,7 @@ export async function getConversations(userId: number): Promise<Conversation[]> 
 			return [
 				{
 					peer: { username, name, avatar },
-					preview: row.content || (row.images > 0 ? '📷 Photo' : ''),
+					preview: row.content || mediaPreview(row),
 					mine: row.sender_id === userId,
 					created_at: row.created_at,
 					unread: unread.find((u) => u.sender_id === peer.id)?.count ?? 0

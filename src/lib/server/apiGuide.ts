@@ -128,6 +128,7 @@ Post:
     "user": { "id", "username", "name", "avatar", "bot": false, "created_at" },
     "content": "text, may contain @mentions, #hashtags, links and line breaks (\\n)",
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
+    "gif": <Gif> | null,                  // a GIF instead of images, see GIFs
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
     "regiorgs": 1, "regiorged": false,   // a regiorg ("regiorgio") is a repost
@@ -145,7 +146,12 @@ Post:
   }
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
-QuotedPost: { "id", "user": User, "content", "images", "created_at", "is_quote" }
+QuotedPost: { "id", "user": User, "content", "images", "gif": <Gif> | null, "created_at", "is_quote" }
+Gif: { "provider": "klipy", "slug", "title", "video": "https://static.klipy.com/….mp4",
+       "poster": "https://static.klipy.com/….jpg", "width", "height" }
+  A GIF from KLIPY: "video" is a short looping MP4 (play it muted, looped, inline),
+  "poster" a still frame, width and height its size in px. Load both straight from KLIPY,
+  as they are (see GIFs).
 LinkPreview: { "url", "title", "description": "…" | null, "image": "https://…" | null, "site_name" }
   The Open Graph card of a link, fetched by the server. null while it is still being
   fetched (it shows up on later reads), and for pages without a title.
@@ -202,15 +208,16 @@ Me (GET /me):
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
     "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
+    "gif": <Gif> | null,                          // a GIF instead of images, see GIFs
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
-                  "images": 2 } | null,
+                  "images": 2, "gif": false } | null,   // gif: it is a GIF
     "reactions": [ { "emoji", "username", "name", "avatar" } ],
     "linked_post": <QuotedPost> | null }
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
-    "renamed" | "owner", "sender": User, "target": User | null, "content", "images" (like
+    "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "gif" (like
     Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
@@ -252,7 +259,10 @@ GET /instance                                                  public
     "pollOptionsMin": ${LIMITS.pollOptionsMin}, "pollOptionsMax": ${LIMITS.pollOptionsMax},
     "pollOption": ${LIMITS.pollOption}, "pollMinutesMin": ${LIMITS.pollMinutesMin},
     "pollMinutesMax": ${LIMITS.pollMinutesMax}, "pollMinutesDefault": ${LIMITS.pollMinutesDefault},
-    "groupName": ${LIMITS.groupName}, "groupMembers": ${LIMITS.groupMembers}, … } }
+    "groupName": ${LIMITS.groupName}, "groupMembers": ${LIMITS.groupMembers}, … },
+    "gifs": { "provider": "klipy", "app_key": "…", "content_filter": "medium" } | null }
+  "gifs" is null when GIFs are off on this instance; otherwise what you need to search KLIPY
+  yourself (see GIFs).
 
 ### Signing in
 
@@ -393,11 +403,12 @@ GET /timeline/pinned                                           public
 POST /posts                                                    signed in, not muted
   { "content": "text (max ${LIMITS.postContent})",
     "uploads": ["id from POST /uploads", …]   (optional, at most ${LIMITS.postImages}),
+    "gif": <Gif> | null,                        (optional, instead of uploads, see GIFs)
     "reply_to": 120 | null,                     (a reply)
     "quote_of": 118 | null,                     (a quote regiorg; can't also reply)
     "poll": { "options": ["a", "b"] (${LIMITS.pollOptionsMin}-${LIMITS.pollOptionsMax}, distinct, max ${LIMITS.pollOption} chars),
               "duration_minutes": ${LIMITS.pollMinutesMin}-${LIMITS.pollMinutesMax} (default ${LIMITS.pollMinutesDefault}) } | null }
-  Content may be empty when there are images; a poll needs text. Line breaks (\\n; \\r\\n is
+  Content may be empty when there are images or a GIF; a poll needs text. Line breaks (\\n; \\r\\n is
   turned into \\n) are kept and shown; the ends are trimmed and more than one blank line in a
   row becomes one. 201: <Post>.
   410 when an upload expired: upload it again. 30 posts a minute.
@@ -405,7 +416,7 @@ GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
   Edits the text (images and poll stay), with the same line break rules as POST /posts.
   Sets "edited_at", re-reads hashtags. 200: <Post>.
-  400 when the text would be empty on a post without images, or on a poll (its question).
+  400 when the text would be empty on a post without images or GIF, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204.
 GET /posts/:id/replies          replies, ratioing ones first then oldest first; limit up to 200 (default 50)
@@ -488,13 +499,15 @@ GET /conversations/:username/messages signed in
   ?cursor=<next_cursor>; next_cursor is null when there is nothing older. Nothing is
   marked read by reading.
 POST /conversations/:username/messages   signed in, not muted
-  { "content" (max ${LIMITS.messageContent}), "uploads": [ids] (max ${LIMITS.messageImages}), "reply_to": message id | null }
+  { "content" (max ${LIMITS.messageContent}), "uploads": [ids] (max ${LIMITS.messageImages}), "gif": <Gif> | null,
+    "reply_to": message id | null }
+  Content may be empty when there are images or a GIF; a GIF can't come with images (400).
   201: <Message>. 403 when either side blocked the other. 70 messages a minute in all
   (direct and group), 5 a minute with images.
 PATCH /conversations/:username/messages/:id   your own message, not muted
   { "content" (max ${LIMITS.messageContent}) } → <Message> with the new text and "edited_at" set.
-  Only the text changes (images and reply_to stay); "" is accepted only when the message has
-  images. Allowed for 60 minutes after sending: later → 403. 404 when it isn't yours or isn't in
+  Only the text changes (images, gif and reply_to stay); "" is accepted only when the message
+  has images or a GIF. Allowed for 60 minutes after sending: later → 403. 404 when it isn't yours or isn't in
   the conversation with :username; 403 when either side blocked the other. Sending the same
   text changes nothing. 30 edits a minute (direct and group). Both sides get message_edited.
 DELETE /conversations/:username/messages/:id   your own message → 204 (for both sides); 404 when it
@@ -569,6 +582,47 @@ POST /uploads                         signed in, not muted
   "uploads" when posting or messaging. 201: { "id": "uuid" }. 30 a minute.
   (Browsers on the website send multipart with an "image" field instead.)
 DELETE /uploads/:id                   an upload you no longer need → 204
+
+### GIFs
+
+GIFs come from KLIPY (https://docs.klipy.com). KLIPY's terms require searches and GIF loads to
+come from the user's own device, so this server has no search endpoint and never downloads
+GIFs: your client searches KLIPY directly and sends the chosen GIF's URLs in "gif" when
+posting or messaging.
+
+1. GET /instance. When "gifs" is null, GIFs are off: hide your GIF button (a "gif" is then
+   refused with 403). Otherwise use its "app_key" and "content_filter".
+2. Search from the user's device (not from a server of yours):
+     GET https://api.klipy.com/api/v1/<app_key>/gifs/search?q=cats&page=1&per_page=24
+         &content_filter=<content_filter>&format_filter=webp,jpg,mp4
+   or, with no query, …/gifs/trending?page=1&per_page=24&… (the same parameters).
+   Answer: { "result": true, "data": { "data": [Item, …], "current_page", "per_page",
+   "has_next" } }. Item: { "id", "slug", "title", "type": "gif", "file": { "hd" | "md" |
+   "sm" | "xs": { "mp4" | "webp" | "jpg": { "url", "width", "height", "size" } } } }.
+   KLIPY's rules for the picker: the search field's placeholder must be "Search KLIPY", and
+   results are shown in the order received, in a section of their own. Small previews:
+   file.sm.webp.
+3. Attach the chosen item as:
+     "gif": { "provider": "klipy", "slug": item.slug, "title": item.title,
+              "video": item.file.md.mp4.url, "poster": item.file.md.jpg.url,
+              "width": item.file.md.mp4.width, "height": item.file.md.mp4.height }
+   Copy the URLs exactly as KLIPY gave them (don't rewrite their query strings).
+4. Optionally tell KLIPY it was sent (it ranks results by it), from the device:
+     POST https://api.klipy.com/api/v1/<app_key>/gifs/share/<slug>   { "q": "the search" }
+
+The server checks "gif" and refuses it with 400 unless: it is an object; "slug" is 1-100 of
+A-Z a-z 0-9 _ -; "video" and "poster" are https URLs (at most 500 characters) on
+static.klipy.com, static1.klipy.com or static2.klipy.com; "width" and "height" are whole
+numbers from 1 to 4096; "title", if given, is a string (cut to 200). "provider" may be
+left out. A post or message has either a GIF or images: both → 400 "A post can have a GIF or
+images, not both" / "A message can have a GIF or images, not both". Bots may attach GIFs
+(JSON). Multipart bodies (browsers) send "gif" as a JSON string field. A GIF can't be added,
+changed or removed by an edit. No extra rate limit: GIF posts and messages count like
+text ones.
+
+Showing GIFs: play "video" muted and looped (\`<video autoplay muted loop playsinline
+poster=…>\`), sized width × height. KLIPY may remove a GIF: then its URLs stop working, so
+show a placeholder when the video fails to load.
 
 ### Moderation (staff)
 

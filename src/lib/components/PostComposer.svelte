@@ -1,11 +1,14 @@
 <script lang="ts">
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import ChartNoAxesColumn from '@lucide/svelte/icons/chart-no-axes-column';
+	import ImagePlay from '@lucide/svelte/icons/image-play';
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import X from '@lucide/svelte/icons/x';
 	import { errorOf } from '#lib/api.js';
 	import { onMount, untrack } from 'svelte';
-	import type { Post, QuotedPost } from '#lib/types.js';
+	import type { Gif, Post, QuotedPost } from '#lib/types.js';
+	import { shareGif } from '#lib/klipy.js';
+	import GifPicker from './GifPicker.svelte';
 	import MentionInput from './MentionInput.svelte';
 	import QuoteCard from './QuoteCard.svelte';
 	import Button from './Button.svelte';
@@ -57,6 +60,8 @@
 	}: Props = $props();
 
 	const placeholder = $derived(placeholderProp ?? page.data.motd ?? '');
+	// KLIPY's settings, null when GIFs are off on this instance
+	const gifConfig = $derived(page.data.gifs ?? null);
 
 	const MAX_IMAGES = 5;
 	const MAX_BYTES = 10 * 1024 * 1024;
@@ -77,11 +82,18 @@
 	let pollOptions: string[] | null = $state(null);
 	let pollMinutes = $state(24 * 60);
 	let attachments: Attachment[] = $state([]);
+	// a GIF takes the place of images: a post has one or the other
+	let gif: Gif | null = $state(null);
+	/** the search that found `gif`, for KLIPY's share count */
+	let gifQuery = '';
+	let pickingGif = $state(false);
 	let error: string | null = $state(null);
 	type Draft = {
 		key: number;
 		content: string;
 		attachments: Attachment[];
+		gif: Gif | null;
+		gifQuery: string;
 		pollOptions: string[] | null;
 		pollMinutes: number;
 	};
@@ -108,7 +120,7 @@
 	const draftKey = () =>
 		replyTo != null ? `reply:${replyTo}` : quoteOf ? `quote:${quoteOf.id}` : 'post';
 
-	const isEmpty = () => !content.trim() && attachments.length === 0 && !pollOptions;
+	const isEmpty = () => !content.trim() && attachments.length === 0 && !gif && !pollOptions;
 
 	// what's written is saved as it's typed, so leaving the composer (a tap on the bottom bar right
 	// under the reply bar, closing the full screen composer) doesn't lose it
@@ -127,7 +139,8 @@
 		content,
 		pollOptions: pollOptions && [...pollOptions],
 		pollMinutes,
-		files: attachments.map((a) => a.file)
+		files: attachments.map((a) => a.file),
+		gif: gif && { ...gif }
 	});
 
 	/** Saves the draft now (or drops it once emptied). */
@@ -152,13 +165,14 @@
 		content = draft.content;
 		pollOptions = draft.pollOptions;
 		pollMinutes = draft.pollMinutes;
+		gif = draft.gif ?? null;
 		// uploaded again: uploads are temporary, and may belong to another profile
 		addFiles(draft.files);
 	}
 
 	$effect(() => {
 		// everything a draft holds
-		void [content, pollMinutes, attachments.length, pollOptions && [...pollOptions]];
+		void [content, pollMinutes, attachments.length, gif, pollOptions && [...pollOptions]];
 		if (!loaded) return;
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(persist, SAVE_DELAY_MS);
@@ -172,6 +186,8 @@
 			persist();
 			content = '';
 			pollOptions = null;
+			gif = null;
+			pickingGif = false;
 			clearAttachments();
 			restore(key);
 		});
@@ -208,6 +224,10 @@
 	function addFiles(files: Iterable<File>) {
 		const added: Attachment[] = [];
 		for (const file of files) {
+			if (gif) {
+				showError('A post can have a GIF or images, not both.');
+				break;
+			}
 			if (!isImage(file)) {
 				showError(`${file.name || 'That file'} is not an image.`);
 				continue;
@@ -350,8 +370,14 @@
 		};
 	});
 
+	function pickGif(picked: Gif, query: string) {
+		gif = picked;
+		gifQuery = query;
+		pickingGif = false;
+	}
+
 	async function submit() {
-		if (!content.trim() && attachments.length === 0) return;
+		if (!content.trim() && attachments.length === 0 && !gif) return;
 		if (pollOptions && !content.trim()) return showError('A poll needs a question.');
 		if (pollOptions?.some((o) => !o.trim())) return showError('Fill in every poll option.');
 		// the saved draft is exactly what's sent, and stays until the post lands
@@ -363,12 +389,16 @@
 			key: pendingKey++,
 			content,
 			attachments,
+			gif,
+			gifQuery,
 			pollOptions: pollOptions && [...pollOptions],
 			pollMinutes
 		};
 		// cleared right away: the post shows as pending below while it is on its way
 		content = '';
 		attachments = [];
+		gif = null;
+		pickingGif = false;
 		pollOptions = null;
 		error = null;
 		pending = [draft, ...pending];
@@ -383,6 +413,7 @@
 					reply_to: replyTo,
 					quote_of: quoteOf?.id ?? null,
 					uploads,
+					gif: draft.gif,
 					poll: draft.pollOptions
 						? { options: draft.pollOptions, duration_minutes: draft.pollMinutes }
 						: null
@@ -397,6 +428,7 @@
 				const post: Post = await res.json();
 				settle();
 				for (const a of draft.attachments) a.release();
+				if (draft.gif && gifConfig) shareGif(gifConfig, draft.gif.slug, draft.gifQuery);
 				// unless something new was written meanwhile
 				if (draftOwner) clearDraft(draftOwner.id, key, submittedAt);
 				oncreated?.(post);
@@ -424,6 +456,8 @@
 		if (isEmpty()) {
 			content = draft.content;
 			attachments = kept;
+			gif = draft.gif;
+			gifQuery = draft.gifQuery;
 			pollOptions = draft.pollOptions;
 			pollMinutes = draft.pollMinutes;
 		} else for (const a of kept) a.discard();
@@ -464,7 +498,7 @@
 		<MentionInput
 			bind:value={content}
 			bind:element={textarea}
-			required={attachments.length === 0 || !!pollOptions}
+			required={(attachments.length === 0 && !gif) || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
 			placement={docked ? 'above' : 'below'}
 			maxHeight={maxHeight ??
@@ -490,12 +524,25 @@
 			type="button"
 			title="Attach images"
 			aria-label="Attach images"
-			disabled={attachments.length >= MAX_IMAGES}
+			disabled={attachments.length >= MAX_IMAGES || !!gif}
 			onmousedown={keepFocus}
 			onclick={() => fileInput?.click()}
 			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
 			><ImageIcon size={20} strokeWidth={1.8} /></button
 		>
+		{#if gifConfig}
+			<button
+				type="button"
+				title={pickingGif ? 'Close GIFs' : 'Add a GIF'}
+				aria-label={pickingGif ? 'Close GIFs' : 'Add a GIF'}
+				aria-pressed={pickingGif}
+				disabled={attachments.length > 0}
+				onmousedown={keepFocus}
+				onclick={() => (pickingGif = !pickingGif)}
+				class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
+				><ImagePlay size={20} strokeWidth={1.8} class={pickingGif ? 'text-accent' : ''} /></button
+			>
+		{/if}
 		<button
 			type="button"
 			title={pollOptions ? 'Remove poll' : 'Add a poll'}
@@ -525,6 +572,37 @@
 			title="Post"><SendHorizontal size={18} strokeWidth={1.8} /></Button
 		>
 	</div>
+	{#if pickingGif && gifConfig}
+		<GifPicker
+			config={gifConfig}
+			onpick={pickGif}
+			onclose={() => (pickingGif = false)}
+			height={docked ? 'h-[min(18rem,35vh)]' : 'h-72'}
+		/>
+	{/if}
+	{#if gif}
+		<div class="relative size-20 overflow-hidden rounded-[5px] border border-line">
+			<img
+				class="size-full object-cover"
+				src={gif.poster}
+				alt={gif.title}
+				referrerpolicy="no-referrer"
+			/>
+			<span
+				class="absolute bottom-0.5 left-0.5 rounded-full bg-black/70 px-[5px] text-[0.75em] font-bold"
+				>GIF</span
+			>
+			<button
+				type="button"
+				title="Remove"
+				aria-label="Remove GIF"
+				onmousedown={keepFocus}
+				onclick={() => (gif = null)}
+				class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 outline-none hover:bg-danger"
+				><X size={12} /></button
+			>
+		</div>
+	{/if}
 	{#if attachments.length > 0}
 		<div class="flex flex-wrap gap-2.5">
 			{#each attachments as attachment (attachment.url)}
@@ -645,6 +723,14 @@
 						<p class="rounded-[5px] border border-line p-[5px] text-[0.9em]">{option}</p>
 					{/each}
 				</div>
+			{/if}
+			{#if draft.gif}
+				<img
+					class="size-20 rounded-[5px] border border-line object-cover"
+					src={draft.gif.poster}
+					alt={draft.gif.title}
+					referrerpolicy="no-referrer"
+				/>
 			{/if}
 			{#if draft.attachments.length > 0}
 				<div class="flex flex-wrap gap-2.5">

@@ -84,7 +84,9 @@
 				return;
 			}
 			await tick();
-			scroll({ top: listElement.scrollHeight, behavior: 'smooth' });
+			// to the end of the page, not the list's height: the list starts below the open post, and
+			// the space kept under it (the reply bar, the bottom bar) belongs at the end too
+			scroll({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
 		});
 	});
 

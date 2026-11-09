@@ -1,49 +1,67 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { PUBLIC_REPLY_PLACEHOLDER } from '$app/env/public';
 	import type { Post } from '#lib/types.js';
+	import { bottomBar, keyboard, writingHandlers } from '#lib/keyboard.svelte.js';
+	import { onMount, untrack } from 'svelte';
 	import PostComposer from './PostComposer.svelte';
 
 	// touch devices, on an open post: the reply field fixed right above the bottom bar
 	let { replyTo, oncreated }: { replyTo: number; oncreated?: (post: Post) => void } = $props();
 
+	// border included: all of it covers the page
 	let height = $state(0);
-	// how far the on-screen keyboard reaches up, 0 while it is closed
-	let keyboard = $state(0);
+	// leaving the page doesn't always blur the field first
+	$effect(() => () => keyboard.setWriting(false));
 
+	// the bar grows (its buttons, more lines, an error) and the bottom bar steps aside and comes
+	// back: the page moves along, so what was right above the bars stays there instead of ending
+	// up behind them. not while it sits on the iOS keyboard, over the page
+	let scrollY = 0;
 	onMount(() => {
-		// iOS only shrinks the visual viewport for the keyboard (Android resizes the page, see
-		// app.html), so a bar fixed to the bottom would stay under it: lift it onto the keyboard
-		const vv = window.visualViewport;
-		if (!vv) return;
-		const fit = () => {
-			// pinch zoom also shrinks it
-			if (vv.scale > 1.01) return;
-			const covered = window.innerHeight - vv.height - vv.offsetTop;
-			keyboard = covered > 120 ? covered : 0;
-		};
-		fit();
-		vv.addEventListener('resize', fit);
-		vv.addEventListener('scroll', fit);
-		return () => {
-			vv.removeEventListener('resize', fit);
-			vv.removeEventListener('scroll', fit);
-		};
+		const onScroll = () => (scrollY = window.scrollY);
+		onScroll();
+		window.addEventListener('scroll', onScroll, { passive: true });
+		return () => window.removeEventListener('scroll', onScroll);
+	});
+	const covered = $derived(keyboard.inset || !height ? null : height + bottomBar.height);
+	let previous: number | null = null;
+	$effect(() => {
+		const now = covered;
+		untrack(() => {
+			// from where the page was before: the browser may already have pulled it up, when the
+			// page got shorter at its end
+			if (now !== null && previous !== null && now !== previous) {
+				window.scrollTo(0, scrollY + now - previous);
+				// the scroll event comes later, and the other bar may change before it
+				scrollY = window.scrollY;
+			}
+			previous = now;
+		});
 	});
 </script>
 
-<!-- keeps the last replies from ending up behind the bar -->
+<!-- keeps the last replies from ending up behind the bar. the layout reserves the bottom bar's
+	own height (--bottom-bar, BottomNav) -->
 <!-- prettier-ignore -->
 <div style:height="{height}px" aria-hidden="true"></div>
-<!-- above the bottom bar (56px of links and its 4px top padding): the bar's top border moves up
-	here, so the field and the links read as one block. the field is as far from the sides as from
-	the links -->
+<!-- right above the bottom bar: the bar's top border moves up here, so the field and the links
+	read as one block. the field is as far from the sides as from the links. while writing the bar
+	steps aside and the field takes its place (at the bottom edge, or on iOS on the keyboard,
+	which only shrinks the visual viewport: a bar fixed to the bottom would stay under it). it
+	places itself, so the layout doesn't scroll it into view (data-keyboard-fit) -->
 <div
-	bind:clientHeight={height}
-	class="fixed right-0 left-0 z-998 border-t border-line bg-background p-2.5 {keyboard
+	bind:offsetHeight={height}
+	data-keyboard-fit
+	{...writingHandlers}
+	class="fixed right-0 left-0 z-998 border-t border-line bg-background p-2.5 {keyboard.inset ||
+	!keyboard.hideBar
 		? ''
-		: 'bottom-[calc(60px+env(safe-area-inset-bottom))]'}"
-	style:bottom={keyboard ? `${keyboard}px` : undefined}
+		: 'pb-[calc(10px+env(safe-area-inset-bottom))]'}"
+	style:bottom={keyboard.inset
+		? `${keyboard.inset}px`
+		: keyboard.hideBar
+		? '0px'
+		: 'var(--bottom-bar)'}
 >
 	<PostComposer docked {replyTo} placeholder={PUBLIC_REPLY_PLACEHOLDER} {oncreated} />
 </div>

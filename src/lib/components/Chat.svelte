@@ -17,6 +17,7 @@
 	import QuoteCard from './QuoteCard.svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import BottomNav from './BottomNav.svelte';
+	import { keyboard as screenKeyboard, writingHandlers } from '#lib/keyboard.svelte.js';
 	import { isMobile, messagesCount, user } from '#lib/store.js';
 	import type {
 		ChatMessage,
@@ -118,6 +119,8 @@
 	let viewportHeight = $state<number | null>(null);
 	// the on-screen keyboard is open: the bottom bar steps aside
 	let keyboard = $state(false);
+	// leaving the chat doesn't always blur the input first (it hides the bottom bar while focused)
+	$effect(() => () => screenKeyboard.setWriting(false));
 	// the header's three dots menu: mute, block or the group's info
 	let optionsOpen = $state(false);
 	let options: HTMLDivElement | undefined = $state();
@@ -1864,6 +1867,7 @@
 	{:else}
 		<form
 			class="flex items-end gap-2.5"
+			{...writingHandlers}
 			onsubmit={(e) => {
 				e.preventDefault();
 				send();
@@ -1916,7 +1920,9 @@
 			>
 		</form>
 	{/if}
-	{#if !keyboard}
+	<!-- out of the way while a message is written, also where the page shrinks for the keyboard
+		instead (Android) -->
+	{#if !keyboard && !screenKeyboard.hideBar}
 		<BottomNav joined />
 	{/if}
 </div>

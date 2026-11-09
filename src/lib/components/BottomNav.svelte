@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import { countLabel, homeItem, isActive, navItems, navLabel, type NavItem } from '#lib/nav.js';
 	import { messagesCount, notisCount, user } from '#lib/store.js';
+	import { bottomBar, keyboard } from '#lib/keyboard.svelte.js';
 	import AccountSwitcher from './AccountSwitcher.svelte';
 
 	// in a chat the bar continues the message input above it: in the flow, full width, no border
@@ -20,6 +21,22 @@
 	const before = $derived($user ? [homeItem, messages] : [homeItem]);
 	const after = $derived($user ? [notifications] : []);
 
+	// steps aside while a reply is written (ReplyDock): the reply field takes its place
+	const hidden = $derived(!joined && keyboard.hideBar);
+	// what the fixed bar covers (safe area and border included), reserved by the layout and the
+	// reply bar sits on: 0 while it's hidden
+	let height = $state(0);
+	$effect(() => {
+		if (joined) return;
+		const root = document.documentElement.style;
+		root.setProperty('--bottom-bar', `${height}px`);
+		bottomBar.height = height;
+		return () => {
+			root.removeProperty('--bottom-bar');
+			bottomBar.height = 0;
+		};
+	});
+
 	const itemClass = (active: boolean) =>
 		`flex h-14 flex-1 items-center justify-center hover:no-underline [-webkit-tap-highlight-color:transparent] ${
 			active ? 'text-accent' : 'text-foreground'
@@ -29,8 +46,9 @@
 <!-- touch devices: home, chat, new post, notifications and the profile in a bar along the bottom
 	edge. positioned in a chat too, so the profile menu opens above the bar -->
 <nav
+	bind:offsetHeight={height}
 	aria-label="Main"
-	class="flex bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
+	class="{hidden ? 'hidden' : 'flex'} bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? 'relative z-10 -mx-5 -mb-5 shrink-0'
 		: `fixed right-0 bottom-0 left-0 z-998 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >

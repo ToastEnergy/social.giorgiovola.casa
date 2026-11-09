@@ -16,11 +16,13 @@
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
+	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
 	import { getAvatar } from '#lib/utils.js';
-	import { connectRealtime, disconnectRealtime, onRealtime } from '#lib/realtime.js';
+	import { connectRealtime, disconnectRealtime, onRealtime, onResume } from '#lib/realtime.js';
+	import { invalidateAll } from '$app/navigation';
 	import { syncPush } from '#lib/push.js';
 	import { syncTimeCookies } from '#lib/time.svelte.js';
 	import { watchKeyboard } from '#lib/keyboard.svelte.js';
@@ -56,6 +58,14 @@
 	// adapter-node no longer rewrites the request URL to the public origin (SvelteKit 3 dropped
 	// ORIGIN), so build absolute share URLs from PUBLIC_URL like the canonical link does
 	const publicUrl = () => `${PUBLIC_URL || page.url.origin}${page.url.pathname}${page.url.search}`;
+
+	const REFRESH_ON_RESUME = new Set([
+		'/',
+		'/@[username]',
+		'/@[username]/[post]',
+		'/hashtag/[tag]',
+		'/notifications'
+	]);
 
 	// the stream is tied to the active profile (unread count), so reconnect when it changes
 	let mounted = false;
@@ -100,9 +110,16 @@
 			'messages_unread',
 			({ count, reactions }) => ($messagesCount = count + (reactions ?? 0))
 		);
+		// back from a dropped stream (a locked phone, a lost network): reload the feeds, which
+		// can't tell what they missed. not every page: a settings form would lose what's being
+		// typed. chats and the conversation list catch up by themselves on the `open` event
+		const offResume = onResume(() => {
+			if (REFRESH_ON_RESUME.has(page.route.id ?? '')) return invalidateAll();
+		});
 		return () => {
 			offNotifications();
 			offMessages();
+			offResume();
 			disconnectRealtime();
 		};
 	});
@@ -161,6 +178,7 @@
 	<ProfileCard />
 	<ShareDialog />
 	<ComposeSheet />
+	<ConnectionStatus />
 	<PhotoEditor />
 </div>
 <svelte:head>

@@ -65,6 +65,30 @@
 		});
 	});
 
+	// a reload of the page's data (back from a dropped connection) brings a fresh first page, with
+	// its own cursor. a realtime post prepended by the parent keeps the cursor and changes nothing
+	let seenPosts = untrack(() => posts);
+	let seenNext = untrack(() => next);
+	$effect(() => {
+		const fresh = posts;
+		const freshNext = next;
+		untrack(() => {
+			const before = seenPosts;
+			const reloaded = freshNext !== seenNext;
+			seenPosts = fresh;
+			seenNext = freshNext;
+			if (!reloaded) return;
+			// nothing loaded past the first page: continue from the fresh one's end. otherwise keep
+			// the older pages only if the fresh page reaches the old first one: more than a page
+			// arrived in the meantime would leave a hole between the two
+			const keys = new Set(before.map(keyOf));
+			if (older.length > 0 && fresh.some((p) => keys.has(keyOf(p)))) return;
+			older = [];
+			cursor = freshNext;
+			done = freshNext === null;
+		});
+	});
+
 	$effect(() =>
 		onRealtime('post_deleted', ({ id }) => {
 			if (list.some((p) => p.id === id)) removed.push(id);

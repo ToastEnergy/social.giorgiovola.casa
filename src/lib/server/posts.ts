@@ -376,24 +376,25 @@ export async function createPost(
 	const [post] = await getPosts({ postId: created.id, loggedUser: user });
 
 	void publishPost(post.id);
-	if (!reply_to && DISCORD_WEBHOOK_URL) {
-		// a broken webhook shouldn't make posting fail
-		try {
-			await fetch(DISCORD_WEBHOOK_URL + '?wait=false', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content: `${PUBLIC_URL}/@${post.user.username}/${post.id}`,
-					username: post.user.name,
-					avatar_url: getAvatar(post.user, 512, true)
-				})
-			});
-		} catch (e) {
-			console.error('Discord webhook failed', e);
-		}
-	}
+	// a broken or slow webhook shouldn't make posting fail or wait: it isn't awaited, and gives up
+	// after a few seconds
+	if (!reply_to && DISCORD_WEBHOOK_URL)
+		void fetch(DISCORD_WEBHOOK_URL + '?wait=false', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				content: `${PUBLIC_URL}/@${post.user.username}/${post.id}`,
+				username: post.user.name,
+				avatar_url: getAvatar(post.user, 512, true),
+				// the link only: nobody can be pinged through a post
+				allowed_mentions: { parse: [] }
+			}),
+			signal: AbortSignal.timeout(5000)
+		})
+			.then((res) => res.body?.cancel())
+			.catch((e) => console.error('Discord webhook failed', e));
 	return post;
 }
 

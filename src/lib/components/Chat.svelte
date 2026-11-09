@@ -1076,6 +1076,13 @@
 		window.addEventListener('drop', onDrop);
 		listenTyping();
 		openAtUnread();
+		// with a mouse, start typing right away (the page is keyed, so this runs on every switch
+		// too). Not on touch, where it would pop the keyboard up, and not if focus is elsewhere.
+		// sveltekit blurs the clicked link before the update and skips its own focus reset when
+		// something is focused, so this sticks
+		const active = document.activeElement;
+		if (matchMedia('(pointer: fine)').matches && (!active || active === document.body))
+			textarea?.focus({ preventScroll: true });
 
 		// fit the chat to what's visible above the keyboard: iOS (and Android without
 		// interactive-widget) only shrink the visual viewport, leaving the input under the keyboard

@@ -1,3 +1,4 @@
+import { connection } from './connection.svelte.js';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from './types';
 
 /** Events pushed by /api/stream. */
@@ -38,7 +39,24 @@ export type RealtimeEvents = {
 type Listener<K extends keyof RealtimeEvents> = (data: RealtimeEvents[K]) => void;
 
 const listeners = new Map<string, Set<Listener<never>>>();
+const resumeListeners = new Set<() => unknown>();
+
+// the browser retries a dropped stream by itself, but gives up for good when the server answers
+// with an error (a proxy's 502 while the app restarts): then it's opened again from here, backing
+// off up to RETRY_MAX_MS
+const RETRY_MIN_MS = 1000;
+const RETRY_MAX_MS = 30_000;
+// hidden this long, the stream is opened again on return: a locked phone or a backgrounded app
+// may have lost the connection without the page ever hearing about it
+const STALE_AFTER_MS = 60_000;
+
 let source: EventSource | null = null;
+let active = false;
+/** the stream went down (or was never up) since the page's data was loaded */
+let missed = false;
+let attempts = 0;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let hiddenAt: number | null = null;
 
 /** Subscribes to an event; returns the unsubscribe function. */
 export function onRealtime<K extends keyof RealtimeEvents>(event: K, fn: Listener<K>) {
@@ -48,46 +66,142 @@ export function onRealtime<K extends keyof RealtimeEvents>(event: K, fn: Listene
 	return () => set.delete(fn as Listener<never>);
 }
 
-/** (Re)opens the stream. The server picks the user from the session cookie. */
-export function connectRealtime() {
-	disconnectRealtime();
-	source = new EventSource('/api/v1/stream');
-	source.addEventListener('open', () => {
-		for (const fn of listeners.get('open') ?? []) (fn as () => void)();
+/**
+ * Runs when the stream is back after being down, to reload what the open page shows (it may
+ * return a promise: the status pill says "Updating" until it settles). Returns the unsubscribe
+ * function. Unlike `open`, it doesn't run when the stream first opens.
+ */
+export function onResume(fn: () => unknown) {
+	resumeListeners.add(fn);
+	return () => resumeListeners.delete(fn);
+}
+
+const emit = (event: string, data?: unknown) => {
+	for (const fn of listeners.get(event) ?? []) (fn as (d: unknown) => void)(data);
+};
+
+const events: (keyof RealtimeEvents)[] = [
+	'post',
+	'post_deleted',
+	'counts',
+	'regiorg',
+	'poll',
+	'notifications',
+	'message',
+	'message_deleted',
+	'message_edited',
+	'message_reactions',
+	'messages_unread',
+	'group_message',
+	'group_message_deleted',
+	'group_message_edited',
+	'group_message_reactions',
+	'group_updated',
+	'typing'
+];
+
+function open() {
+	clearTimeout(retryTimer);
+	source?.close();
+	const es = new EventSource('/api/v1/stream');
+	source = es;
+	es.addEventListener('open', () => {
+		if (source !== es) return;
+		attempts = 0;
+		const resumed = missed;
+		missed = false;
+		emit('open');
+		if (resumed) void resume();
+		else connection.state = 'open';
 	});
-	const events: (keyof RealtimeEvents)[] = [
-		'post',
-		'post_deleted',
-		'counts',
-		'regiorg',
-		'poll',
-		'notifications',
-		'message',
-		'message_deleted',
-		'message_edited',
-		'message_reactions',
-		'messages_unread',
-		'group_message',
-		'group_message_deleted',
-		'group_message_edited',
-		'group_message_reactions',
-		'group_updated',
-		'typing'
-	];
+	es.addEventListener('error', () => {
+		if (source !== es) return;
+		lost();
+		// CONNECTING: the browser tries again by itself after the server's `retry`
+		if (es.readyState !== EventSource.CLOSED) return;
+		es.close();
+		source = null;
+		retryTimer = setTimeout(open, Math.min(RETRY_MAX_MS, RETRY_MIN_MS * 2 ** attempts++));
+	});
 	for (const event of events) {
-		source.addEventListener(event, (e) => {
+		es.addEventListener(event, (e) => {
 			let data;
 			try {
 				data = JSON.parse((e as MessageEvent).data);
 			} catch {
 				return;
 			}
-			for (const fn of listeners.get(event) ?? []) (fn as (d: unknown) => void)(data);
+			emit(event, data);
 		});
 	}
 }
 
+function lost() {
+	missed = true;
+	connection.state = navigator.onLine === false ? 'offline' : 'reconnecting';
+}
+
+async function resume() {
+	connection.state = 'refreshing';
+	await Promise.allSettled([...resumeListeners].map(async (fn) => fn()));
+	// it may have dropped again meanwhile
+	if (connection.state === 'refreshing') connection.state = 'open';
+}
+
+/** Opens the stream again now, skipping any wait, and reloads the page's data once it's up. */
+function reopen() {
+	if (!active) return;
+	missed = true;
+	attempts = 0;
+	if (connection.state === 'open' || connection.state === 'refreshing')
+		connection.state = 'reconnecting';
+	open();
+}
+
+function onVisibility() {
+	if (document.visibilityState === 'hidden') {
+		hiddenAt = Date.now();
+		return;
+	}
+	const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+	hiddenAt = null;
+	if (!source || source.readyState !== EventSource.OPEN || away >= STALE_AFTER_MS) reopen();
+}
+
+function onOffline() {
+	if (!active) return;
+	missed = true;
+	connection.state = 'offline';
+}
+
+// back from the back/forward cache: the stream was closed when the page was put away
+function onPageShow(e: PageTransitionEvent) {
+	if (e.persisted) reopen();
+}
+
+/** (Re)opens the stream. The server picks the user from the session cookie. */
+export function connectRealtime() {
+	disconnectRealtime();
+	active = true;
+	missed = false;
+	document.addEventListener('visibilitychange', onVisibility);
+	// Chrome freezes background pages: their connections may be gone when they're resumed
+	document.addEventListener('resume', reopen);
+	window.addEventListener('online', reopen);
+	window.addEventListener('offline', onOffline);
+	window.addEventListener('pageshow', onPageShow);
+	open();
+}
+
 export function disconnectRealtime() {
+	active = false;
+	clearTimeout(retryTimer);
 	source?.close();
 	source = null;
+	connection.state = 'connecting';
+	document.removeEventListener('visibilitychange', onVisibility);
+	document.removeEventListener('resume', reopen);
+	window.removeEventListener('online', reopen);
+	window.removeEventListener('offline', onOffline);
+	window.removeEventListener('pageshow', onPageShow);
 }

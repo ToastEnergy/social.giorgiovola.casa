@@ -1,4 +1,4 @@
-// Downloading a page and reading its Open Graph tags. Shared by the instance (LINK_PREVIEWS=local,
+// Downloading a page and reading its Open Graph tags, and downloading its image. Shared by the instance (LINK_PREVIEWS=local,
 // src/lib/server/linkPreviews.ts) and the Cloudflare Worker (workers/link-preview), so it must
 // stay free of node:*, $app/* and #lib imports: only web APIs that both runtimes have.
 
@@ -66,6 +66,75 @@ export async function fetchMeta(start: string, options: FetchMetaOptions): Promi
 		const html = await readHead(res, type);
 		return parseMeta(html, url);
 	}
+}
+
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Downloads a preview image (following redirects that pass `check`): https on every hop, an
+ * image/* content type and at most `maxBytes`, or null. Only the bytes: decoding and re-encoding
+ * happen on the instance (src/lib/server/images.ts), never in the worker, whose CPU time is tight.
+ */
+export async function fetchImage(
+	start: string,
+	options: FetchMetaOptions & { maxBytes?: number }
+): Promise<{ bytes: Uint8Array<ArrayBuffer>; type: string } | null> {
+	const maxBytes = options.maxBytes ?? MAX_IMAGE_BYTES;
+	const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+	let url = new URL(start);
+	for (let hop = 0; ; hop++) {
+		// an http image would be mixed content, and so would a redirect to one
+		if (url.protocol !== 'https:') return null;
+		await options.check(url);
+		const res = await fetch(url, {
+			redirect: 'manual',
+			signal,
+			headers: { 'user-agent': options.userAgent, accept: 'image/*' }
+		});
+		if (res.status >= 300 && res.status < 400) {
+			await res.body?.cancel();
+			const location = res.headers.get('location');
+			if (!location || hop >= MAX_REDIRECTS) return null;
+			url = new URL(location, url);
+			continue;
+		}
+		const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+		const declared = Number(res.headers.get('content-length') ?? 0);
+		if (!res.ok || !type.startsWith('image/') || declared > maxBytes) {
+			await res.body?.cancel();
+			return null;
+		}
+		const bytes = await readCapped(res, maxBytes);
+		return bytes ? { bytes, type } : null;
+	}
+}
+
+/** The whole body, or null (and the download stopped) once it goes over `max` bytes. */
+export async function readCapped(
+	res: Response,
+	max: number
+): Promise<Uint8Array<ArrayBuffer> | null> {
+	const reader = res.body?.getReader();
+	if (!reader) return null;
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		size += value.byteLength;
+		if (size > max) {
+			await reader.cancel().catch(() => {});
+			return null;
+		}
+		chunks.push(value);
+	}
+	const bytes = new Uint8Array(size);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return bytes;
 }
 
 // byte-per-character decoding, never fails: enough to spot tags and the charset. Not TextDecoder

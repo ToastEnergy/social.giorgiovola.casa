@@ -85,9 +85,9 @@ export async function messageImageAccess(locals: App.Locals, file: string): Prom
 	return row.allowed ? 'allowed' : 'denied';
 }
 
-// served like /uploads; an SVG (from before uploads were re-encoded) opened on its own would
-// otherwise run its scripts on our origin
-const SANDBOX = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+// served like /uploads (and /previews); an SVG (from before uploads were re-encoded) opened on
+// its own would otherwise run its scripts on our origin
+export const SANDBOX = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 // a 404 is never cached, by the browser or Cloudflare: it may only mean "not yours", and the
 // same URL answers 200 to someone in the conversation

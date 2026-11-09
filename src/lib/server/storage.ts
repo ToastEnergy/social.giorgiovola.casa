@@ -10,9 +10,10 @@ import {
 } from '$app/env/private';
 
 /**
- * Where avatars, post images and message images are kept: the local filesystem (the default) or
- * an S3-compatible bucket (Cloudflare R2) when S3_BUCKET is set. Keys are `uploads/<file>`,
- * `avatars/<file>` and `dm/<file>`; callers never build file paths themselves.
+ * Where avatars, post images, message images and link preview images are kept: the local
+ * filesystem (the default) or an S3-compatible bucket (Cloudflare R2) when S3_BUCKET is set. Keys
+ * are `uploads/<file>`, `avatars/<file>`, `dm/<file>` and `previews/<file>`; callers never build
+ * file paths themselves. Every image is re-encoded with sharp (images.ts toWebp) before it's put.
  */
 
 export type StoredObject = {
@@ -28,7 +29,7 @@ type Driver = {
 };
 
 // one level below a known prefix, file name characters only: keys can't escape their directory
-const KEY_RE = /^(uploads|avatars|dm)\/([A-Za-z0-9_-][A-Za-z0-9._-]*)$/;
+const KEY_RE = /^(uploads|avatars|dm|previews)\/([A-Za-z0-9_-][A-Za-z0-9._-]*)$/;
 
 function checkKey(key: string) {
 	const match = KEY_RE.exec(key);
@@ -41,7 +42,9 @@ function checkKey(key: string) {
 const FS_DIRS: Record<string, string> = {
 	uploads: 'static/uploads',
 	avatars: 'static/avatars',
-	dm: 'data/dm'
+	dm: 'data/dm',
+	// link preview images (src/lib/server/previewImages.ts), public but served by their own route
+	previews: 'data/previews'
 };
 
 const fsPath = (key: string) => {

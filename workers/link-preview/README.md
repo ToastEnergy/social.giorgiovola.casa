@@ -1,6 +1,6 @@
 # link-preview worker
 
-A Cloudflare Worker that downloads the pages linked in posts and returns their Open Graph tags, for instances with `LINK_PREVIEWS=remote`. Linked sites then see a Cloudflare address instead of the instance's. Setup is in the main README, under "link previews".
+A Cloudflare Worker that downloads the pages linked in posts and returns their Open Graph tags (and downloads their preview images), for instances with `LINK_PREVIEWS=remote`. Linked sites then see a Cloudflare address instead of the instance's. Setup is in the main README, under "link previews".
 
 The fetching and parsing code is `src/lib/linkPreviewMeta.ts` in the app, shared with `LINK_PREVIEWS=local`, so both modes give the same previews. That file must only use web APIs (no `node:*`, `$app/*` or `#lib` imports), since it's bundled into the worker too.
 
@@ -17,7 +17,18 @@ Authorization: Bearer <LINK_PREVIEWS_SECRET>
 - `401`: wrong or missing secret, or no `LINK_PREVIEWS_SECRET` set on the worker.
 - `405`: not a `GET`.
 
-Nothing is cached here; the app keeps the results in its `link_previews` table.
+```
+GET /image?url=<https image URL>
+Authorization: Bearer <LINK_PREVIEWS_SECRET>
+```
+
+Downloads a preview image (the `image` of a `meta`) and returns its bytes as the site sent them, so the site sees a Cloudflare address instead of the instance's. The worker never decodes or resizes anything (Workers have tight CPU limits): the app checks the bytes and re-encodes them to WebP itself.
+
+- `200` with an `image/*` body: the image. Every hop (redirects included) must be https on the default port, and the image at most 5 MB, within 5 seconds.
+- `404 { "error" }`: no usable image (not found, not `image/*`, too big, too slow, a redirect to http).
+- `400`, `401`, `405`: as above (`400` also for a non-https `url`).
+
+Nothing is cached here; the app keeps the results in its `link_previews` table and its `previews/` storage.
 
 ## Commands
 

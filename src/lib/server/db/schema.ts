@@ -565,12 +565,21 @@ export const bots = pgTable('bots', {
 // Open Graph metadata of external links posted in posts, fetched server side and shared by every
 // post linking the same URL (see src/lib/server/linkPreviews.ts). A row without a title is a
 // failed fetch, kept so the URL isn't retried on every read.
-export const link_previews = pgTable('link_previews', {
-	url: text('url').primaryKey(),
-	title: text('title'),
-	description: text('description'),
-	// an absolute https URL, or null
-	image: text('image'),
-	site_name: text('site_name'),
-	fetched_at: timestamptz('fetched_at').notNull().defaultNow()
-});
+export const link_previews = pgTable(
+	'link_previews',
+	{
+		url: text('url').primaryKey(),
+		title: text('title'),
+		description: text('description'),
+		// our copy of the page's image, /previews/<sha256 of its URL>.webp (previewImages.ts), or
+		// null. Rows written before images were stored hold the site's https URL, never shown
+		image: text('image'),
+		site_name: text('site_name'),
+		fetched_at: timestamptz('fetched_at').notNull().defaultNow()
+	},
+	// is a preview image still used before it's deleted, and the sweep of old rows
+	(t) => [
+		index('link_previews_image').on(t.image),
+		index('link_previews_fetched_at').on(t.fetched_at)
+	]
+);

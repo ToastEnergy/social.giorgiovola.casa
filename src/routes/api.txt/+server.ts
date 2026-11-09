@@ -74,7 +74,7 @@ Post:
       "url": "https://…",                // null (also while it is still being fetched: it
       "title": "…",                      // shows up on later reads)
       "description": "…" | null,
-      "image": "https://…" | null,       // the page's og:image
+      "image": "https://…" | null,       // the page's og:image, our copy on this instance
       "site_name": "…"                   // og:site_name, or the host name
     } | null,
     "replies_count": 2,

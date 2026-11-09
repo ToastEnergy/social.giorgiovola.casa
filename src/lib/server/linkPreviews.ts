@@ -1,11 +1,14 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray, lt } from 'drizzle-orm';
 import {
 	FETCH_TIMEOUT_MS,
+	MAX_IMAGE_BYTES,
 	MAX_URL,
 	checkUrlShape,
+	fetchImage,
 	fetchMeta,
+	readCapped,
 	sanitizeMeta,
 	type Meta
 } from '#lib/linkPreviewMeta.js';
@@ -14,13 +17,21 @@ import { isHttpLink, unwrapMarkdownImages } from '#lib/utils.js';
 import { LINK_PREVIEWS, LINK_PREVIEWS_SECRET, LINK_PREVIEWS_URL } from '$app/env/private';
 import { PUBLIC_URL } from '$app/env/public';
 import { db, link_previews } from './db/index.js';
+import {
+	dropPreviewImage,
+	isPreviewPath,
+	previewPath,
+	storePreviewImage,
+	withPreviewLock
+} from './previewImages.js';
 
 // Previews of external links in posts: the Open Graph tags of the page, fetched server side (so
-// readers never contact the site, except for the preview image) and cached in link_previews.
+// readers never contact the site) and cached in link_previews. The page's image is downloaded the
+// same way and stored by us, re-encoded (previewImages.ts).
 // Reads never wait on the network: a URL without a fresh row is fetched in the background and
 // shows up on the next load. Writing a post waits a little for its own link (see warmLinkPreview).
 //
-// LINK_PREVIEWS picks who downloads the pages: `local` (this server, which shows its IP address
+// LINK_PREVIEWS picks who downloads the pages and images: `local` (this server, which shows its IP address
 // to every linked site), `remote` (the Cloudflare Worker in workers/link-preview, at
 // LINK_PREVIEWS_URL, for instances whose address is hidden behind a proxy) or `off`.
 
@@ -31,6 +42,9 @@ const MAX_CONCURRENT = 4;
 // how long to stop calling the worker after it failed, so an outage or a wrong secret doesn't
 // mean one failing request per link on every page load
 const WORKER_BACKOFF_MS = 60 * 1000;
+// rows nobody looked at for this long are deleted, with their image (a later view fetches again)
+const FORGET_MS = 30 * 24 * 60 * 60 * 1000;
+const SWEEP_MS = 6 * 60 * 60 * 1000;
 
 /** Refuses an incomplete remote setup at startup instead of failing on every link later. */
 export function checkLinkPreviewConfig() {
@@ -118,7 +132,9 @@ function toPreview(row: Row): LinkPreview | null {
 		url: row.url,
 		title: row.title,
 		description: row.description,
-		image: row.image,
+		// rows from before images were stored hold the site's URL: never sent, so no reader's
+		// browser contacts the site. Absolute, like the https URL clients got before
+		image: isPreviewPath(row.image) ? absolute(row.image) : null,
 		site_name: row.site_name ?? new URL(row.url).hostname.replace(/^www\./, '')
 	};
 }
@@ -139,17 +155,36 @@ function refresh(url: string): Promise<void> {
 		running++;
 		try {
 			const meta = LINK_PREVIEWS === 'remote' ? await remoteMeta(url) : await localMeta(url);
-			const values = {
-				title: meta?.title ?? null,
-				description: meta?.description ?? null,
-				image: meta?.image ?? null,
-				site_name: meta?.site_name ?? null,
-				fetched_at: new Date()
-			};
-			await db
-				.insert(link_previews)
-				.values({ url, ...values })
-				.onConflictDoUpdate({ target: link_previews.url, set: values });
+			const [old] = await db
+				.select({ image: link_previews.image })
+				.from(link_previews)
+				.where(eq(link_previews.url, url));
+			const source = meta?.image ?? null;
+			// held until the row is written, so the file can't be deleted in between
+			const image = await withPreviewLock(source && previewPath(source), async () => {
+				const image = source
+					? await storePreviewImage(
+							source,
+							LINK_PREVIEWS === 'remote' ? remoteImage : localImage
+					  ).catch((e) => {
+							console.error('linkPreviews: storing the image failed', e);
+							return null;
+					  })
+					: null;
+				const values = {
+					title: meta?.title ?? null,
+					description: meta?.description ?? null,
+					image,
+					site_name: meta?.site_name ?? null,
+					fetched_at: new Date()
+				};
+				await db
+					.insert(link_previews)
+					.values({ url, ...values })
+					.onConflictDoUpdate({ target: link_previews.url, set: values });
+				return image;
+			});
+			if (old?.image && old.image !== image) await dropPreviewImage(old.image);
 		} catch (e) {
 			console.error('linkPreviews: refresh failed', e);
 		} finally {
@@ -166,10 +201,51 @@ const userAgent = `Mozilla/5.0 (compatible; LinkPreview/1.0${
 	ownHost ? `; +https://${ownHost}` : ''
 })`;
 
+const absolute = (path: string) => (PUBLIC_URL ? PUBLIC_URL.replace(/\/+$/, '') + path : path);
+
 /** Downloads the page from this server: every hop must resolve to public addresses only. */
 function localMeta(url: string): Promise<Meta | null> {
 	return fetchMeta(url, { check: assertPublic, userAgent }).catch(() => null);
 }
+
+/** Downloads the page's image from this server, with the same checks as the page. */
+async function localImage(source: string) {
+	return (await fetchImage(source, { check: assertPublic, userAgent }))?.bytes ?? null;
+}
+
+/**
+ * Asks the worker for the image's bytes (GET <LINK_PREVIEWS_URL>/image?url=), so the site sees a
+ * Cloudflare address. The worker only downloads; storePreviewImage decodes and re-encodes here.
+ * Null for no image: a worker from before this endpoint answered JSON, which isn't an image either.
+ */
+async function remoteImage(source: string) {
+	const endpoint = new URL(LINK_PREVIEWS_URL);
+	endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') + '/image';
+	endpoint.searchParams.set('url', source);
+	const res = await fetch(endpoint, {
+		headers: { authorization: `Bearer ${LINK_PREVIEWS_SECRET}`, accept: 'image/*' },
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 3000)
+	});
+	if (!res.ok) {
+		await res.body?.cancel();
+		return null;
+	}
+	return readCapped(res, MAX_IMAGE_BYTES);
+}
+
+/** Deletes rows nobody asked for in FORGET_MS, and the images no other row uses. */
+async function sweep() {
+	const old = await db
+		.delete(link_previews)
+		.where(lt(link_previews.fetched_at, new Date(Date.now() - FORGET_MS)))
+		.returning({ image: link_previews.image });
+	for (const image of new Set(old.map((r) => r.image))) await dropPreviewImage(image);
+}
+
+// also with LINK_PREVIEWS=off, which leaves the rows of before
+setInterval(() => {
+	sweep().catch((e) => console.error('linkPreviews: sweep failed', e));
+}, SWEEP_MS).unref?.();
 
 /**
  * Asks the worker (workers/link-preview) for the page's tags, so the linked site sees a
@@ -186,6 +262,12 @@ async function remoteMeta(url: string): Promise<Meta | null> {
 			// the worker has FETCH_TIMEOUT_MS for the site, plus the round trip
 			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 3000)
 		});
+		// a link the worker refuses (such as one on another port) has no preview: it isn't a
+		// reason to stop calling the worker for every other link
+		if (res.status === 400) {
+			await res.body?.cancel();
+			return null;
+		}
 		if (!res.ok) {
 			await res.body?.cancel();
 			throw new Error(`worker answered ${res.status}`);

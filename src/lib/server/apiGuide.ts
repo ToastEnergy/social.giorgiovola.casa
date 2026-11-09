@@ -154,7 +154,11 @@ Gif: { "provider": "klipy", "slug", "title", "video": "https://static.klipy.com/
   as they are (see GIFs).
 LinkPreview: { "url", "title", "description": "…" | null, "image": "https://…" | null, "site_name" }
   The Open Graph card of a link, fetched by the server. null while it is still being
-  fetched (it shows up on later reads), and for pages without a title.
+  fetched (it shows up on later reads), and for pages without a title. "image" is the
+  server's own copy of the page's og:image (a small WebP, ${origin}/previews/<hash>.webp,
+  public and cacheable forever), never the site's URL, so loading it doesn't contact the
+  linked site. null when the page has none or it couldn't be used (cards fetched before
+  images were stored also have none until they're refreshed, within 7 days).
 
 Poll:
   { "options": ["Tea", "Coffee"], "votes": [3, 5], "ends_at": "…", "closed": false,

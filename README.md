@@ -39,11 +39,11 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `POSTGRES_PASSWORD`                  | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                                            |
 | `POSTGRES_PORT`                      | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                                                 |
 
-Data lives in the `postgres-data`, `avatars`, `uploads` and `dm-uploads` docker volumes (`uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
+Data lives in the `postgres-data`, `avatars`, `uploads`, `dm-uploads` and `previews` docker volumes (`previews` holds the images of link preview cards, `uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
 
 ## storing assets in S3 / R2
 
-By default avatars and images are files in the `avatars`, `uploads` and `dm-uploads` volumes. Set `S3_BUCKET` to keep them in an S3-compatible bucket instead, such as [Cloudflare R2](https://developers.cloudflare.com/r2/). The bucket stays private: the app still serves every file from its own `/avatars/…`, `/uploads/…` and `/dm-uploads/…` URLs (so stored links don't change), reading them from the bucket, and a cache in front of the app (such as Cloudflare) keeps most requests for public files from reaching it. Message images are answered with `Cache-Control: private`, so such a cache never keeps them. Images that are picked in the composer but not posted yet stay in a temporary directory on the server.
+By default avatars and images are files in the `avatars`, `uploads`, `dm-uploads` and `previews` volumes. Set `S3_BUCKET` to keep them in an S3-compatible bucket instead, such as [Cloudflare R2](https://developers.cloudflare.com/r2/). The bucket stays private: the app still serves every file from its own `/avatars/…`, `/uploads/…`, `/dm-uploads/…` and `/previews/…` URLs (so stored links don't change), reading them from the bucket, and a cache in front of the app (such as Cloudflare) keeps most requests for public files from reaching it. Message images are answered with `Cache-Control: private`, so such a cache never keeps them. Images that are picked in the composer but not posted yet stay in a temporary directory on the server.
 
 With Cloudflare R2:
 
@@ -59,7 +59,7 @@ S3_ACCESS_KEY_ID=…
 S3_SECRET_ACCESS_KEY=…
 ```
 
-`S3_BUCKET` needs the endpoint and both keys: the app refuses to start when one of them is missing. Other S3-compatible services (AWS S3, MinIO, Backblaze B2…) work the same way with their endpoint and region; requests use path-style URLs (`<endpoint>/<bucket>/<key>`). Objects are stored under `uploads/`, `avatars/` and `dm/` (message images).
+`S3_BUCKET` needs the endpoint and both keys: the app refuses to start when one of them is missing. Other S3-compatible services (AWS S3, MinIO, Backblaze B2…) work the same way with their endpoint and region; requests use path-style URLs (`<endpoint>/<bucket>/<key>`). Objects are stored under `uploads/`, `avatars/`, `dm/` (message images) and `previews/` (link preview images). Every image is re-encoded to WebP by the app before it is stored.
 
 Files still in the volumes keep being served while the bucket is configured (the app looks there when the bucket doesn't have a file, and deletes both copies), so switching doesn't break existing images; copy them into the bucket with the migration script (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)). `scripts/backup.sh` doesn't include the bucket yet.
 
@@ -292,10 +292,10 @@ To set it up: create an account on the [KLIPY partner panel](https://partner.kli
 
 ## link previews
 
-The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never visit the page, only load the image from the site; the page itself is downloaded once on the server side and cached for 7 days (1 day when it had no preview). `LINK_PREVIEWS` picks who downloads it:
+The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never contact the linked site: the page and its image are downloaded once on the server side and cached for 7 days (1 day when it had no preview). The image (https only, up to 5MB) is re-encoded by the app to a small WebP (at most 1200px, first frame of an animation) and served from `/previews/<hash>.webp`, named after the image's URL so pages sharing one image store it once. A card nobody looked at for 30 days is dropped along with its image. Cards fetched before images were stored show no image until they're refreshed. `LINK_PREVIEWS` picks who downloads them:
 
 - `local` (the default): the app does. Simple, but **every linked site sees your server's IP address**, and anyone can post a link to a site of their own to learn it. That's fine if the server's address isn't secret, and defeats the point if it's hidden behind Cloudflare or another proxy.
-- `remote`: a [Cloudflare Worker](https://developers.cloudflare.com/workers/) does, so linked sites see a Cloudflare address. The worker is in `workers/link-preview` and runs on the free plan.
+- `remote`: a [Cloudflare Worker](https://developers.cloudflare.com/workers/) does, so linked sites see a Cloudflare address. The worker is in `workers/link-preview` and runs on the free plan. It only downloads the image and hands over its bytes; the app decodes and re-encodes it. Redeploy the worker after upgrading: an older one has no `/image` endpoint, so cards just have no image until it's updated.
 - `off`: no previews, and the app never contacts linked sites.
 
 To use the worker (needs a Cloudflare account and [Bun](https://bun.sh)):
@@ -514,6 +514,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                       |
 | `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                            |
 | `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token              |
+| `GET`              | `/previews/:file`                                       | anyone                | a link preview image (the `image` of a `link_preview`), WebP, immutable                     |
 
 **Moderation and realtime**
 

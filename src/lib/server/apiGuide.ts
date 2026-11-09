@@ -142,7 +142,8 @@ Post:
     "pinned": false,                      // pinned to its author's profile
     "timeline_pinned": false,             // pinned by staff above the home timeline
     "regiorged_by": { "username", "name", "others": 2 } | null
-                                          // only in timelines: whose regiorg put it there
+                                          // only in timelines: who regiorged it (see
+                                          // GET /timeline and GET /users/:username/posts)
   }
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
@@ -394,9 +395,10 @@ DELETE /push   { "endpoint" } → 204
 ### Timeline and posts
 
 GET /timeline?feed=all|following                               public / signed in
-  "all" (default): every top-level post, newest first. "following" (signed in): posts and
-  regiorgs by the profiles you follow and your own, each post once with "regiorged_by"
-  when a regiorg put it there. Paginated. Posts pinned to the timeline are left out:
+  "all" (default): every top-level post, newest first, with "regiorged_by" set to its
+  latest regiorger ("others": how many more regiorged it) when anyone regiorged it.
+  "following" (signed in): posts and regiorgs by the profiles you follow and your own, each
+  post once with "regiorged_by" when a regiorg put it there. Paginated. Posts pinned to the timeline are left out:
 GET /timeline/pinned                                           public
   The posts staff pinned above the timeline (at most 3), as a page with next_cursor null.
 
@@ -445,8 +447,10 @@ POST /posts/:id/seen            marks your mention notification for it read → 
 GET /users/:username                  <Profile>                        public
 GET /users/:username/card             the hover card: Profile without created_at,
                                       pinned_post_id, blocks and moderation
-GET /users/:username/posts?tab=posts|replies   paginated Posts. "posts": its posts and
-  regiorgs (with regiorged_by), the pinned post left out. "replies": its replies.
+GET /users/:username/posts?tab=posts|replies|regiorgs   public, paginated Posts. "posts"
+  (default): its own top-level posts, newest first, the pinned post left out. "replies": its
+  replies. "regiorgs": the posts it regiorged, latest regiorg first, each with "regiorged_by"
+  set to the profile. 400 for another tab, 404 unknown user.
 GET /users/:username/pinned           { "post": <Post> | null }
 GET /users/:username/followers        paginated FollowEntry, newest follow first
 GET /users/:username/following        paginated FollowEntry

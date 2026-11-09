@@ -171,6 +171,12 @@
 		data-sveltekit-noscroll
 		aria-current={data.tab === 'replies' ? 'page' : undefined}>Replies</a
 	>
+	<a
+		class={tabClass(data.tab === 'regiorgs')}
+		href="/@{profile.username}?tab=regiorgs"
+		data-sveltekit-noscroll
+		aria-current={data.tab === 'regiorgs' ? 'page' : undefined}>Regiorgios</a
+	>
 </nav>
 
 {#if pinned}
@@ -180,7 +186,11 @@
 {/if}
 {#if data.posts.length === 0 && !pinned}
 	<p class="text-center text-muted">
-		{data.tab === 'replies' ? 'No replies yet.' : 'No posts yet.'}
+		{data.tab === 'replies'
+			? 'No replies yet.'
+			: data.tab === 'regiorgs'
+			? 'No regiorgios yet.'
+			: 'No posts yet.'}
 	</p>
 {/if}
 {#key profile}

@@ -303,10 +303,6 @@ export const followedAuthors = (userId: number) => (column: SQL) =>
 		SELECT ${follows.followed_id} FROM ${follows} WHERE ${follows.follower_id} = ${userId}
 	))`;
 
-/** One profile, by username, as a timeline `authors` condition. */
-export const profileAuthor = (username: string) => (column: SQL) =>
-	sql`${column} = (SELECT u.id FROM users u WHERE u.username = ${username})`;
-
 /**
  * Checks the `reply_to` and `quote_of` of a new post: an error message and status, or null when
  * they are fine. A post can't both reply and quote.

@@ -268,7 +268,7 @@ The first production deploy starts the registry's image on green (port `GREEN_PO
 
 The arrows button under a post opens a menu with two ways to reshare it:
 
-- **Regiorgio** reshares it as is: it shows up on your profile and in your followers' _Following_ feed, marked "… regiorged" (or "… and 2 others regiorged" when more of the profiles in that feed did), as of when it was last regiorged. Open the menu again to undo it.
+- **Regiorgio** reshares it as is: it shows up in the _Regiorgios_ tab of your profile (apart from your own posts) and in your followers' _Following_ feed, marked "… regiorged" (or "… and 2 others regiorged" when more of the profiles in that feed did), as of when it was last regiorged. In the _All_ feed every regiorged post says who regiorged it last and how many others did. Open the menu again to undo it.
 - **Quote** writes a new post (text and up to 5 images) with the post embedded under it. A quote is a normal post: it shows up wherever your posts do and can be liked, replied to and regiorged itself. If the quoted post is deleted, the quote stays and says so.
 
 The count next to the arrows is regiorgios plus quotes; click it to see who regiorged and who quoted. The author gets a notification for both (a quote that also @mentions them notifies once, as a quote). Muted users can't regiorgio or quote (they can still undo their regiorgios).
@@ -445,49 +445,49 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Timeline and posts**
 
-| method                     | path                                   | who                               |                                                             |
-| -------------------------- | -------------------------------------- | --------------------------------- | ----------------------------------------------------------- |
-| `GET`                      | `/api/v1/timeline?feed=all\|following` | public / signed in                | the home timeline (following brings in regiorgs)            |
-| `GET`                      | `/api/v1/timeline/pinned`              | public                            | posts staff pinned above the timeline                       |
-| `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`  |
-| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                 |
-| `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                |
-| `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)   |
-| `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                |
-| `GET`                      | `/api/v1/posts/:id/regiorgs`           | public                            | who regiorged it                                            |
-| `GET`                      | `/api/v1/posts/:id/quotes`             | public                            | quotes of it                                                |
-| `PUT` / `DELETE`           | `/api/v1/posts/:id/like`               | signed in                         | like / unlike                                               |
-| `PUT` / `DELETE`           | `/api/v1/posts/:id/regiorg`            | signed in                         | regiorgio / undo                                            |
-| `PUT`                      | `/api/v1/posts/:id/vote`               | signed in                         | vote `{ option }`                                           |
-| `PUT` / `DELETE`           | `/api/v1/posts/:id/pin`                | author                            | pin to / unpin from your profile                            |
-| `PUT` / `DELETE`           | `/api/v1/posts/:id/timeline-pin`       | staff                             | pin above / unpin from the home timeline                    |
-| `POST`                     | `/api/v1/posts/:id/seen`               | signed in                         | mark your mention notification for it read                  |
-| `POST`                     | `/api/v1/uploads`                      | not muted                         | upload an image (raw body) for a post or message → `{ id }` |
-| `DELETE`                   | `/api/v1/uploads/:id`                  | signed in                         | drop an unused upload                                       |
+| method                     | path                                   | who                               |                                                                          |
+| -------------------------- | -------------------------------------- | --------------------------------- | ------------------------------------------------------------------------ |
+| `GET`                      | `/api/v1/timeline?feed=all\|following` | public / signed in                | the home timeline (following brings in regiorgs; all says who regiorged) |
+| `GET`                      | `/api/v1/timeline/pinned`              | public                            | posts staff pinned above the timeline                                    |
+| `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`               |
+| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                              |
+| `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                             |
+| `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)                |
+| `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                             |
+| `GET`                      | `/api/v1/posts/:id/regiorgs`           | public                            | who regiorged it                                                         |
+| `GET`                      | `/api/v1/posts/:id/quotes`             | public                            | quotes of it                                                             |
+| `PUT` / `DELETE`           | `/api/v1/posts/:id/like`               | signed in                         | like / unlike                                                            |
+| `PUT` / `DELETE`           | `/api/v1/posts/:id/regiorg`            | signed in                         | regiorgio / undo                                                         |
+| `PUT`                      | `/api/v1/posts/:id/vote`               | signed in                         | vote `{ option }`                                                        |
+| `PUT` / `DELETE`           | `/api/v1/posts/:id/pin`                | author                            | pin to / unpin from your profile                                         |
+| `PUT` / `DELETE`           | `/api/v1/posts/:id/timeline-pin`       | staff                             | pin above / unpin from the home timeline                                 |
+| `POST`                     | `/api/v1/posts/:id/seen`               | signed in                         | mark your mention notification for it read                               |
+| `POST`                     | `/api/v1/uploads`                      | not muted                         | upload an image (raw body) for a post or message → `{ id }`              |
+| `DELETE`                   | `/api/v1/uploads/:id`                  | signed in                         | drop an unused upload                                                    |
 
 **People, search and notifications**
 
-| method           | path                                               | who       |                                                       |
-| ---------------- | -------------------------------------------------- | --------- | ----------------------------------------------------- |
-| `GET`            | `/api/v1/users/:username`                          | public    | profile, counts, relationship, blocks, pinned post id |
-| `GET`            | `/api/v1/users/:username/card`                     | public    | the hover card                                        |
-| `GET`            | `/api/v1/users/:username/posts?tab=posts\|replies` | public    | a profile's posts and regiorgs, or its replies        |
-| `GET`            | `/api/v1/users/:username/pinned`                   | public    | its pinned post                                       |
-| `GET`            | `/api/v1/users/:username/followers`                | public    | followers                                             |
-| `GET`            | `/api/v1/users/:username/following`                | public    | who it follows                                        |
-| `GET`            | `/api/v1/users/:username/followers/known`          | signed in | its followers you follow too                          |
-| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                   | signed in | follow / unfollow                                     |
-| `PUT` / `DELETE` | `/api/v1/users/:username/block`                    | signed in | block / unblock                                       |
-| `GET`            | `/api/v1/search?q=`                                | signed in | users and hashtags                                    |
-| `GET`            | `/api/v1/search/users?q=`                          | signed in | username / name prefix, for mention pickers           |
-| `GET`            | `/api/v1/hashtags/:tag`                            | public    | a hashtag and its post count                          |
-| `GET`            | `/api/v1/hashtags/:tag/posts`                      | public    | posts with it                                         |
-| `GET`            | `/api/v1/notifications`                            | signed in | your notifications                                    |
-| `GET`            | `/api/v1/notifications/grouped`                    | signed in | your notifications, likes/regiorgs/follows grouped    |
-| `POST`           | `/api/v1/notifications/groups/:key/read`           | signed in | mark a group read                                     |
-| `GET`            | `/api/v1/notifications/unread`                     | signed in | unread notifications, messages and reactions          |
-| `POST`           | `/api/v1/notifications/read`                       | signed in | mark all read                                         |
-| `POST`           | `/api/v1/notifications/:id/read`                   | signed in | mark one read                                         |
+| method           | path                                                         | who       |                                                          |
+| ---------------- | ------------------------------------------------------------ | --------- | -------------------------------------------------------- |
+| `GET`            | `/api/v1/users/:username`                                    | public    | profile, counts, relationship, blocks, pinned post id    |
+| `GET`            | `/api/v1/users/:username/card`                               | public    | the hover card                                           |
+| `GET`            | `/api/v1/users/:username/posts?tab=posts\|replies\|regiorgs` | public    | a profile's posts, its replies or the posts it regiorged |
+| `GET`            | `/api/v1/users/:username/pinned`                             | public    | its pinned post                                          |
+| `GET`            | `/api/v1/users/:username/followers`                          | public    | followers                                                |
+| `GET`            | `/api/v1/users/:username/following`                          | public    | who it follows                                           |
+| `GET`            | `/api/v1/users/:username/followers/known`                    | signed in | its followers you follow too                             |
+| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow                                        |
+| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock                                          |
+| `GET`            | `/api/v1/search?q=`                                          | signed in | users and hashtags                                       |
+| `GET`            | `/api/v1/search/users?q=`                                    | signed in | username / name prefix, for mention pickers              |
+| `GET`            | `/api/v1/hashtags/:tag`                                      | public    | a hashtag and its post count                             |
+| `GET`            | `/api/v1/hashtags/:tag/posts`                                | public    | posts with it                                            |
+| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications                                       |
+| `GET`            | `/api/v1/notifications/grouped`                              | signed in | your notifications, likes/regiorgs/follows grouped       |
+| `POST`           | `/api/v1/notifications/groups/:key/read`                     | signed in | mark a group read                                        |
+| `GET`            | `/api/v1/notifications/unread`                               | signed in | unread notifications, messages and reactions             |
+| `POST`           | `/api/v1/notifications/read`                                 | signed in | mark all read                                            |
+| `POST`           | `/api/v1/notifications/:id/read`                             | signed in | mark one read                                            |
 
 **Messages and groups**
 

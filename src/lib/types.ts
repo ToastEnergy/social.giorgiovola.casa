@@ -135,14 +135,15 @@ export type Post = {
 	regiorgs: number;
 	/** the viewer regiorged it */
 	regiorged?: boolean;
-	/**
-	 * in a timeline: the profile whose (latest) regiorg put the post there, and how many other
-	 * profiles of that timeline regiorged it too
-	 */
 	/** pinned to its author's profile */
 	pinned?: boolean;
 	/** pinned by staff to the home timeline for everyone */
 	timeline_pinned?: boolean;
+	/**
+	 * in a timeline: the profile whose (latest) regiorg put the post there, and how many other
+	 * profiles of that timeline regiorged it too. In the "all" feed: its latest regiorger and how
+	 * many others regiorged it. In a profile's regiorgs tab: that profile.
+	 */
 	regiorged_by?: { username: string; name: string; others?: number } | null;
 	/** quote regiorgs of this post */
 	quotes: number;

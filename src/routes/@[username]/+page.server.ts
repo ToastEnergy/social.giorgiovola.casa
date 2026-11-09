@@ -30,7 +30,8 @@ type Profile = {
 export const load = (async ({ params, fetch, depends, url }) => {
 	depends('app:posts');
 	const name = encodeURIComponent(params.username.toLowerCase());
-	const tab = url.searchParams.get('tab') === 'replies' ? 'replies' : 'posts';
+	const asked = url.searchParams.get('tab');
+	const tab = asked === 'replies' || asked === 'regiorgs' ? asked : 'posts';
 	const source = `/api/v1/users/${name}/posts?tab=${tab}&limit=${PAGE_SIZE}`;
 	const [profile, page, pinned] = await Promise.all([
 		apiGet<Profile>(fetch, `/users/${name}`, { login: false }),

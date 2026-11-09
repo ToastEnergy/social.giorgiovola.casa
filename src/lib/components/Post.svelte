@@ -717,7 +717,9 @@
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-0.75">
 				<div class="flex flex-wrap items-center justify-between gap-[5px]">
-					<p class="font-extrabold">
+					<!-- a long name or username (no spaces to wrap at) breaks instead of widening the
+						page, which on phones also pulls the fixed bottom bar out of place -->
+					<p class="min-w-0 font-extrabold wrap-anywhere">
 						<a
 							class="text-inherit"
 							href={'/@' + post.user.username}

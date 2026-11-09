@@ -9,6 +9,11 @@
 	--color-danger: #bb5353;
 	--color-muted: #999999;
 	--color-line: #4e4e4e;
+
+	/* wide enough for the labelled sidebar (up to 210px) beside the 640px column and its margins */
+	--breakpoint-nav: 900px;
+	/* ... and, beside that, the 300px rail with the profile and search (Rail.svelte) */
+	--breakpoint-rail: 1280px;
 }
 
 @layer base {
@@ -52,4 +57,82 @@
 	}
 
 	/* buttons: use src/lib/components/Button.svelte */
+
+	/* mouse devices: the header, the sidebar and the content panel form one centred group
+		(+layout). --side is the sidebar's width, --rail the width of the profile and search column
+		right of the panel (0 when there is no room for it), --panel the content's, --left where
+		the group starts. 30px: the 10px margins plus room for a classic scrollbar, which 100vw
+		includes */
+	.frame {
+		--side: 0px;
+		--rail: 0px;
+		--bar: 0px;
+		--edge: 20px;
+		--col: 640px;
+		--panel: min(var(--col), 100vw - var(--side) - var(--rail) - 30px);
+		--left: max(10px, (100vw - var(--side) - var(--panel) - var(--rail)) / 2);
+	}
+
+	/* the sidebar's rows plus the 10px gap before the panel. Sidebar.svelte measures its longest
+		row into --sidebar-width; until then an icon row is 44px and a labelled one is about as
+		wide as "Notifications" */
+	.frame-sidebar {
+		--side: var(--sidebar-width, 54px);
+
+		@variant nav {
+			--side: var(--sidebar-width, 180px);
+		}
+
+		/* the sidebar is as wide as the rail, so the panel sits in the middle of the window */
+		@variant rail {
+			--rail: 300px;
+			--side: 300px;
+		}
+	}
+
+	/* icon-only sidebar: the panel runs to the right and bottom edge of the window (only its top
+		left corner is rounded, see +layout), so it starts 10px from the sidebar and the top bar
+		(--panel) keeps a 20px inset on the right. --edge: the gap below the panel */
+	.frame-sidebar {
+		@variant max-nav {
+			--left: 10px;
+			--edge: 0px;
+			--panel: calc(100vw - var(--side) - var(--left) - 20px);
+		}
+	}
+
+	/* --bar: the search and profile block above the content panel (TopBar.svelte, 45px and a 10px
+		gap) while there is no room for the rail; the panel starts below it and full height pages
+		subtract it */
+	.frame-sidebar {
+		--bar: 55px;
+
+		@variant rail {
+			--bar: 0px;
+		}
+	}
+
+	/* the messages pages: the conversation list and the chat as two blocks. the sidebar stays icon
+		only and search and the profile stay on top (TopBar) at any window width. the blocks take the
+		window right of the icons until --col, then the chat stops growing and the group (icons
+		included) is centred with margins on both sides. the max-nav rules above set --left and
+		--panel for the plain pages, so both are set again here */
+	.frame-sidebar.frame-wide {
+		--rail: 0px;
+		--side: var(--sidebar-width, 54px);
+		--edge: 20px;
+		--bar: 55px;
+		--col: 1200px;
+		--panel: min(var(--col), 100vw - var(--side) - 30px);
+		--left: max(10px, (100vw - var(--side) - var(--panel)) / 2);
+	}
+
+	/* touch devices have the bottom bar instead */
+	@media (pointer: coarse) {
+		.frame,
+		.frame-sidebar,
+		.frame-sidebar.frame-wide {
+			--bar: 0px;
+		}
+	}
 }

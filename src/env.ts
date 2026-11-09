@@ -7,6 +7,11 @@ const optional = (input: string | undefined) => input ?? '';
 
 export const variables = defineEnvVars({
 	PUBLIC_URL: { public: true, schema: optional },
+	// the search box's placeholder, shown in the browser too
+	PUBLIC_SEARCH_PLACEHOLDER: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Giorgiocerca qualcosa'
+	},
 	SIGNUP_PASSWORD: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },

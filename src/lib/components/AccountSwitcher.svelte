@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
 	import type { SwitcherAccount, SwitcherProfile } from '#lib/types.js';
@@ -7,8 +8,34 @@
 	import UnreadBadges from './UnreadBadges.svelte';
 	import { switchTo } from '#lib/accounts.js';
 
-	const dotClass =
-		'absolute top-0 right-0 size-4 rounded-full border-2 border-background bg-accent';
+	type Props = {
+		/** avatar size in px */
+		size?: number;
+		/** open the menu above (the bottom bar), against the closest positioned ancestor */
+		up?: boolean;
+		/** open the menu above the button, for a button at the bottom of the sidebar */
+		above?: boolean;
+		/** a wide badge with the name and username next to the avatar */
+		badge?: boolean;
+	};
+	let { size = 50, up = false, above = false, badge = false }: Props = $props();
+
+	const menuPlace = $derived(
+		// against the rail, so it opens under the search box beneath the badge
+		badge
+			? 'top-[calc(100%+10px)] left-0 w-full'
+			: up
+			? 'right-2.5 bottom-[calc(100%+10px)] w-71'
+			: above
+			? 'bottom-[calc(100%+10px)] left-0 w-71'
+			: 'top-[calc(100%+10px)] right-0 w-71'
+	);
+
+	const dotClass = $derived(
+		`absolute top-0 right-0 ${
+			size < 40 ? 'size-3' : 'size-4'
+		} rounded-full border-2 border-background bg-accent`
+	);
 	const linkClass = 'rounded-sm p-1.5 text-[0.9em] hover:bg-white/5 hover:no-underline';
 
 	let open = $state(false);
@@ -50,30 +77,43 @@
 <svelte:window onclick={onWindowClick} onkeydown={onKeydown} />
 
 {#if $user}
-	<div class="relative" bind:this={root}>
+	<div class="{up || badge ? '' : 'relative'} {badge ? 'w-full' : ''}" bind:this={root}>
 		<button
-			class="relative flex cursor-pointer rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+			class="relative flex cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {badge
+				? 'w-full items-center gap-2.5 rounded-[15px] bg-black p-2.5 text-left hover:bg-white/5'
+				: 'rounded-full'}"
 			aria-haspopup="menu"
 			aria-expanded={open}
 			title="Switch account"
 			onclick={() => (open = !open)}
 		>
-			<img
-				class="size-12.5 max-w-none rounded-full object-cover"
-				src={getAvatar($user, 50)}
-				alt={$user.username + "'s avatar"}
-				height="50"
-				width="50"
-			/>
-			{#if otherUnread() > 0}
-				<!-- prettier-ignore -->
-				<span class={dotClass} title="Unread notifications or messages on your other profiles"></span>
+			<span class="relative flex shrink-0">
+				<img
+					class="max-w-none rounded-full object-cover"
+					style:width="{size}px"
+					style:height="{size}px"
+					src={getAvatar($user, size)}
+					alt={$user.username + "'s avatar"}
+					height={size}
+					width={size}
+				/>
+				{#if otherUnread() > 0}
+					<!-- prettier-ignore -->
+					<span class={dotClass} title="Unread notifications or messages on your other profiles"></span>
+				{/if}
+			</span>
+			{#if badge}
+				<span class="flex min-w-0 flex-col">
+					<b class="truncate text-foreground">{$user.name}</b>
+					<span class="truncate text-[0.85em] opacity-70">@{$user.username}</span>
+				</span>
+				<Ellipsis class="ml-auto shrink-0 text-muted" size={20} />
 			{/if}
 		</button>
 
 		{#if open}
 			<div
-				class="absolute top-[calc(100%+10px)] right-0 flex max-h-[calc(var(--fh,100vh)-86px)] w-71 max-w-[calc(100vw-26px)] flex-col gap-1 overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
+				class="absolute {menuPlace} flex max-h-[calc(var(--fh,100vh)-86px)] max-w-[calc(100vw-26px)] flex-col gap-1 overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
 				role="menu"
 			>
 				<a

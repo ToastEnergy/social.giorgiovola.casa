@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import Avatar from '#lib/components/Avatar.svelte';
@@ -100,9 +101,9 @@
 
 <div class="mb-5 flex items-center gap-2.5">
 	<a
-		class="px-1 text-[1.4em] text-inherit hover:no-underline"
+		class="flex px-1 text-inherit hover:no-underline"
 		href={`/messages/groups/${group.id}`}
-		title="Back to the chat">&larr;</a
+		title="Back to the chat"><ArrowLeft size={22} /></a
 	>
 	<h1 class="truncate">{group.name}</h1>
 </div>

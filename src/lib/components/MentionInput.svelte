@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { User } from '#lib/types.js';
 	import { getAvatar } from '#lib/utils.js';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	type Suggestion = Pick<User, 'username' | 'name' | 'avatar'>;
 
@@ -22,7 +23,8 @@
 		inputClass?: string;
 		label?: string;
 		oninput?: () => void;
-		/** keys the suggestions don't take; replaces the default (Enter submits the form) */
+		/** keys the suggestions don't take; replaces the default (Enter submits the form, except on
+		 * touch devices) */
 		onkeydown?: (e: KeyboardEvent) => void;
 	};
 
@@ -57,6 +59,7 @@
 	const listId = `mentions-${Math.random().toString(36).slice(2)}`;
 
 	const open = $derived(start !== null && suggestions.length > 0);
+	const coarse = new MediaQuery('(pointer: coarse)');
 
 	// fit the height to the text, also when it is cleared or a mention is inserted
 	$effect(() => {
@@ -127,8 +130,10 @@
 	function onKeydown(e: KeyboardEvent) {
 		if (!open) {
 			if (onkeydown) return onkeydown(e);
-			// Enter sends, like the single line input this used to be (posts don't keep newlines)
-			if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+			// posts keep their line breaks: on touch devices Enter always starts a new line (sending is
+			// the button's job, an on-screen keyboard has no Shift+Enter), on desktop Enter sends and
+			// Shift+Enter starts a new line
+			if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !coarse.current) {
 				e.preventDefault();
 				input?.form?.requestSubmit();
 			}

@@ -22,7 +22,7 @@ FROM base
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends fonts-roboto fontconfig \
 	&& rm -rf /var/lib/apt/lists/* \
-	&& mkdir -p static/avatars static/uploads data/dm
+	&& mkdir -p static/avatars static/uploads data/dm data/previews
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json migrate.ts admin.ts ./
@@ -34,6 +34,6 @@ ENV PORT=7777
 ENV BODY_SIZE_LIMIT=54525952
 EXPOSE 7777
 # pending database migrations are applied on every start (a no-op when up to date).
-# Starts as root only to fix ownership of the avatars, uploads and dm-uploads volumes (older volumes
+# Starts as root only to fix ownership of the avatars, uploads, dm-uploads and previews volumes (older volumes
 # were written as root), then drops to the unprivileged bun user for everything else.
-CMD ["sh", "-c", "chown -R bun:bun static/avatars static/uploads data/dm && exec setpriv --reuid=bun --regid=bun --init-groups sh -c 'bun migrate.ts && exec bun build/index.js'"]
+CMD ["sh", "-c", "chown -R bun:bun static/avatars static/uploads data/dm data/previews && exec setpriv --reuid=bun --regid=bun --init-groups sh -c 'bun migrate.ts && exec bun build/index.js'"]

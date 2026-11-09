@@ -121,8 +121,8 @@ function declaredTooLarge(buf: Buffer, ext: 'bmp' | 'ico'): boolean {
 }
 
 /** A sharp pipeline for a sniffed image. libvips can't read BMP and ICO, skia decodes those. */
-async function decode(buf: Buffer, ext: string) {
-	const options = { animated: true, limitInputPixels: MAX_INPUT_PIXELS };
+async function decode(buf: Buffer, ext: string, animated: boolean) {
+	const options = { animated, limitInputPixels: MAX_INPUT_PIXELS };
 	// limitInputPixels counts every frame of an animation together
 	if (ext !== 'bmp' && ext !== 'ico') return sharp(buf, options).rotate();
 	if (declaredTooLarge(buf, ext)) throw new ImageError('Image too large');
@@ -138,24 +138,23 @@ async function decode(buf: Buffer, ext: string) {
 
 /**
  * Re-encodes an image as WebP: EXIF orientation applied, metadata (GPS and the like) stripped,
- * animations kept, and scaled down to fit in `size` (a square crop for avatars). SVGs are
- * rasterized, so no scripts can ever be served back. Throws ImageError when it can't be decoded.
+ * animations kept (unless `animated` is false: first frame only), and scaled down to fit in
+ * `size` (a square crop for avatars). SVGs are rasterized, so no scripts can ever be served back.
+ * Throws ImageError when it can't be decoded.
  */
-export function toWebp(
-	buf: Buffer,
-	ext: string,
-	options: { size: number; square?: boolean }
-): Promise<Buffer> {
+export function toWebp(buf: Buffer, ext: string, options: WebpOptions): Promise<Buffer> {
 	return decoding(() => encode(buf, ext, options));
 }
+
+type WebpOptions = { size: number; square?: boolean; quality?: number; animated?: boolean };
 
 async function encode(
 	buf: Buffer,
 	ext: string,
-	{ size, square = false }: { size: number; square?: boolean }
+	{ size, square = false, quality = 82, animated = true }: WebpOptions
 ): Promise<Buffer> {
 	try {
-		const image = await decode(buf, ext);
+		const image = await decode(buf, ext, animated);
 		let width = size;
 		let height = size;
 		if (square) {
@@ -166,7 +165,7 @@ async function encode(
 		}
 		return await image
 			.resize(width, height, { fit: square ? 'cover' : 'inside', withoutEnlargement: true })
-			.webp({ quality: 82, effort: 4 })
+			.webp({ quality, effort: 4 })
 			.toBuffer();
 	} catch (e) {
 		if (e instanceof ImageError) throw e;

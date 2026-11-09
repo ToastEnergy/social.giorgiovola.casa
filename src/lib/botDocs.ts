@@ -370,7 +370,7 @@ export const postShape = (origin: string) => `{
   "link_preview": {                     // the first link to another site in "content", or null
     "url": "https://…", "title": "…",   // (also while it is still being fetched: it shows up
     "description": "…" | null,          // on later reads)
-    "image": "https://…" | null,        // the page's og:image
+    "image": "https://…" | null,        // the page's og:image, our copy on this instance
     "site_name": "…"                    // og:site_name, or the host name
   } | null,
   "replies_count": 2,

@@ -37,6 +37,8 @@ x-web: &web
     - uploads:/app/static/uploads
     # message images, served only to their conversation (kept outside static/)
     - dm-uploads:/app/data/dm
+    # link preview images (downloaded again on the next refresh of their card when lost)
+    - previews:/app/data/previews
   depends_on:
     db:
       condition: service_healthy
@@ -82,3 +84,4 @@ volumes:
   avatars:
   uploads:
   dm-uploads:
+  previews:

@@ -3,6 +3,7 @@ import { apiGet } from '#lib/apiLoad.js';
 import { userOf, type Me } from '#lib/me.js';
 import type { SwitcherAccount } from '#lib/types.js';
 import { readTimeCookies } from '#lib/time.svelte.js';
+import type { GifConfig } from '#lib/klipy.js';
 
 export const load = (async ({ fetch, cookies, request }) => {
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
@@ -11,7 +12,7 @@ export const load = (async ({ fetch, cookies, request }) => {
 		fetch('/api/v1/auth/accounts').then(async (res) =>
 			res.ok ? ((await res.json()) as { items: SwitcherAccount[] }).items : []
 		),
-		apiGet<{ motd: string }>(fetch, '/instance')
+		apiGet<{ motd: string; gifs: GifConfig | null }>(fetch, '/instance')
 	]);
 	return {
 		user: me ? userOf(me) : null,
@@ -23,6 +24,8 @@ export const load = (async ({ fetch, cookies, request }) => {
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),
 		accounts,
 		motd: instance.motd,
+		// KLIPY's settings for the GIF pickers, null when GIFs are off
+		gifs: instance.gifs ?? null,
 		// the reader's zone and locale (UI preference cookies), so dates render as in the browser
 		time: readTimeCookies(cookies, request.headers.get('accept-language'))
 	};

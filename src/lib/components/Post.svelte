@@ -22,6 +22,7 @@
 	import QuoteCard from './QuoteCard.svelte';
 	import LinkPreviewCard from './LinkPreviewCard.svelte';
 	import PollCard from './PollCard.svelte';
+	import GifMedia from './GifMedia.svelte';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import { markMentionSeen, mentions, splitMentions } from '#lib/mentions.js';
@@ -393,6 +394,7 @@
 		user: post.user,
 		content: post.content,
 		images: post.images ?? [],
+		gif: post.gif ?? null,
 		created_at: post.created_at,
 		is_quote: !!post.quote
 	});
@@ -794,12 +796,18 @@
 							{/each}
 						</div>
 					{/if}
+					{#if post.gif}
+						<GifMedia gif={post.gif} />
+					{/if}
 					{#if quote}
 						<QuoteCard {quote} />
 					{:else if linkedPost}
 						<QuoteCard quote={linkedPost} />
 					{:else if post.link_preview && !post.poll}
-						<LinkPreviewCard preview={post.link_preview} showImage={gallery.length === 0} />
+						<LinkPreviewCard
+							preview={post.link_preview}
+							showImage={gallery.length === 0 && !post.gif}
+						/>
 					{/if}
 				</div>
 				<div class="mt-2.5 flex w-full items-center gap-2.5">

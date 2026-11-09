@@ -3,6 +3,7 @@ import { v1 } from '#lib/server/api.js';
 import { MAX_BOTS, MAX_PROFILE_UPDATES } from '#lib/server/bots.js';
 import { registrationOpen } from '#lib/server/login.js';
 import { getMotd } from '#lib/server/motd.js';
+import { gifConfig } from '#lib/server/gifs.js';
 import { LIMITS } from '#lib/server/validation.js';
 import { version } from '$app/env';
 
@@ -12,5 +13,7 @@ export const GET: RequestHandler = v1(async () => ({
 	version,
 	motd: await getMotd(),
 	registration_open: registrationOpen(),
-	limits: { ...LIMITS, maxBots: MAX_BOTS, maxProfileUpdates: MAX_PROFILE_UPDATES }
+	limits: { ...LIMITS, maxBots: MAX_BOTS, maxProfileUpdates: MAX_PROFILE_UPDATES },
+	// what clients need to search KLIPY for GIFs themselves, null when GIFs are off
+	gifs: gifConfig()
 }));

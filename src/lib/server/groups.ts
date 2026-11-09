@@ -6,8 +6,10 @@ import type {
 	GroupChat,
 	GroupConversation,
 	GroupMessage,
-	GroupMessageKind
+	GroupMessageKind,
+	Gif
 } from '#lib/types.js';
+import { mediaPreview } from '#lib/mediaPreview.js';
 import { groupEventText } from '#lib/groupEvents.js';
 import { linkedPosts } from './linkedPosts.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
@@ -359,6 +361,7 @@ function selectMessages(where: SQL | undefined) {
 			kind: group_messages.kind,
 			content: group_messages.content,
 			images: group_messages.images,
+			gif: group_messages.gif,
 			reply_to_id: group_messages.reply_to_id,
 			created_at: group_messages.created_at,
 			edited_at: group_messages.edited_at,
@@ -395,6 +398,7 @@ async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 				: null,
 		content: r.content,
 		images: r.images,
+		gif: r.gif,
 		created_at: r.created_at,
 		edited_at: r.edited_at,
 		linked_post: linked[i],
@@ -446,11 +450,19 @@ export async function sendGroupMessage(
 	sender: Member,
 	content: string,
 	images: string[] = [],
-	replyTo: number | null = null
+	replyTo: number | null = null,
+	gif: Gif | null = null
 ): Promise<GroupMessage> {
 	const [row] = await db
 		.insert(group_messages)
-		.values({ group_id: groupId, sender_id: sender.id, content, images, reply_to_id: replyTo })
+		.values({
+			group_id: groupId,
+			sender_id: sender.id,
+			content,
+			images,
+			gif,
+			reply_to_id: replyTo
+		})
 		.returning({ id: group_messages.id });
 	const [message] = await loadMessages([row.id]);
 	return message;
@@ -477,13 +489,14 @@ export async function editGroupMessage(
 		.select({
 			content: group_messages.content,
 			images: group_messages.images,
+			gif: group_messages.gif,
 			created_at: group_messages.created_at
 		})
 		.from(group_messages)
 		.where(theirs);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
-	if (!content && found.images.length === 0) return 'empty';
+	if (!content && found.images.length === 0 && !found.gif) return 'empty';
 	// the same text: nothing to mark as edited
 	if (content !== found.content) {
 		const updated = await db
@@ -570,6 +583,7 @@ export async function getGroupConversations(userId: number): Promise<GroupConver
 				target_name: target.name,
 				content: sql<string>`LEFT(${group_messages.content}, ${PREVIEW_LENGTH})`,
 				images: sql<number>`CARDINALITY(${group_messages.images})`,
+				gif: sql<boolean>`(${group_messages.gif} IS NOT NULL)`,
 				created_at: group_messages.created_at
 			})
 			.from(group_messages)
@@ -614,7 +628,7 @@ export async function getGroupConversations(userId: number): Promise<GroupConver
 						: null;
 				const sender = { username: last.sender_username, name: last.sender_name };
 				preview = groupEventText({ kind: last.kind, sender, target, content: last.content }, me);
-			} else if (last) preview = last.content || (last.images > 0 ? '📷 Photo' : '');
+			} else if (last) preview = last.content || mediaPreview(last);
 			return {
 				group: {
 					id: g.id,

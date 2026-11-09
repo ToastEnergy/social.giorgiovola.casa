@@ -39,7 +39,10 @@ export default defineConfig(({ mode }) => ({
 					'default-src': ['none'],
 					'script-src': ['self', 'static.cloudflareinsights.com'],
 					'style-src': ['self', 'unsafe-inline'],
-					'connect-src': ['self', 'cloudflareinsights.com'],
+					// api.klipy.com: the GIF pickers search KLIPY from the browser (src/lib/klipy.ts)
+					'connect-src': ['self', 'cloudflareinsights.com', 'api.klipy.com'],
+					// GIFs play as KLIPY's own MP4s, loaded from its media hosts
+					'media-src': ['static.klipy.com', 'static1.klipy.com', 'static2.klipy.com'],
 					// posts embed external images; `*` is valid CSP but missing from SvelteKit's Source type.
 					// `*` doesn't cover blob:, which the composer needs for previews of attached files
 					// @ts-expect-error `*` missing from the Source type

@@ -18,6 +18,7 @@ import { actionsLimited, canDeletePostOf } from './moderation.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
 import { broadcast } from './realtime.js';
 import { warmLinkPreview } from './linkPreviews.js';
+import { parseGif } from './gifs.js';
 
 /** Writing posts: the input of a new post, editing and deleting. */
 
@@ -43,6 +44,7 @@ export async function readPostBody(request: Request, locals: App.Locals): Promis
 				uploads: form.getAll('uploads'),
 				reply_to: form.get('reply_to') || null,
 				quote_of: form.get('quote_of') || null,
+				gif: form.get('gif'),
 				poll: form.has('poll_options')
 					? { options: form.getAll('poll_options'), minutes: form.get('poll_minutes') }
 					: null
@@ -67,7 +69,10 @@ export async function submitPost(
 	if (body.content != null && typeof body.content !== 'string')
 		fail(400, 'content must be a string');
 	const content = typeof body.content === 'string' ? normalizePostContent(body.content) : '';
-	if (!content && files.length === 0 && staged.length === 0) fail(400, 'Missing content');
+	const gif = parseGif(body.gif) ?? null;
+	if (!content && !gif && files.length === 0 && staged.length === 0) fail(400, 'Missing content');
+	if (gif && files.length + staged.length > 0)
+		fail(400, 'A post can have a GIF or images, not both');
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
 
@@ -118,7 +123,7 @@ export async function submitPost(
 	const images = [...saved, ...claimed];
 
 	try {
-		return await createPost(user, { content, images, reply_to, quote_of, poll: poll.poll });
+		return await createPost(user, { content, images, gif, reply_to, quote_of, poll: poll.poll });
 	} catch (e) {
 		await removeUploads(images);
 		throw e;
@@ -131,7 +136,12 @@ export async function submitPost(
  */
 export async function editPost(user: Pick<User, 'id'>, postId: number, rawContent: string) {
 	const [post] = await db
-		.select({ user_id: posts.user_id, images: posts.images, poll: polls.post_id })
+		.select({
+			user_id: posts.user_id,
+			images: posts.images,
+			gif: posts.gif,
+			poll: polls.post_id
+		})
 		.from(posts)
 		.leftJoin(polls, eq(polls.post_id, posts.id))
 		.where(eq(posts.id, postId));
@@ -140,7 +150,7 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 	const content = normalizePostContent(rawContent);
 	// the same rules as a new post: the text of a poll is its question
 	if (!content && post.poll !== null) fail(400, 'A poll needs a question');
-	if (!content && post.images.length === 0) fail(400, 'Missing content');
+	if (!content && post.images.length === 0 && !post.gif) fail(400, 'Missing content');
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
 

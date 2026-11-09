@@ -36,6 +36,18 @@ export const variables = defineEnvVars({
 	LINK_PREVIEWS_URL: { schema: optional },
 	LINK_PREVIEWS_SECRET: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
+	// the KLIPY app key that turns on GIFs (src/lib/server/gifs.ts). Browsers use it to search
+	// KLIPY themselves (KLIPY's terms), so it is public: /api/v1/instance hands it out
+	KLIPY_APP_KEY: { schema: (input: string | undefined) => input?.trim() ?? '' },
+	// KLIPY's content safety level for searches
+	KLIPY_CONTENT_FILTER: {
+		schema: (input: string | undefined) => {
+			const level = input || 'medium';
+			if (!['off', 'low', 'medium', 'high'].includes(level))
+				throw new Error('KLIPY_CONTENT_FILTER must be off, low, medium or high');
+			return level;
+		}
+	},
 	ADDRESS_HEADER: { schema: optional },
 	// the bucket for avatars and images, the local disk when empty. The schemas can't see each
 	// other, so checkStorageConfig (src/lib/server/storage.ts) refuses an incomplete set at startup

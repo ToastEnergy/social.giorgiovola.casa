@@ -6,6 +6,7 @@
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import ImageIcon from '@lucide/svelte/icons/image';
+	import ImagePlay from '@lucide/svelte/icons/image-play';
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
@@ -15,6 +16,11 @@
 	import UploadProgress from './UploadProgress.svelte';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
 	import QuoteCard from './QuoteCard.svelte';
+	import GifMedia from './GifMedia.svelte';
+	import GifPicker from './GifPicker.svelte';
+	import { shareGif } from '#lib/klipy.js';
+	import { mediaPreview } from '#lib/mediaPreview.js';
+	import { page as appPage } from '$app/state';
 	import { onRealtime } from '#lib/realtime.js';
 	import BottomNav from './BottomNav.svelte';
 	import { keyboard as screenKeyboard, writingHandlers } from '#lib/keyboard.svelte.js';
@@ -22,6 +28,7 @@
 	import type {
 		ChatMessage,
 		ChatPeer,
+		Gif,
 		GroupChat,
 		GroupMessage,
 		MessageReaction,
@@ -130,6 +137,9 @@
 	let loadingOlder = false;
 	let error = $state<string | null>(null);
 	let attachments = $state<Attachment[]>([]);
+	// KLIPY's settings, null when GIFs are off on this instance
+	const gifConfig = $derived(appPage.data.gifs ?? null);
+	let pickingGif = $state(false);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	let dragging = $state(false);
 	let dragDepth = 0;
@@ -255,9 +265,9 @@
 		});
 	}
 
-	/** what a reply shows of a message: its text, or that it is a photo */
-	const previewOf = (m: { content: string; images: number }) =>
-		m.content || (m.images > 0 ? '📷 Photo' : '');
+	/** what a reply shows of a message: its text, or that it is a photo or GIF */
+	const previewOf = (m: { content: string; images: number; gif?: unknown }) =>
+		m.content || mediaPreview({ images: m.images, gif: !!m.gif });
 	const replyNameOf = (sender: MessageReplyTo['sender']) =>
 		sender.username === $user?.username ? 'You' : sender.name;
 	const authorNameOf = (m: Message) =>
@@ -937,7 +947,15 @@
 		addFiles(files);
 	}
 
-	type Draft = { content: string; replyingTo: Message | null; attachments: Attachment[] };
+	type Draft = {
+		content: string;
+		replyingTo: Message | null;
+		attachments: Attachment[];
+		/** a GIF goes out on its own, as soon as it is picked */
+		gif?: Gif | null;
+		/** the search that found it, for KLIPY's share count */
+		gifQuery?: string;
+	};
 
 	// messages go out one at a time, in order, while the input is already free for the next one
 	let outbox = Promise.resolve();
@@ -961,6 +979,20 @@
 		glideToBottom();
 	}
 
+	/** Sends a picked GIF right away, as a message of its own (what's typed stays in the input). */
+	async function sendGif(gif: Gif, query: string) {
+		pickingGif = false;
+		const draft: Draft = { content: '', replyingTo, attachments: [], gif, gifQuery: query };
+		replyingTo = null;
+		error = null;
+		const key = pendingKey++;
+		pending = [...pending, { ...draft, key, text: '', sentAt: performance.now(), at: new Date() }];
+		sends++;
+		outbox = outbox.then(() => post(draft, '', key));
+		await tick();
+		glideToBottom();
+	}
+
 	async function post(draft: Draft, text: string, key: number) {
 		const sentAt = pending.find((p) => p.key === key)?.sentAt ?? 0;
 		const settle = () => (pending = pending.filter((p) => p.key !== key));
@@ -972,7 +1004,8 @@
 				body: JSON.stringify({
 					content: text,
 					reply_to: draft.replyingTo?.id ?? null,
-					uploads
+					uploads,
+					gif: draft.gif ?? null
 				})
 			});
 		};
@@ -987,6 +1020,7 @@
 				settle();
 				// the pending bubble showed these until now
 				for (const a of draft.attachments) a.release();
+				if (draft.gif && gifConfig) shareGif(gifConfig, draft.gif.slug, draft.gifQuery ?? '');
 				await add([message], true);
 				return;
 			}
@@ -1567,6 +1601,9 @@
 									{/each}
 								</div>
 							{/if}
+							{#if message.gif}
+								<GifMedia gif={message.gif} maxHeight={360} maxWidth="min(320px, 60vw)" />
+							{/if}
 							{#if message.content}
 								<p class="wrap-anywhere whitespace-pre-wrap">
 									{#each message.content.split(/(\s)/) as part}{#if isHttpLink(part)}<a
@@ -1716,10 +1753,20 @@
 							<span class="line-clamp-2 wrap-anywhere opacity-80"
 								>{previewOf({
 									content: draft.replyingTo.content,
-									images: draft.replyingTo.images?.length ?? 0
+									images: draft.replyingTo.images?.length ?? 0,
+									gif: draft.replyingTo.gif
 								})}</span
 							>
 						</div>
+					{/if}
+					{#if draft.gif}
+						<img
+							class="max-h-[360px] max-w-[min(320px,60vw)] rounded-[5px] object-contain"
+							src={draft.gif.poster}
+							alt={draft.gif.title}
+							referrerpolicy="no-referrer"
+							draggable="false"
+						/>
 					{/if}
 					{#if draft.attachments.length}
 						<!-- sized like a sent message's images, see there -->
@@ -1783,6 +1830,15 @@
 		<p class="rounded-[5px] bg-danger p-2.5">{error}</p>
 	{/if}
 
+	{#if pickingGif && gifConfig && !editing}
+		<GifPicker
+			config={gifConfig}
+			onpick={sendGif}
+			onclose={() => (pickingGif = false)}
+			height="h-[min(18rem,40vh)]"
+		/>
+	{/if}
+
 	{#if attachments.length > 0}
 		<div class="flex flex-wrap gap-2.5">
 			{#each attachments as attachment (attachment.url)}
@@ -1821,7 +1877,11 @@
 			>
 				<p class="font-bold text-accent">Editing message</p>
 				<p class="truncate text-muted">
-					{previewOf({ content: editing.content, images: editing.images?.length ?? 0 })}
+					{previewOf({
+						content: editing.content,
+						images: editing.images?.length ?? 0,
+						gif: editing.gif
+					})}
 				</p>
 			</button>
 			<button
@@ -1848,7 +1908,11 @@
 			>
 				<p class="font-bold">Replying to {authorNameOf(replyingTo)}</p>
 				<p class="truncate text-muted">
-					{previewOf({ content: replyingTo.content, images: replyingTo.images?.length ?? 0 })}
+					{previewOf({
+						content: replyingTo.content,
+						images: replyingTo.images?.length ?? 0,
+						gif: replyingTo.gif
+					})}
 				</p>
 			</button>
 			<button
@@ -1908,6 +1972,22 @@
 					onkeydown={onKeydown}
 					oninput={onInput}
 				/>
+				{#if gifConfig && !editing}
+					<button
+						type="button"
+						title={pickingGif ? 'Close GIFs' : 'Send a GIF'}
+						aria-label={pickingGif ? 'Close GIFs' : 'Send a GIF'}
+						aria-pressed={pickingGif}
+						onmousedown={keepFocus}
+						onclick={() => (pickingGif = !pickingGif)}
+						class="flex shrink-0 cursor-pointer items-center self-end p-2.5 opacity-80 outline-none hover:opacity-100 focus-visible:text-accent"
+						><ImagePlay
+							size={20}
+							strokeWidth={1.8}
+							class={pickingGif ? 'text-accent' : ''}
+						/></button
+					>
+				{/if}
 			</div>
 			<button
 				type="submit"

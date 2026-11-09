@@ -517,7 +517,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/instance',
 				auth: 'public',
-				summary: 'message of the day, whether registration is open, limits'
+				summary:
+					'message of the day, whether registration is open, limits, and `gifs` (the KLIPY app key for GIF search, null when off)'
 			},
 			{
 				method: 'POST',
@@ -719,7 +720,8 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/posts',
 				auth: 'not muted',
-				summary: '`{ content, uploads?, reply_to?, quote_of?, poll? }`'
+				summary:
+					'`{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`; `gif` is a KLIPY GIF the client found itself (see GIFs in /api.txt)'
 			},
 			{
 				method: 'GET / PATCH / DELETE',
@@ -953,7 +955,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/conversations/:username/messages',
 				auth: 'signed in / not muted',
 				summary:
-					'messages, oldest first (`cursor` for older) / send `{ content, uploads?, reply_to? }`'
+					'messages, oldest first (`cursor` for older) / send `{ content, uploads?, gif?, reply_to? }`'
 			},
 			{
 				method: 'PATCH / DELETE',
@@ -1001,7 +1003,7 @@ export const v1Groups: V1Group[] = [
 				method: 'GET / POST',
 				path: '/api/v1/groups/:id/messages',
 				auth: 'member',
-				summary: 'messages and events / send'
+				summary: 'messages and events / send, like direct messages'
 			},
 			{
 				method: 'PATCH / DELETE',

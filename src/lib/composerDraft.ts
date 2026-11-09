@@ -9,6 +9,8 @@
  * drafts to the profile switched to (`switch:<composer>`, naming it).
  */
 
+import type { Gif } from '#lib/types.js';
+
 export type ComposerDraft = {
 	/** which composer it's from: `post`, `reply:<id>` or `quote:<id>` */
 	key: string;
@@ -16,6 +18,8 @@ export type ComposerDraft = {
 	pollOptions: string[] | null;
 	pollMinutes: number;
 	files: File[];
+	/** a chosen KLIPY GIF (only its URLs) */
+	gif?: Gif | null;
 };
 
 type Stored = {
@@ -26,6 +30,7 @@ type Stored = {
 	pollOptions: string[] | null;
 	pollMinutes: number;
 	files: File[];
+	gif?: Gif | null;
 	savedAt: number;
 	/** switch drafts: the username switched to, the only one that may take it */
 	to?: string;
@@ -107,7 +112,8 @@ function toDraft(s: Stored): ComposerDraft {
 		content: s.content,
 		pollOptions: s.pollOptions,
 		pollMinutes: s.pollMinutes,
-		files
+		files,
+		gif: s.gif ?? null
 	};
 }
 
@@ -153,6 +159,7 @@ export async function saveDraft(user: number, draft: ComposerDraft) {
 		pollOptions: draft.pollOptions && [...draft.pollOptions],
 		pollMinutes: draft.pollMinutes,
 		files: [...draft.files],
+		gif: draft.gif ? { ...draft.gif } : null,
 		savedAt: Date.now()
 	};
 	await withStore('readwrite', (s) => s.put(stored)).catch(() => {});
@@ -207,6 +214,7 @@ export async function saveDrafts(to: string): Promise<string[]> {
 			pollOptions: draft.pollOptions,
 			pollMinutes: draft.pollMinutes,
 			files: draft.files,
+			gif: draft.gif ? { ...draft.gif } : null,
 			savedAt: Date.now(),
 			to,
 			from: userKey(draft.user, draft.key)

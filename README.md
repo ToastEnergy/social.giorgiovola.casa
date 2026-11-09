@@ -340,6 +340,8 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/hashtags/:tag`                            | public    | a hashtag and its post count                          |
 | `GET`            | `/api/v1/hashtags/:tag/posts`                      | public    | posts with it                                         |
 | `GET`            | `/api/v1/notifications`                            | signed in | your notifications                                    |
+| `GET`            | `/api/v1/notifications/grouped`                    | signed in | your notifications, likes/regiorgs/follows grouped    |
+| `POST`           | `/api/v1/notifications/groups/:key/read`           | signed in | mark a group read                                     |
 | `GET`            | `/api/v1/notifications/unread`                     | signed in | unread notifications, messages and reactions          |
 | `POST`           | `/api/v1/notifications/read`                       | signed in | mark all read                                         |
 | `POST`           | `/api/v1/notifications/:id/read`                   | signed in | mark one read                                         |

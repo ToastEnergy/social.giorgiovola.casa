@@ -162,6 +162,27 @@ export type Notification = {
 	read_at: Date | null;
 };
 
+/**
+ * Notifications shown as one entry: likes or regiorgs of the same post, or follows, from the same
+ * (UTC) day. Every other notification is a group of one.
+ */
+export type NotificationGroup = {
+	/** stable while the group grows; pass it to POST /notifications/groups/:key/read */
+	key: string;
+	type: NotificationType;
+	/** the most recent senders first, at most 3 */
+	senders: Pick<User, 'id' | 'username' | 'name' | 'avatar'>[];
+	/** how many notifications (senders) the group has */
+	count: number;
+	unread: number;
+	/** null for follows */
+	post: Pick<Post, 'id' | 'content'> | null;
+	/** of the newest notification */
+	created_at: Date;
+	/** null while any of them is unread */
+	read_at: Date | null;
+};
+
 /** A direct message. Sender and recipient are usernames: ids of other profiles stay private. */
 /** What a reply shows of the message it answers. */
 export type MessageReplyTo = {

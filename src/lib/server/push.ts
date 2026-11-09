@@ -96,7 +96,16 @@ type Row = {
 	recipient_username: string;
 	identity: boolean;
 	recipient_id: number;
+	/** other unread notifications of the same kind for this post (likes, regiorgs) */
+	others: number;
 };
+
+/** Grouped notifications (likes, regiorgs, follows) name one sender and count the rest. */
+const groupTitle = (name: string, others: number) =>
+	others === 0 ? name : `${name} and ${others} ${others === 1 ? 'other' : 'others'}`;
+
+/** Types grouped on the notifications page: their pushes replace each other per post. */
+const GROUPED: NotificationType[] = ['like', 'regiorg'];
 
 /** Whether the notification's post belongs to the recipient (else to the sender). */
 export const recipientOwnsPost = (type: NotificationType) =>
@@ -128,7 +137,7 @@ function payloadFor(row: Row) {
 	// the link matches the notifications page: likes and ratios won point at the recipient's own post
 	const owner = recipientOwnsPost(row.type) ? row.recipient_username : row.sender_username;
 	return {
-		title: sender,
+		title: GROUPED.includes(row.type) ? groupTitle(sender, row.others) : sender,
 		body,
 		url: owner ? `/@${owner}/${row.post_id}` : '/notifications',
 		tag: `${row.type}:${row.post_id}`
@@ -287,14 +296,24 @@ export async function sendFollowPush(followerId: number, followedId: number) {
 		const sender = found.find((u) => u.id === followerId);
 		const recipient = found.find((u) => u.id === followedId);
 		if (!sender || !recipient) return;
+		// one tag for all follows: the push replaces the previous one and counts the unread rest
+		const others = await db.$count(
+			inbox,
+			and(
+				eq(inbox.type, 'follow'),
+				eq(inbox.user_id, followedId),
+				sql`${inbox.sender_id} IS DISTINCT FROM ${followerId}`,
+				isNull(inbox.read_at)
+			)
+		);
 		let body = 'followed you';
 		// identities share the owner's devices: say which profile it is for
 		if (recipient.owner_id !== null) body += ` (@${recipient.username})`;
 		await deliver(recipient.owner_id ?? recipient.id, {
-			title: sender.name,
+			title: groupTitle(sender.name, others),
 			body,
-			url: `/@${sender.username}`,
-			tag: `follow:${sender.username}:${recipient.username}`
+			url: others === 0 ? `/@${sender.username}` : '/notifications',
+			tag: `follow:${recipient.username}`
 		});
 	} catch (e) {
 		console.error('push: sendFollowPush failed', e);
@@ -338,7 +357,14 @@ export async function sendPush(postId: number, types?: NotificationType[]) {
 				sender_username: sender.username,
 				recipient_username: recipient.username,
 				identity: sql<boolean>`${recipient.owner_id} IS NOT NULL`,
-				recipient_id: recipient.id
+				recipient_id: recipient.id,
+				// the push replaces the previous one of the same tag, so it speaks for all of them
+				others: sql<number>`CASE WHEN ${claimed.type} IN ('like', 'regiorg') THEN (
+					SELECT count(*)::int FROM inbox o
+					WHERE o.user_id = ${claimed.user_id} AND o.post_id = ${claimed.post_id}
+						AND o.type = ${claimed.type} AND o.sender_id IS DISTINCT FROM ${claimed.sender_id}
+						AND o.read_at IS NULL
+				) ELSE 0 END`
 			})
 			.from(claimed)
 			.innerJoin(recipient, eq(recipient.id, claimed.user_id))

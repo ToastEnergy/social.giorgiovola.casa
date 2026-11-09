@@ -3,6 +3,7 @@
 	import { modal } from '#lib/modal.js';
 	import { compose, closeCompose, composed } from '#lib/compose.svelte.js';
 	import type { Post } from '#lib/types.js';
+	import { keyboard } from '#lib/keyboard.svelte.js';
 	import PostComposer from './PostComposer.svelte';
 
 	afterNavigate(closeCompose);
@@ -23,8 +24,14 @@
 	}
 </script>
 
+<!-- iOS only shrinks the visual viewport for the keyboard: the sheet follows what's visible, so
+	the text being typed and the buttons stay above the keyboard. it places itself, so the layout
+	doesn't scroll it into view (data-keyboard-fit) -->
 <dialog
+	data-keyboard-fit
 	class="fixed inset-0 z-999 m-0 h-full max-h-none w-screen max-w-none border-none bg-background p-0 text-foreground"
+	style:top={keyboard.inset ? 'var(--vv-top)' : undefined}
+	style:height={keyboard.inset ? 'var(--vv-height)' : undefined}
 	open={compose.open}
 	aria-modal="true"
 	aria-label="New post"
@@ -42,7 +49,13 @@
 					onclick={closeCompose}>Cancel</button
 				>
 			</div>
-			<PostComposer autofocus {oncreated} />
+			<!-- the field grows up to what's left above the keyboard beside the Cancel row and the
+				buttons, so the line being typed and the Post button stay in view -->
+			<PostComposer
+				autofocus
+				maxHeight="max-h-[max(5lh,calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-9rem))]"
+				{oncreated}
+			/>
 		</div>
 	{/if}
 </dialog>

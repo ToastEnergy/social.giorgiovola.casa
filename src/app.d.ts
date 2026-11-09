@@ -25,6 +25,8 @@ declare global {
 			auth: 'anonymous' | 'cookie' | 'token' | 'bot';
 			/** key (`sessions.token`) of the session or token in use, null for bots and anonymous */
 			sessionKey: string | null;
+			/** an invalid bearer token was sent to an upload, which then goes on anonymous */
+			invalidToken: boolean;
 		}
 		// interface PageData {}
 		// interface Platform {}

@@ -519,9 +519,13 @@ GET /dm-uploads/<uuid>.webp            (not under /api/v1: prefix the path with 
   200: the image (Content-Type image/webp), \`Cache-Control: private, max-age=3600\`: don't
   share a cache of these between users.
   404: missing, deleted, OR not yours / not signed in: the same answer, so a path doesn't
-  tell whether it exists. 401 when the bearer token is invalid or expired.
+  tell whether it exists.
+  401 (\`{ "error": … }\`, \`Cache-Control: private, no-store\`) when the file is a message
+  image and the bearer token is invalid, revoked or expired, as the API answers (a banned or
+  rate limited bot gets the API's 403 / 429). Sign in again.
 GET /uploads/<uuid>.webp               the same rules for a message image sent before; a post
-  image is public: 200 with \`Cache-Control: public, max-age=31536000, immutable\`.
+  image is public: 200 with \`Cache-Control: public, max-age=31536000, immutable\`, whatever
+  the Authorization header says (an invalid token is ignored there, never a 401).
   Limitation: anyone who could see an image can keep a copy. Privacy keeps out people who
   were never in the conversation, or no longer are.
 

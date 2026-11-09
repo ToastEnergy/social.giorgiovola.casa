@@ -3,15 +3,22 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import { hashtagHref } from '#lib/hashtags.js';
 	import { profileHover } from '#lib/profileCard.svelte.js';
+	import { takeSearchFocus } from '#lib/searchFocus.js';
+	import { onMount } from 'svelte';
 
 	let { data }: PageProps = $props();
 
 	const nf = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+	let field: HTMLInputElement;
+	onMount(() => takeSearchFocus(field));
+
 	const nothing = $derived(data.users.length === 0 && data.hashtags.length === 0);
 </script>
 
 <form class="mb-5 flex" action="/search" role="search">
 	<input
+		bind:this={field}
+		data-search-field
 		class="input"
 		type="search"
 		name="q"
@@ -40,7 +47,7 @@
 				{#each data.users as user (user.username)}
 					<li>
 						<a
-							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 							href="/@{user.username}"
 							use:profileHover={user.username}
 						>
@@ -68,7 +75,7 @@
 		{#each data.hashtags as hashtag (hashtag.tag)}
 			<li>
 				<a
-					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 					href={hashtagHref(hashtag.tag)}
 				>
 					<span class="min-w-0 truncate font-bold">#{hashtag.tag}</span>

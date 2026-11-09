@@ -176,7 +176,7 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 		id: 'messages',
 		title: 'Direct messages',
 		intro:
-			'Anyone can message a bot from the web app, and a bot can message anyone who has not blocked it. Messages are text only for bots; people can attach images, which a bot sees as paths in "images". Message images are private: fetch one by sending GET to the site origin plus the path, with the bot token as usual; anyone outside the conversation, or a bot no longer in the group, gets a 404.',
+			'Anyone can message a bot from the web app, and a bot can message anyone who has not blocked it. Messages are text only for bots; people can attach images, which a bot sees as paths in "images". Message images are private: fetch one by sending GET to the site origin plus the path, with the bot token as usual; anyone outside the conversation, or a bot no longer in the group, gets a 404, and an invalid token a 401. Post images are public and load whatever token is sent.',
 		endpoints: [
 			{
 				method: 'GET',
@@ -788,7 +788,7 @@ export const v1Groups: V1Group[] = [
 				path: '/dm-uploads/:file',
 				auth: 'in the conversation',
 				summary:
-					'a message image (cookie or bearer token, private caching); 404 when missing or not yours. Older message images under `/uploads/` get the same check'
+					'a message image (cookie or bearer token, private caching); 404 when missing or not yours, 401 for an invalid token. Older message images under `/uploads/` get the same check; post images there load whatever the token'
 			}
 		]
 	},

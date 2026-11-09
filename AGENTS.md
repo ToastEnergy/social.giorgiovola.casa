@@ -31,7 +31,7 @@ SvelteKit conventions: `+server.ts` endpoints under `/api/v1` hold the server lo
 
 The look is flat, dark and minimal: a near-black page, light grey text and one green accent. Match it in any new UI instead of bringing in new styles.
 
-**No glows, gradients or drop shadows.** Separate surfaces with a 1px border or a translucent black fill, not with shadow.
+**No glows, gradients or shadows.** Separate surfaces with a 1px border or a translucent black fill.
 
 ### Tokens
 
@@ -50,7 +50,7 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
 - **Text sizes** are relative (`em`) so they follow their context: `text-[0.9em]` for secondary lines, `text-[0.85em]` for hints (`text-muted`), `text-[0.8em]` for form labels and timestamps, `text-[0.75em]` for badges. Use `opacity-80` / `opacity-70` for a dimmed part of a line (such as `@username` next to a name).
 - **Corners:** `rounded-[5px]` for buttons, popovers, error banners and images. `rounded-md` for dialogs and list rows, `rounded-[10px]` for info panels, `rounded-full` only for avatars and pills.
 - **Spacing:** the scale is 5px / 10px / 20px: `[5px]`, `2.5` and `5` in Tailwind (`p-[5px]`, `gap-2.5`, `mb-5`). Most stacks are `flex flex-col gap-2.5`. Sections on settings-like pages are `mb-10 flex flex-col gap-3`.
-- **Layout:** content sits in a single centered column (`max-w-160 p-5`, in `+layout.svelte`) under the fixed, translucent header. Pages don't add their own outer width or padding.
+- **Layout:** content sits in a single centered column (`max-w-160 p-5`, in `+layout.svelte`). On mouse devices there is no top bar for signed-in users: the sidebar (logo, sections, project links) on the left, the content on a black, `rounded-[15px]` panel exactly as wide as the column, and a rail on the right (`Rail.svelte`: profile badge with name and username, search box under it) form one centred group, sized by the `.frame` variables in `src/app.css`. A fixed frame in `+layout.svelte` masks the panel's edges while the window scrolls. Without room for the rail (`rail` breakpoint), the profile moves to the bottom of the sidebar and search becomes a sidebar link. Signed-out visitors keep a header with the logo and login link. On touch devices the header is translucent, content scrolls under it and the sections, search and profile are in a bottom bar. Pages don't add their own outer width or padding.
 
 ### Components and patterns
 
@@ -73,7 +73,7 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
 - **Info panels:** `rounded-[10px] bg-black/70 p-2.5`.
 - **Errors:** `rounded-[5px] bg-danger p-[5px]` above the thing that failed.
 - **Tabs and filters:** an underline tab row (`border-b-2`, `border-accent` when active, `opacity-60` otherwise) or `Button`s with the active one `primary`. Mark the active one with `aria-current="page"`.
-- **Hover states:** rows and posts darken (`hover:bg-black`, or `hover:bg-white/5` on small menu links). Links underline on hover (base style). Turn that off with `hover:no-underline` when a link isn't text.
+- **Hover states:** rows, posts and small menu links lighten with `hover:bg-white/5` (the content panel is already black, so `hover:bg-black` wouldn't show). Links underline on hover (base style). Turn that off with `hover:no-underline` when a link isn't text.
 - **Avatars:** always `src/lib/components/Avatar.svelte` (round). Common sizes are 24 (inline stacks), 45 (posts), 50 (header), 60–64 (profile and card).
 - **Numbers:** show large counts compactly with `Intl.NumberFormat(undefined, { notation: 'compact' })` (`49.4K`).
 - **Touch:** hover-only UI (such as the profile card) must only open for `pointerType === 'mouse'`, and tapping must still work without it.

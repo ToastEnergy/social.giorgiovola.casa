@@ -25,6 +25,7 @@ function anonymous(locals: App.Locals) {
 	locals.muteReason = null;
 	locals.auth = 'anonymous';
 	locals.sessionKey = null;
+	locals.invalidToken = false;
 }
 
 /**
@@ -170,16 +171,59 @@ function foreignOrigin(event: RequestEvent) {
  * Where bearer tokens are read: the API, and uploads, since a message image is only served to
  * whoever can read its conversation. The bot API (`/api/bot/*`) authenticates on its own.
  */
+const isUpload = (pathname: string) =>
+	pathname.startsWith('/uploads/') || pathname.startsWith('/dm-uploads/');
 const readsBearer = (pathname: string) =>
-	(pathname.startsWith('/api/') && !pathname.startsWith('/api/bot/')) ||
-	pathname.startsWith('/uploads/') ||
-	pathname.startsWith('/dm-uploads/');
+	(pathname.startsWith('/api/') && !pathname.startsWith('/api/bot/')) || isUpload(pathname);
+
+/**
+ * The error an upload request's token got (see authenticate), kept until the route knows whether
+ * the file is a message image. Not in locals, which in-process subrequests copy.
+ */
+const tokenErrors = new WeakMap<App.Locals, Response>();
+
+/**
+ * The answer for a request whose bearer token was refused, the one the API gives (401, or 403 /
+ * 429 for a banned or rate limited bot), never cached. Null when no token was refused.
+ */
+export function tokenError(locals: App.Locals): Response | null {
+	const response = tokenErrors.get(locals);
+	if (!response) return null;
+	tokenErrors.delete(locals);
+	response.headers.set('Cache-Control', 'private, no-store');
+	return response;
+}
+
+/** Fills locals from a bearer token, or returns the error response for an invalid one. */
+async function fromToken(locals: App.Locals, request: Request, header: string) {
+	const match = /^(?:Bearer|Bot) (\S+)$/i.exec(header);
+	const token = match?.[1] ?? '';
+	if (token.startsWith('sgc_')) {
+		const bot = await authenticateBot(request);
+		if (bot instanceof Response) return bot;
+		// bots act as their own profile; they are no account, so account endpoints refuse them
+		locals.user = bot.user;
+		locals.muted = bot.muted;
+		locals.muteReason = bot.muteReason;
+		locals.auth = 'bot';
+		return null;
+	}
+	if (!USER_TOKEN_RE.test(token)) return unauthorized('Missing or invalid token');
+	const [row] = await loadSessions([hashToken(token)], 'api');
+	if (!row) return unauthorized('Invalid or expired token, sign in again');
+	fromSession(locals, row);
+	locals.auth = 'token';
+	return null;
+}
 
 /**
  * Authenticates the request and fills `event.locals`. Returns an error response when a bearer
  * token was sent but is invalid (a wrong token never silently falls back to anonymous).
  *
- * Bearer tokens are only read where readsBearer says.
+ * Bearer tokens are only read where readsBearer says. On uploads an invalid token doesn't stop
+ * the request: post images are public and always loaded whatever the header said, so the request
+ * goes on anonymous with `locals.invalidToken` set, and only a message image answers the error
+ * (tokenError).
  */
 export async function authenticate(event: RequestEvent): Promise<Response | null> {
 	const { locals, request, url, cookies } = event;
@@ -189,24 +233,15 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 	// only our schemes count: another one (Basic auth from a proxy) is not ours to refuse
 	const isOurs = header !== null && /^(?:Bearer|Bot)(?: |$)/i.test(header);
 	if (isOurs && readsBearer(url.pathname)) {
-		const match = /^(?:Bearer|Bot) (\S+)$/i.exec(header);
-		const token = match?.[1] ?? '';
-		if (token.startsWith('sgc_')) {
-			const bot = await authenticateBot(request);
-			if (bot instanceof Response) return bot;
-			// bots act as their own profile; they are no account, so account endpoints refuse them
-			locals.user = bot.user;
-			locals.muted = bot.muted;
-			locals.muteReason = bot.muteReason;
-			locals.auth = 'bot';
+		const error = await fromToken(locals, request, header);
+		if (error && isUpload(url.pathname)) {
+			// a sent token is still the only credential: no fallback to the cookies
+			anonymous(locals);
+			locals.invalidToken = true;
+			tokenErrors.set(locals, error);
 			return null;
 		}
-		if (!USER_TOKEN_RE.test(token)) return unauthorized('Missing or invalid token');
-		const [row] = await loadSessions([hashToken(token)], 'api');
-		if (!row) return unauthorized('Invalid or expired token, sign in again');
-		fromSession(locals, row);
-		locals.auth = 'token';
-		return null;
+		return error;
 	}
 
 	// a page of another site can make the browser send our cookies along (same-site subdomains,

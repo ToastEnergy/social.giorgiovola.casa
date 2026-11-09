@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
 	import { errorOf } from '#lib/api.js';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -101,17 +102,7 @@
 					{option}
 					{#if voted === i}
 						<span class="sr-only">(your vote)</span>
-						<svg
-							class="inline align-[-2px]"
-							height="14px"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="#d9d9d9"
-							stroke-width="2.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
-						>
+						<Check size={14} strokeWidth={2.5} class="inline align-[-2px]" />
 					{/if}
 				</span>
 				<span class="relative shrink-0 text-[0.9em]">{Math.round(share * 100)}%</span>

@@ -120,7 +120,9 @@ conversation. New ones are /dm-uploads/<uuid>.webp; older messages may still hav
 with the same header as every other request (\`Authorization: Bearer <token>\`). It answers
 200 with the image when the bot is the sender or recipient of the direct message, or still
 a member of the group of the group message, and 404 otherwise, the same as for a missing
-or deleted image. Images in "linked_post" are post images: public, no token needed. Anyone
+or deleted image. An invalid token answers 401 \`{ "error": … }\` for a message image (403 when
+the bot is banned, 429 when rate limited), like the API. Images in "linked_post" are post
+images: public, no token needed, and served even when the token sent is invalid. Anyone
 who could see an image can keep a copy: privacy only keeps out profiles that were never in
 the conversation, or no longer are.
 

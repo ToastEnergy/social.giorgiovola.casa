@@ -3,6 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, users } from './db/index.js';
 import { uploadType } from './images.js';
 import * as storage from './storage.js';
+import { tokenError } from './auth.js';
 
 /**
  * Message images are only served to the conversation they were sent in: the sender and
@@ -116,4 +117,22 @@ export async function serveUpload(file: string, access: 'public' | 'private'): P
 			'Content-Security-Policy': SANDBOX
 		}
 	});
+}
+
+/**
+ * The answer for GET /uploads/`file` or /dm-uploads/`file` (`route`). A post image (only under
+ * /uploads/) is public whatever the request's token. A message image answers the token's error
+ * when an invalid one was sent (see authenticate), the same 404 as a missing file when no
+ * profile of the request is in the conversation, and the image otherwise.
+ */
+export async function uploadResponse(
+	locals: App.Locals,
+	file: string,
+	route: 'uploads' | 'dm-uploads'
+): Promise<Response> {
+	if (!uploadType(file)) return notFound();
+	const access = await messageImageAccess(locals, file);
+	if (access === 'public') return route === 'uploads' ? serveUpload(file, 'public') : notFound();
+	if (locals.invalidToken) return tokenError(locals) ?? notFound();
+	return access === 'allowed' ? serveUpload(file, 'private') : notFound();
 }

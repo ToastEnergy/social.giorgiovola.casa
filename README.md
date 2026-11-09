@@ -10,23 +10,26 @@ That's it: the database is created and migrated automatically on every start. Th
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
-| variable               | default                 | description                                                                                                                                           |
-| ---------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                 | `7777`                  | port the app listens on                                                                                                                               |
-| `PUBLIC_URL`           | `http://localhost:PORT` | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
-| `DISCORD_WEBHOOK_URL`  | empty                   | optional, new posts are announced to this webhook                                                                                                     |
-| `SIGNUP_PASSWORD`      | empty                   | password required to register; registration is closed if empty                                                                                        |
-| `ADDRESS_HEADER`       | empty                   | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
-| `S3_BUCKET`            | empty                   | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                        |
-| `S3_ENDPOINT`          | empty                   | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                      |
-| `S3_REGION`            | `auto`                  | bucket region (`auto` for R2)                                                                                                                         |
-| `S3_ACCESS_KEY_ID`     | empty                   | access key of the API token, required with `S3_BUCKET`                                                                                                |
-| `S3_SECRET_ACCESS_KEY` | empty                   | secret of the API token, required with `S3_BUCKET`                                                                                                    |
-| `CLOUDFLARE_ZONE_ID`   | empty                   | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                        |
-| `CLOUDFLARE_API_TOKEN` | empty                   | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)              |
-| `BIND_ADDRESS`         | `127.0.0.1`             | interface the port is published on                                                                                                                    |
-| `POSTGRES_PASSWORD`    | `postgres`              | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
-| `POSTGRES_PORT`        | `5432`                  | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
+| variable                    | default                           | description                                                                                                                                           |
+| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `7777`                            | port the app listens on                                                                                                                               |
+| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
+| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                    |
+| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                          |
+| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                      |
+| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                     |
+| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                        |
+| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
+| `S3_BUCKET`                 | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                        |
+| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                      |
+| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                         |
+| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                |
+| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                    |
+| `CLOUDFLARE_ZONE_ID`        | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                        |
+| `CLOUDFLARE_API_TOKEN`      | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)              |
+| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                    |
+| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
+| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
 
 Data lives in the `postgres-data`, `avatars`, `uploads` and `dm-uploads` docker volumes (`uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
 
@@ -96,7 +99,7 @@ If step 3 reports missing files that you can't find anymore (in an old volume or
 
 ## backups
 
-`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
+`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes, plus `dm-uploads` when the deployment has it (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
 
 ```
 cp scripts/backup.env.example /etc/social-backup.env   # set RESTIC_REPOSITORY and the password file
@@ -114,6 +117,19 @@ Keep a copy of the password somewhere other than the server: without it the back
 Set `HEALTHCHECK_URL` to get an alert from a service like [healthchecks.io](https://healthchecks.io) when a backup fails or stops running.
 
 `scripts/restore.sh` puts a backup back, replacing the current database, avatars and uploads (it asks first, and stops the app while restoring). By default it takes the latest snapshots; pass the ids from `restic snapshots` to pick older ones: `scripts/restore.sh <db snapshot> <files snapshot>`. On a new server, clone the repository, copy `.env` and `/etc/social-backup.env`, run `docker compose up -d` once to create the volumes, then `scripts/restore.sh`. Pending migrations are applied when the app starts again.
+
+### backing up the bucket
+
+When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backup.env` too. The backup then copies the bucket into a local mirror (`MIRROR_DIR`, `/var/lib/social-backup/assets` by default, readable by root only) with [rclone](https://rclone.org), and backs up the mirror instead of the volumes, still tagged `files`. restic keeps the versions, encrypts them and applies the retention, so deleted and overwritten objects can be restored for as long as their snapshots are kept. If the copy fails, the backup stops and reports the failure without taking a snapshot of a half-copied mirror.
+
+1. Install rclone on the server (`apt install rclone`, or see [its install page](https://rclone.org/install/)).
+2. In the Cloudflare dashboard, R2 → _Manage API tokens_ → _Create API token_: permission **Object Read only**, applied to that one bucket. Read only means that someone who gets into the backup host can't change or delete the assets.
+3. Put the token in `/etc/social-backup.env` as an rclone remote, through environment variables (no `rclone.conf` needed; the commented example in `scripts/backup.env.example` has all of them): `S3_BUCKET`, `RCLONE_CONFIG_R2_TYPE=s3`, `RCLONE_CONFIG_R2_PROVIDER=Cloudflare`, `RCLONE_CONFIG_R2_ENDPOINT`, `RCLONE_CONFIG_R2_ACCESS_KEY_ID` and `RCLONE_CONFIG_R2_SECRET_ACCESS_KEY`.
+4. Run `scripts/backup.sh` and check that `restic ls latest --tag files` lists the bucket's `uploads/`, `avatars/` and `dm/` objects.
+
+`scripts/restore.sh` then puts the files snapshot back into the bucket with `rclone sync`, which also deletes the objects that aren't in the snapshot. The read-only token can't do that, so it asks for the key pair of a token with **Object Read & Write** on the bucket (the app's token works), or takes it from `RESTORE_ACCESS_KEY_ID` / `RESTORE_SECRET_ACCESS_KEY`. Don't keep that token in the backup config. Pass a files snapshot taken in bucket mode: older snapshots of the volumes go back into the volumes, with `S3_BUCKET` unset.
+
+**Privacy:** message images that were deleted (with their message, or with a deleted profile) stay in the backups until the retention drops every snapshot that holds them: up to 12 months with the default `KEEP_MONTHLY=12`. Lower `KEEP_MONTHLY` (and `KEEP_WEEKLY` / `KEEP_DAILY`) to keep them for less time. The same goes for the volumes, and for deleted posts in the database dumps.
 
 ## regiorgios
 
@@ -208,7 +224,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 - **Auth:** `POST /api/v1/auth/login` with `{ "username", "password" }` answers a bearer token (`sgu_…`, valid 90 days). Personal access tokens can be created in `/settings` → _Sessions and API tokens_ or with `POST /api/v1/auth/tokens`. Bot tokens (`sgc_…`) work too. Send `Authorization: Bearer <token>`; the web UI uses its session cookie instead, which is ignored on requests from other origins. Only hashes of tokens are stored, and every session and token can be listed and revoked.
 - **Identities:** a token acts as one profile at a time; `POST /api/v1/auth/switch` with `{ "username" }` moves it to the account or one of its identities.
 - **Conventions:** JSON in and out, errors are `{ "error": "…" }`, lists are `{ "items": [...], "next_cursor": "…" | null }` with `?limit=` and `?cursor=`. Send `Content-Type: application/json` on every write, even without a body, and upload images as the raw request body: SvelteKit refuses body-less and form writes that don't come from the site. CORS is open (`*`, no credentials).
-- **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else. See [message images](#message-images).
+- **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else (401 when the token is invalid). Post images ignore the token, even an invalid one. See [message images](#message-images).
 - **Compatibility:** v1 only changes additively; the original bot API under `/api/bot` (below) keeps working unchanged.
 
 **Instance and signing in**
@@ -318,7 +334,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `DELETE`           | `/api/v1/groups/:id/members/:username`                  | owner (or yourself)   | remove someone, or leave                                                              |
 | `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                 |
 | `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                      |
-| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 when missing or not yours                      |
+| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token        |
 
 **Moderation and realtime**
 
@@ -335,7 +351,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 ## message images
 
-Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token.
+Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token. An invalid (revoked, expired or unknown) token gets a 401 for a message image, like the API; post images under `/uploads/` ignore the header and load whatever token is sent.
 
 Images of messages sent before this keep their `/uploads/…` paths and get the same check. They used to be served publicly and cached as immutable, so purge those URLs from a cache in front of the app (such as Cloudflare) once after upgrading: `scripts/migrate-assets.ts --purge-only` lists and purges them (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)).
 

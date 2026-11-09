@@ -181,6 +181,16 @@ Notification:
   ratioed the sender's post). For like, regiorg and ratioed_by_you the post is YOURS;
   for the others it is the sender's.
 
+NotificationGroup (GET /notifications/grouped):
+  { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
+    "avatar" } ], "count": 5, "unread": 2, "post": { "id", "content" } | null,
+    "created_at", "read_at": "…" | null }
+  Likes and regiorgs of the same post, and follows, that arrived on the same UTC day are
+  one group; every other notification is a group of one ("count": 1). "senders" are the
+  latest, at most 3; "count" is how many notifications (people) the group has, "unread"
+  how many of them are unread. "created_at" is the newest one's; "read_at" is null while
+  any is unread. "key" is opaque and stays the same while the group grows.
+
 Me (GET /me):
   { "user": { "id", "username", "name", "avatar", "bio", "website", "email" (null for
               identities and bots), "bot", "identity", "created_at" },
@@ -450,6 +460,13 @@ GET /hashtags/:tag/posts              public, paginated Posts (replies included)
 ### Notifications
 
 GET /notifications                    signed in, paginated (default 50, at most 200)
+  Every notification on its own (Notification objects).
+GET /notifications/grouped            signed in, paginated (default 50, at most 200)
+  NotificationGroups, newest first: what the website shows. A group that gets a new
+  notification moves back to the top, so a later page can repeat a group already seen:
+  keep the first copy (match by "key").
+POST /notifications/groups/:key/read  marks every notification of the group read → 204;
+  404 when you have no such group.
 GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,
   "reactions": 1 }
   (messages: unread direct and group messages; reactions: unread reactions others made to

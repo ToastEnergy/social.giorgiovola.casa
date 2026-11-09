@@ -895,6 +895,18 @@ export const v1Groups: V1Group[] = [
 			},
 			{
 				method: 'GET',
+				path: '/api/v1/notifications/grouped',
+				auth: 'signed in',
+				summary: 'your notifications, likes, regiorgs and follows grouped per day'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/notifications/groups/:key/read',
+				auth: 'signed in',
+				summary: 'mark a group read'
+			},
+			{
+				method: 'GET',
 				path: '/api/v1/notifications/unread',
 				auth: 'signed in',
 				summary: 'unread notifications, messages and reactions to your messages'

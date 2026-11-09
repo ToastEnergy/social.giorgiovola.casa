@@ -648,11 +648,24 @@ PUT /admin/motd   { "motd": "one line" ("" resets) } → { "motd", "message" }  
 GET /stream                           public or signed in
   An event stream (text/event-stream). Send the token in the Authorization header (use an
   SSE client that supports headers; the browser's EventSource can't, which is why the
-  website uses its cookie). Reconnect when it drops (the server sends "retry: 3000") and
-  catch up with the normal endpoints. Lines starting with ":" are keep-alives. The stream
-  ends when the token or session it was opened with is revoked; reconnecting then answers
-  only public events, or 401 for the revoked bearer token.
+  website uses its cookie). The stream ends when the token or session it was opened with is
+  revoked; reconnecting then answers only public events, or 401 for the revoked bearer token.
+  Staying connected:
+    - The server sends a "ping" event every 8 seconds to every /stream connection. If
+      nothing at all (no event, ping included) arrives for 20 seconds, the connection is
+      dead even if your client still thinks it's open (a network change, a phone that slept,
+      a NAT that dropped it): close it and open a new one.
+    - When it drops, reconnect. The server sends "retry: 3000" (wait 3 s); if the reconnect
+      itself fails (an HTTP error while the server restarts), back off: 1 s, 2 s, 4 s, ... up
+      to 30 s, and start over from 1 s after a success.
+    - Events sent while you were disconnected are not replayed: there are no event ids and
+      Last-Event-ID is ignored. After every reconnect, reload what you show from the normal
+      endpoints (the first page of the feed, the open post and its replies, the open
+      conversation, the notifications). The unread counts ("notifications" and
+      "messages_unread") are sent again on connect by themselves.
   Everyone gets:
+    ping            {}   the heartbeat above, every 8 seconds: ignore it apart from noting
+                         that the stream is alive
     post            <Post> (as an anonymous viewer: no liked/regiorged)
     post_edited     <Post>
     post_deleted    { "id" }

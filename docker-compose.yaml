@@ -1,44 +1,66 @@
+# the app, shared by both colours of the blue-green deploy (web and web-green)
+x-web: &web
+  build:
+    context: .
+    args:
+      # compiled in as the CSRF origin: rebuild (up -d --build) after changing PUBLIC_URL
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${PORT:-7777}}
+  restart: unless-stopped
+  # adapter-node finishes the requests in flight on SIGTERM (event streams are cut, clients reconnect)
+  stop_grace_period: 30s
+  environment:
+    PORT: ${PORT:-7777}
+    BODY_SIZE_LIMIT: 54525952
+    DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+    PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${PORT:-7777}}
+    PUBLIC_SEARCH_PLACEHOLDER: ${PUBLIC_SEARCH_PLACEHOLDER:-}
+    PUBLIC_REPLY_PLACEHOLDER: ${PUBLIC_REPLY_PLACEHOLDER:-}
+    PUBLIC_NO_REPLIES_MESSAGE: ${PUBLIC_NO_REPLIES_MESSAGE:-}
+    DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    SIGNUP_PASSWORD: ${SIGNUP_PASSWORD:-}
+    ADDRESS_HEADER: ${ADDRESS_HEADER:-}
+    # optional bucket for avatars and images (README: storing assets in S3 / R2)
+    S3_BUCKET: ${S3_BUCKET:-}
+    S3_ENDPOINT: ${S3_ENDPOINT:-}
+    S3_REGION: ${S3_REGION:-}
+    S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+    S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+    # who downloads link previews (README: link previews)
+    LINK_PREVIEWS: ${LINK_PREVIEWS:-}
+    LINK_PREVIEWS_URL: ${LINK_PREVIEWS_URL:-}
+    LINK_PREVIEWS_SECRET: ${LINK_PREVIEWS_SECRET:-}
+    # GIFs in posts and messages (README: GIFs)
+    KLIPY_APP_KEY: ${KLIPY_APP_KEY:-}
+    KLIPY_CONTENT_FILTER: ${KLIPY_CONTENT_FILTER:-}
+  volumes:
+    - avatars:/app/static/avatars
+    - uploads:/app/static/uploads
+    # message images, served only to their conversation (kept outside static/)
+    - dm-uploads:/app/data/dm
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   web:
-    build:
-      context: .
-      args:
-        # compiled in as the CSRF origin: rebuild (up -d --build) after changing PUBLIC_URL
-        PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${PORT:-7777}}
-    restart: unless-stopped
+    <<: *web
+    # the deploy (scripts/deploy.sh) sets SOCIAL_IMAGE in .env to the image it pulled from the
+    # registry; without it the image is built here from the checkout
+    image: ${SOCIAL_IMAGE:-social-web}
     ports:
       # only reachable from this machine by default: put a reverse proxy in front.
       # Set BIND_ADDRESS=0.0.0.0 if your proxy runs on another host.
       - '${BIND_ADDRESS:-127.0.0.1}:${PORT:-7777}:${PORT:-7777}'
-    environment:
-      PORT: ${PORT:-7777}
-      BODY_SIZE_LIMIT: 54525952
-      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${PORT:-7777}}
-      PUBLIC_SEARCH_PLACEHOLDER: ${PUBLIC_SEARCH_PLACEHOLDER:-}
-      PUBLIC_REPLY_PLACEHOLDER: ${PUBLIC_REPLY_PLACEHOLDER:-}
-      PUBLIC_NO_REPLIES_MESSAGE: ${PUBLIC_NO_REPLIES_MESSAGE:-}
-      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
-      SIGNUP_PASSWORD: ${SIGNUP_PASSWORD:-}
-      ADDRESS_HEADER: ${ADDRESS_HEADER:-}
-      # optional bucket for avatars and images (README: storing assets in S3 / R2)
-      S3_BUCKET: ${S3_BUCKET:-}
-      S3_ENDPOINT: ${S3_ENDPOINT:-}
-      S3_REGION: ${S3_REGION:-}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
-      # who downloads link previews (README: link previews)
-      LINK_PREVIEWS: ${LINK_PREVIEWS:-}
-      LINK_PREVIEWS_URL: ${LINK_PREVIEWS_URL:-}
-      LINK_PREVIEWS_SECRET: ${LINK_PREVIEWS_SECRET:-}
-    volumes:
-      - avatars:/app/static/avatars
-      - uploads:/app/static/uploads
-      # message images, served only to their conversation (kept outside static/)
-      - dm-uploads:/app/data/dm
-    depends_on:
-      db:
-        condition: service_healthy
+
+  # the second colour of the blue-green deploy (README: deploying): scripts/deploy.sh starts the
+  # new version on the idle colour while the other one serves, switches caddy over and stops the
+  # old one. Only started by name (or with --profile green), not by a plain `docker compose up`
+  web-green:
+    <<: *web
+    profiles: [green]
+    image: ${SOCIAL_IMAGE_GREEN:-social-web}
+    ports:
+      - '${BIND_ADDRESS:-127.0.0.1}:${GREEN_PORT:-7779}:${PORT:-7777}'
 
   db:
     image: postgres:17-alpine

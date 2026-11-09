@@ -32,6 +32,7 @@
 	import { profileHover } from '#lib/profileCard.svelte.js';
 	import { modal } from '#lib/modal.js';
 	import { openShare, postUrl } from '#lib/share.svelte.js';
+	import { visibleBottom } from '#lib/keyboard.svelte.js';
 
 	type Props = {
 		post: Post;
@@ -368,7 +369,7 @@
 		if (!$user) return goto('/login');
 		if (!menuOpen && menu) {
 			// about the menu's height, plus room for mobile browser bars
-			menuUp = menu.getBoundingClientRect().bottom + 120 > window.innerHeight;
+			menuUp = menu.getBoundingClientRect().bottom + 120 > visibleBottom();
 		}
 		menuOpen = !menuOpen;
 	}
@@ -432,7 +433,7 @@
 	function toggleShareMenu() {
 		if (!shareOpen && shareMenu) {
 			// about the menu's height, plus room for mobile browser bars
-			shareUp = shareMenu.getBoundingClientRect().bottom + 180 > window.innerHeight;
+			shareUp = shareMenu.getBoundingClientRect().bottom + 180 > visibleBottom();
 			canNativeShare = typeof navigator.share === 'function';
 		}
 		shareOpen = !shareOpen;

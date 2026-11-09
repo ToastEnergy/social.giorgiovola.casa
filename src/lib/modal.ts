@@ -18,6 +18,8 @@ export const modal: Action<HTMLElement, Params> = (node, params) => {
 		const previous = document.activeElement as HTMLElement | null;
 
 		const onkeydown = (e: KeyboardEvent) => {
+			// an overlay opened over the dialog (the photo editor) handles its own keys
+			if (document.querySelector('[data-modal-above]')) return;
 			if (e.key === 'Escape') {
 				e.stopPropagation();
 				current.onclose();
@@ -44,6 +46,7 @@ export const modal: Action<HTMLElement, Params> = (node, params) => {
 		};
 		// focus that wandered out (a click on the page behind) comes back
 		const onfocusin = (e: FocusEvent) => {
+			if ((e.target as Element).closest?.('[data-modal-above]')) return;
 			if (!node.contains(e.target as Node)) (visible()[0] ?? node).focus();
 		};
 

@@ -15,6 +15,7 @@
 	import LoadingScreen from './LoadingScreen.svelte';
 	import UploadProgress from './UploadProgress.svelte';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
+	import { canEdit, editImage } from '#lib/photoEditor.svelte.js';
 	import QuoteCard from './QuoteCard.svelte';
 	import GifMedia from './GifMedia.svelte';
 	import GifPicker from './GifPicker.svelte';
@@ -42,6 +43,7 @@
 	import { openImage } from '#lib/imageViewer.svelte.js';
 	import { groupEventText } from '#lib/groupEvents.js';
 	import { editable } from '#lib/messageEdits.js';
+	import { calendarDay, dateReady, formatDate } from '#lib/time.svelte.js';
 	import { cubicIn, quintOut } from 'svelte/easing';
 	import {
 		dmKey,
@@ -207,12 +209,13 @@
 
 	// created_at arrives as a string over JSON
 	const dateOf = (m: Message) => new Date(m.created_at);
-	const dayKey = (d: Date) => d.toDateString();
+	// days and times in the reader's zone (see time.svelte.ts), so the server renders what the
+	// browser will and a message near midnight lands on the reader's day, not the server's
+	const dayKey = (d: Date) => calendarDay(d).day;
 	/** a message starts a new day: it gets a separator above it */
 	const startsDay = (index: number) =>
 		index === 0 || dayKey(dateOf(messages[index])) !== dayKey(dateOf(messages[index - 1]));
-	const clock = (d: Date) =>
-		d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+	const clock = (d: Date) => formatDate(d, { hour: '2-digit', minute: '2-digit' });
 	const timeOf = (m: Message) => clock(dateOf(m));
 
 	/**
@@ -252,16 +255,16 @@
 
 	/** Today, Yesterday, a weekday within the week, else the date (with the year if not this one). */
 	function dayLabel(d: Date) {
-		const today = new Date();
-		const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-		const days = Math.round((midnight(today) - midnight(d)) / 86_400_000);
+		const today = calendarDay(new Date());
+		const day = calendarDay(d);
+		const days = today.day - day.day;
 		if (days === 0) return 'Today';
 		if (days === 1) return 'Yesterday';
-		if (days > 1 && days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
-		return d.toLocaleDateString(undefined, {
+		if (days > 1 && days < 7) return formatDate(d, { weekday: 'long' });
+		return formatDate(d, {
 			day: 'numeric',
 			month: 'long',
-			year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric'
+			year: day.year === today.year ? undefined : 'numeric'
 		});
 	}
 
@@ -910,17 +913,32 @@
 				showError(`You can attach at most ${MAX_IMAGES} images.`);
 				break;
 			}
-			// uploaded right away, so sending doesn't wait for it
-			const attachment = new Attachment(file);
-			attachment.done.catch((e) => {
-				// once it's part of a message, post reports it
-				if (!attachments.includes(attachment)) return;
-				showError(e instanceof UploadError ? e.message : 'Could not upload the image.');
-				removeAttachment(attachment);
-			});
-			added.push(attachment);
+			added.push(stage(file));
 		}
 		if (added.length) attachments = [...attachments, ...added];
+	}
+
+	/** starts uploading `file` as an attachment */
+	function stage(file: File) {
+		// uploaded right away, so sending doesn't wait for it
+		const attachment = new Attachment(file);
+		attachment.done.catch((e) => {
+			// once it's part of a message, post reports it
+			if (!attachments.includes(attachment)) return;
+			showError(e instanceof UploadError ? e.message : 'Could not upload the image.');
+			removeAttachment(attachment);
+		});
+		return attachment;
+	}
+
+	/** opens the photo editor; the edited copy replaces the attachment, uploaded anew */
+	async function editAttachment(attachment: Attachment) {
+		const file = await editImage(attachment.file);
+		const i = attachments.indexOf(attachment);
+		if (!file || i < 0) return;
+		const next = stage(file);
+		attachment.discard();
+		attachments = [...attachments.slice(0, i), next, ...attachments.slice(i + 1)];
 	}
 
 	function removeAttachment(attachment: Attachment) {
@@ -1457,7 +1475,8 @@
 			{#if newDay}
 				<div class="my-1.5 flex items-center gap-2.5 text-[0.8em] text-muted">
 					<hr aria-hidden="true" class="flex-1 border-line" />
-					<span class="font-bold">{dayLabel(dateOf(message))}</span>
+					<span class="font-bold {dateReady() ? '' : 'invisible'}">{dayLabel(dateOf(message))}</span
+					>
 					<hr aria-hidden="true" class="flex-1 border-line" />
 				</div>
 			{/if}
@@ -1475,7 +1494,7 @@
 				<!-- someone joined, left, renamed the group… -->
 				<p
 					class="my-1.5 self-center text-center text-[0.8em] text-muted"
-					title={new Date(message.created_at).toLocaleString()}
+					title={formatDate(message.created_at)}
 				>
 					{groupEventText(message, $user?.username)}
 				</p>
@@ -1640,16 +1659,15 @@
 									: ''}"
 							>
 								{#if message.edited_at}
-									<span
-										class="opacity-60"
-										title={`Edited ${new Date(message.edited_at).toLocaleString()}`}>edited</span
+									<span class="opacity-60" title={`Edited ${formatDate(message.edited_at)}`}
+										>edited</span
 									>
 								{/if}
 								<!-- the day is on the separator, the full date on hover -->
 								<time
-									class="opacity-60"
+									class="opacity-60 {dateReady() ? '' : 'invisible'}"
 									datetime={dateOf(message).toISOString()}
-									title={dateOf(message).toLocaleString()}>{timeOf(message)}</time
+									title={formatDate(dateOf(message))}>{timeOf(message)}</time
 								>
 							</div>
 						</div>
@@ -1843,9 +1861,28 @@
 		<div class="flex flex-wrap gap-2.5">
 			{#each attachments as attachment (attachment.url)}
 				<div class="relative size-16 overflow-hidden rounded-[5px] border border-line">
-					<img class="size-full object-cover" src={attachment.url} alt="" />
+					{#if canEdit(attachment.file)}
+						<button
+							type="button"
+							class="block size-full cursor-pointer outline-none focus-visible:opacity-80"
+							title="Edit image"
+							aria-label="Edit image"
+							onmousedown={keepFocus}
+							onclick={() => editAttachment(attachment)}
+						>
+							<img class="size-full object-cover" src={attachment.url} alt="" />
+							<span
+								class="absolute bottom-0.5 left-0.5 flex size-5 items-center justify-center rounded-full bg-background/80"
+								><Pencil size={11} /></span
+							>
+						</button>
+					{:else}
+						<img class="size-full object-cover" src={attachment.url} alt="" />
+					{/if}
 					{#if !attachment.id}
-						<div class="absolute inset-0 flex items-center justify-center bg-black/50">
+						<div
+							class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50"
+						>
 							<UploadProgress progress={attachment.progress} />
 						</div>
 					{/if}

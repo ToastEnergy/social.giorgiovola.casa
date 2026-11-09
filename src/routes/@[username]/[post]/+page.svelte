@@ -20,16 +20,27 @@
 	let replies: PostType[] = $state([]);
 	let loaded = $state(false);
 
+	// the post the replies and parents on screen belong to: a reload of the same one (back from a
+	// dropped connection) keeps them until the new lists arrive, instead of flashing empty
+	let repliesOf: number | null = null;
+	let parentsOf: number | null = null;
+
 	// the streamed replies of the open post: navigating to another post starts over
 	$effect(() => {
 		const pending = data.streamed.replies;
+		const id = data.post.id;
 		let current = true;
-		loaded = false;
-		replies = [];
+		if (repliesOf !== id) {
+			loaded = false;
+			replies = [];
+		}
+		repliesOf = id;
 		pending.then((list) => {
 			if (!current) return;
-			// replies sent from the bar while the list was loading stay
-			replies = [...list, ...replies.filter((r) => !list.some((l) => l.id === r.id))];
+			// replies sent from the bar (or arrived) while the list was loading stay. older ones
+			// missing from it were deleted
+			const newest = list.reduce((max, l) => Math.max(max, l.id), 0);
+			replies = [...list, ...replies.filter((r) => r.id > newest)];
 			loaded = true;
 		});
 		return () => (current = false);
@@ -43,8 +54,10 @@
 
 	$effect(() => {
 		const pending = data.streamed.parents;
+		const id = data.post.id;
 		let current = true;
-		parents = [];
+		if (parentsOf !== id) parents = [];
+		parentsOf = id;
 		parentsFailed = false;
 		pending.then(async (list) => {
 			// a frame later: after the navigation's own scroll to the top, before anything is painted

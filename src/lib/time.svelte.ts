@@ -99,12 +99,45 @@ export const DATE: Intl.DateTimeFormatOptions = {
 /** for titles: the full date and time */
 export const FULL: Intl.DateTimeFormatOptions = { dateStyle: 'full', timeStyle: 'long' };
 
+/** The zone and locale dates are shown in: the cookies' on the server, the browser's own after. */
+function reader(): TimeSettings {
+	const known = settings();
+	if (known) return known;
+	// no zone yet (first visit, server side): UTC, rendered invisibly until the browser takes over
+	return browser
+		? { zone: own().timeZone, locale: own().locale }
+		: { zone: 'UTC', locale: 'en-US' };
+}
+
 /** Formats a date in the reader's zone and locale, on the server as in the browser. */
 export function formatDate(date: string | Date, options: Intl.DateTimeFormatOptions = DATE_TIME) {
-	const known = settings();
-	// no zone yet (first visit, server side): UTC, rendered invisibly until the browser takes over
-	return new Date(date).toLocaleString(known?.locale ?? (browser ? own().locale : 'en-US'), {
-		...options,
-		timeZone: known?.zone ?? (browser ? own().timeZone : 'UTC')
-	});
+	const { zone, locale } = reader();
+	return new Date(date).toLocaleString(locale, { ...options, timeZone: zone });
+}
+
+// one formatter per zone: day buckets are computed for every message of a chat
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * The calendar day of a date in the reader's zone, as a day number (days since 1970-01-01) and
+ * its year: comparing these tells "today" and "yesterday" apart where the reader lives, not
+ * where the server does.
+ */
+export function calendarDay(date: string | Date) {
+	const { zone } = reader();
+	let format = dayFormats.get(zone);
+	if (!format) {
+		format = new Intl.DateTimeFormat('en-US', {
+			timeZone: zone,
+			year: 'numeric',
+			month: 'numeric',
+			day: 'numeric'
+		});
+		dayFormats.set(zone, format);
+	}
+	const parts = format.formatToParts(new Date(date));
+	const part = (type: Intl.DateTimeFormatPartTypes) =>
+		Number(parts.find((p) => p.type === type)?.value);
+	const year = part('year');
+	return { day: Date.UTC(year, part('month') - 1, part('day')) / 86_400_000, year };
 }

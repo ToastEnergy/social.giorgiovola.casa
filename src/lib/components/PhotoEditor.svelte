@@ -6,6 +6,8 @@
 	import Type from '@lucide/svelte/icons/type';
 	import RotateCwSquare from '@lucide/svelte/icons/rotate-cw-square';
 	import Trash from '@lucide/svelte/icons/trash';
+	import Download from '@lucide/svelte/icons/download';
+	import { flushSync } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { photoEditor, closeEditor } from '#lib/photoEditor.svelte.js';
 	import Button from './Button.svelte';
@@ -19,6 +21,9 @@
 	/** how far from a crop edge (screen pixels) a finger still grabs it */
 	const GRAB = 28;
 	const HISTORY = 20;
+	/** caption font size limits, as a share of the image width */
+	const MIN_TEXT = 0.03;
+	const MAX_TEXT = 0.4;
 
 	// colours painted into the image, so vivid ones rather than the theme's
 	const COLORS = [
@@ -42,8 +47,20 @@
 
 	type Tool = 'crop' | 'draw' | null;
 	type Rect = { x: number; y: number; w: number; h: number };
-	/** a caption; x and y are its centre as a share of the image, size its font as a share of the width */
-	type Caption = { id: number; text: string; x: number; y: number; size: number; color: string; bg: boolean };
+	/**
+	 * a caption; x and y are its centre as a share of the image, size its font as a share of the
+	 * width, rot its rotation in radians
+	 */
+	type Caption = {
+		id: number;
+		text: string;
+		x: number;
+		y: number;
+		size: number;
+		rot: number;
+		color: string;
+		bg: boolean;
+	};
 	/** the state before an edit; canvas is only kept when the edit changed the pixels */
 	type Entry = { canvas?: HTMLCanvasElement; captions: Caption[] };
 
@@ -62,6 +79,7 @@
 	/** the caption being typed; id is null for a new one */
 	let typing: { id: number | null; text: string; color: string; bg: boolean; size: number } | null =
 		$state(null);
+	let field: HTMLTextAreaElement | undefined = $state();
 	let nextId = 1;
 
 	let stageW = $state(0);
@@ -185,7 +203,8 @@
 		oldH: number,
 		newW: number,
 		newH: number,
-		f: (x: number, y: number) => [number, number]
+		f: (x: number, y: number) => [number, number],
+		turn = 0
 	) {
 		captions = captions.map((c) => {
 			const [x, y] = f(c.x * oldW, c.y * oldH);
@@ -193,7 +212,8 @@
 				...c,
 				x: clamp(x / newW, 0, 1),
 				y: clamp(y / newH, 0, 1),
-				size: (c.size * oldW) / newW
+				size: (c.size * oldW) / newW,
+				rot: c.rot + turn
 			};
 		});
 	}
@@ -239,7 +259,14 @@
 		ctx.rotate(Math.PI / 2);
 		ctx.drawImage(old, 0, 0);
 		remember(old);
-		moveCaptions(old.width, old.height, next.width, next.height, (px, py) => [old.height - py, px]);
+		moveCaptions(
+			old.width,
+			old.height,
+			next.width,
+			next.height,
+			(px, py) => [old.height - py, px],
+			Math.PI / 2
+		);
 		canvas = next;
 		resetCrop();
 	}
@@ -373,6 +400,8 @@
 	function down(e: PointerEvent) {
 		if (tool === 'draw') drawDown(e);
 		else if (tool === 'crop') cropDown(e);
+		// captions are small: the second finger of a pinch usually lands next to the text
+		else if (gesture) captionDown(e, gesture.caption);
 	}
 
 	function move(e: PointerEvent) {
@@ -397,7 +426,10 @@
 		x: number;
 		y: number;
 		size: number;
+		rot: number;
 		dist: number;
+		/** angle between the two fingers when the pinch started */
+		angle: number;
 		moved: boolean;
 	};
 	let gesture: Gesture | null = null;
@@ -416,22 +448,47 @@
 		const [a, b] = [...g.pointers.values()];
 		return b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : 0;
 	};
+	const angle = (g: Gesture) => {
+		const [a, b] = [...g.pointers.values()];
+		return b ? Math.atan2(b[1] - a[1], b[0] - a[0]) : 0;
+	};
+	/** straight (and sideways) angles are sticky, so text is easy to put back level */
+	const SNAP = 0.07;
+	const snap = (rot: number) => {
+		const right = Math.round(rot / (Math.PI / 2)) * (Math.PI / 2);
+		return Math.abs(rot - right) < SNAP ? right : rot;
+	};
 	// a finger was added or lifted: carry on from where things are now
 	const restart = (g: Gesture) => {
 		g.from = centre(g);
 		g.x = g.caption.x;
 		g.y = g.caption.y;
 		g.size = g.caption.size;
+		g.rot = g.caption.rot;
 		g.dist = spread(g);
+		g.angle = angle(g);
 	};
 
 	function captionDown(e: PointerEvent, caption: Caption) {
 		if (tool) return;
 		e.stopPropagation();
+		// no mousedown after the tap, which would take the focus off the field a tap opens
+		e.preventDefault();
 		capture(e);
 		const g: Gesture = gesture?.caption === caption
 			? gesture
-			: { caption, pointers: new Map(), from: [0, 0], x: 0, y: 0, size: 0, dist: 0, moved: false };
+			: {
+					caption,
+					pointers: new Map(),
+					from: [0, 0],
+					x: 0,
+					y: 0,
+					size: 0,
+					rot: 0,
+					dist: 0,
+					angle: 0,
+					moved: false
+			  };
 		if (g.pointers.size >= 2) return;
 		g.pointers.set(e.pointerId, [e.clientX, e.clientY]);
 		restart(g);
@@ -452,7 +509,10 @@
 		if (!c) return;
 		c.x = clamp(g.x + (cx - g.from[0]) / box.w, 0, 1);
 		c.y = clamp(g.y + (cy - g.from[1]) / box.h, 0, 1);
-		if (g.pointers.size === 2 && g.dist > 0) c.size = clamp((g.size * spread(g)) / g.dist, 0.02, 0.5);
+		if (g.pointers.size === 2 && g.dist > 0) {
+			c.size = clamp((g.size * spread(g)) / g.dist, MIN_TEXT, MAX_TEXT);
+			c.rot = snap(g.rot + angle(g) - g.angle);
+		}
 		const r = stage!.getBoundingClientRect();
 		dragging = g.pointers.size === 1 ? c.id : null;
 		overBin = !!dragging && cy > r.bottom - 70 && Math.abs(cx - (r.left + r.width / 2)) < 50;
@@ -471,16 +531,25 @@
 
 	function captionWheel(e: WheelEvent, caption: Caption) {
 		const c = captions.find((c) => c.id === caption.id);
-		if (c) c.size = clamp(c.size * Math.exp(-e.deltaY * 0.002), 0.02, 0.5);
+		if (c) c.size = clamp(c.size * Math.exp(-e.deltaY * 0.002), MIN_TEXT, MAX_TEXT);
 	}
 
 	function addCaption() {
 		pick(null);
-		typing = { id: null, text: '', color, bg: false, size: 0.08 };
+		startTyping({ id: null, text: '', color, bg: false, size: 0.08 });
 	}
 
 	function edit(c: Caption) {
-		typing = { id: c.id, text: c.text, color: c.color, bg: c.bg, size: c.size };
+		startTyping({ id: c.id, text: c.text, color: c.color, bg: c.bg, size: c.size });
+	}
+
+	// the field is focused within the tap itself: iOS only opens the keyboard for focus a user
+	// gesture asked for, which rules out autofocus once rendering has moved on
+	function startTyping(t: NonNullable<typeof typing>) {
+		typing = t;
+		flushSync();
+		field?.focus();
+		field?.setSelectionRange(t.text.length, t.text.length);
 	}
 
 	function finishTyping() {
@@ -494,14 +563,15 @@
 			remember();
 			captions = [
 				...captions,
-				{ id: nextId++, text, x: 0.5, y: 0.5, size: t.size, color: t.color, bg: t.bg }
+				{ id: nextId++, text, x: 0.5, y: 0.5, size: t.size, rot: 0, color: t.color, bg: t.bg }
 			];
 			return;
 		}
 		if (!text.trim()) return deleteCaption(old.id);
-		if (old.text === text && old.color === t.color && old.bg === t.bg) return;
+		if (old.text === text && old.color === t.color && old.bg === t.bg && old.size === t.size)
+			return;
 		remember();
-		Object.assign(old, { text, color: t.color, bg: t.bg });
+		Object.assign(old, { text, color: t.color, bg: t.bg, size: t.size });
 	}
 
 	function deleteCaption(id: number) {
@@ -530,18 +600,21 @@
 		const lh = px * 1.2;
 		const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 0.6 * px;
 		const bh = lines.length * lh + 0.3 * px;
-		const cx = c.x * W;
-		const top = c.y * H - bh / 2;
+		const top = -bh / 2;
+		ctx.save();
+		ctx.translate(c.x * W, c.y * H);
+		ctx.rotate(c.rot);
 		if (c.bg) {
 			ctx.fillStyle = c.color;
 			ctx.beginPath();
-			ctx.roundRect(cx - bw / 2, top, bw, bh, 0.2 * px);
+			ctx.roundRect(-bw / 2, top, bw, bh, 0.2 * px);
 			ctx.fill();
 		}
 		ctx.fillStyle = c.bg ? contrast(c.color) : c.color;
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
-		lines.forEach((l, i) => ctx.fillText(l, cx, top + 0.15 * px + lh * (i + 0.5)));
+		lines.forEach((l, i) => ctx.fillText(l, 0, top + 0.15 * px + lh * (i + 0.5)));
+		ctx.restore();
 	}
 
 	function cancel() {
@@ -549,15 +622,9 @@
 		closeEditor(null);
 	}
 
-	async function save() {
-		const file = photoEditor.file;
-		if (!canvas || !file || saving) return;
-		finishTyping();
-		if (tool === 'crop') applyCrop();
-		tool = null;
-		if (!edits) return closeEditor(null);
-		saving = true;
-		const out = copy(canvas);
+	/** the edited image as a file, captions painted in; null when encoding failed */
+	async function render(file: File): Promise<File | null> {
+		const out = copy(canvas!);
 		const ctx = out.getContext('2d')!;
 		await document.fonts.load('800 40px "Manrope Variable"').catch(() => {});
 		for (const c of captions) paintCaption(ctx, c, out.width, out.height);
@@ -565,13 +632,62 @@
 		const png = file.type === 'image/png' || file.type === 'image/webp';
 		const type = png ? 'image/png' : 'image/jpeg';
 		const blob = await new Promise<Blob | null>((r) => out.toBlob(r, type, 0.92));
+		if (!blob) return null;
+		const name = (file.name.replace(/\.[^.]*$/, '') || 'image') + (png ? '.png' : '.jpg');
+		return new File([blob], name, { type });
+	}
+
+	/** finishes what's in progress (the caption being typed, a pending crop) */
+	function settle() {
+		finishTyping();
+		if (tool === 'crop') applyCrop();
+		tool = null;
+	}
+
+	async function save() {
+		const file = photoEditor.file;
+		if (!canvas || !file || saving) return;
+		settle();
+		if (!edits) return closeEditor(null);
+		saving = true;
+		const out = await render(file);
 		saving = false;
-		if (!blob) {
+		if (!out) {
 			error = 'Could not save the image.';
 			return;
 		}
-		const name = (file.name.replace(/\.[^.]*$/, '') || 'image') + (png ? '.png' : '.jpg');
-		closeEditor(new File([blob], name, { type }));
+		closeEditor(out);
+	}
+
+	/** saves the image to the device, without attaching it; the editor stays open */
+	async function download() {
+		const file = photoEditor.file;
+		if (!canvas || !file || saving) return;
+		settle();
+		saving = true;
+		// nothing changed: the original, at full size
+		const out = edits ? await render(file) : file;
+		saving = false;
+		if (!out) {
+			error = 'Could not save the image.';
+			return;
+		}
+		// on phones the share sheet offers "Save Image" (to the photos), a download only reaches
+		// the files app; it needs the tap to still count, so fall back to a download when it doesn't
+		if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [out] })) {
+			try {
+				await navigator.share({ files: [out] });
+				return;
+			} catch (e) {
+				if ((e as Error).name === 'AbortError') return;
+			}
+		}
+		const url = URL.createObjectURL(out);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = out.name;
+		a.click();
+		setTimeout(() => URL.revokeObjectURL(url), 10_000);
 	}
 
 	function onkeydown(e: KeyboardEvent) {
@@ -645,6 +761,14 @@
 				disabled={!history.length}
 				onclick={undo}><Undo2 size={22} strokeWidth={1.8} /></button
 			>
+			<button
+				type="button"
+				class="flex size-11 cursor-pointer items-center justify-center outline-none focus-visible:text-accent disabled:cursor-default disabled:opacity-30"
+				aria-label="Download"
+				title="Download"
+				disabled={!canvas || saving}
+				onclick={download}><Download size={22} strokeWidth={1.8} /></button
+			>
 			<Button variant="primary" size="sm" class="px-5" disabled={!canvas || saving} onclick={save}
 				>Done</Button
 			>
@@ -689,6 +813,7 @@
 									style:left="{c.x * 100}%"
 									style:top="{c.y * 100}%"
 									style:translate="-50% -50%"
+									style:rotate="{c.rot}rad"
 									style:font-size="{c.size * box.w}px"
 									style:color={c.bg ? contrast(c.color) : c.color}
 									style:background={c.bg ? c.color : undefined}
@@ -776,7 +901,7 @@
 					onclick={rotate}><RotateCwSquare size={20} strokeWidth={1.8} /></button
 				>
 			{:else if captions.length}
-				<p class="text-[0.85em] text-muted">Drag text to move it, pinch to resize, tap to edit</p>
+				<p class="text-[0.85em] text-muted">Drag text to move it, pinch to resize and rotate, tap to edit</p>
 			{/if}
 		</div>
 
@@ -841,9 +966,27 @@
 					<Button variant="primary" size="sm" class="px-5" onclick={finishTyping}>Done</Button>
 				</div>
 				<div class="flex justify-center overflow-x-auto">{@render swatches(typing.color)}</div>
+				<label class="mx-auto flex w-full max-w-80 items-center gap-2.5">
+					<span class="text-[0.8em] font-extrabold" aria-hidden="true">A</span>
+					<input
+						type="range"
+						class="flex-1 accent-accent"
+						aria-label="Text size"
+						min={MIN_TEXT}
+						max={MAX_TEXT}
+						step="0.005"
+						bind:value={
+							() => typing?.size ?? 0.08,
+							(v) => {
+								if (typing) typing.size = v;
+							}
+						}
+					/>
+					<span class="text-[1.4em] font-extrabold" aria-hidden="true">A</span>
+				</label>
 				<div class="flex flex-1 items-start justify-center overflow-y-auto pt-10">
-					<!-- svelte-ignore a11y_autofocus -->
 					<textarea
+						bind:this={field}
 						bind:value={
 							() => typing?.text ?? '',
 							(v) => {
@@ -851,11 +994,11 @@
 							}
 						}
 						rows={rows(typing.text)}
-						autofocus
 						placeholder="Type something"
 						aria-label="Text"
-						class="max-w-full resize-none rounded-[0.2em] px-[0.3em] py-[0.15em] text-center text-[32px] leading-[1.2] font-extrabold outline-none placeholder:text-foreground/40"
+						class="max-w-full resize-none rounded-[0.2em] px-[0.3em] py-[0.15em] text-center leading-[1.2] font-extrabold outline-none placeholder:text-foreground/40"
 						style:field-sizing="content"
+						style:font-size="{Math.max(16, typing.size * (box?.w ?? 360))}px"
 						style:color={typing.bg ? contrast(typing.color) : typing.color}
 						style:background={typing.bg ? typing.color : 'transparent'}
 					></textarea>

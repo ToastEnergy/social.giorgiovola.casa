@@ -67,6 +67,6 @@
 	{/each}
 </div>
 <p class="mt-2.5 text-[0.85em] text-muted">
-	Desktop Firefox can't install web apps. Once installed, turn on push notifications from the
-	<a href="/notifications">notifications</a> page.
+	Desktop Firefox can't install web apps. Once installed, turn on push notifications in
+	<a href="/settings/notifications">Settings → Notifications</a>.
 </p>

@@ -7,7 +7,7 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { disablePush, enablePush, getPushState, PushError, type PushState } from '#lib/push.js';
+	import { getPushState, type PushState } from '#lib/push.js';
 	import { api, withCursor, type Page } from '#lib/api.js';
 	let { data }: { data: PageData } = $props();
 
@@ -32,21 +32,6 @@
 		}
 	}
 	let push: PushState | null = $state(null);
-	let pushBusy = $state(false);
-	let pushError: 'unavailable' | 'failed' | null = $state(null);
-
-	const togglePush = async () => {
-		pushBusy = true;
-		pushError = null;
-		try {
-			push = push === 'on' ? await disablePush() : await enablePush();
-		} catch (e) {
-			console.error(e);
-			pushError = e instanceof PushError && e.reason === 'unavailable' ? 'unavailable' : 'failed';
-		}
-		pushBusy = false;
-	};
-
 	// the unread count is pushed by the layout; reload the list when it grows
 	onMount(() => {
 		getPushState().then((state) => (push = state));
@@ -101,29 +86,11 @@
 		<Button onclick={readAll}>Mark all as read</Button>
 	{/if}
 </div>
-{#if push === 'on' || push === 'off'}
-	<div class="mt-2.5 flex items-center justify-between gap-2.5 rounded-[10px] bg-black/70 p-2.5">
-		<p>
-			{push === 'on'
-				? 'Push notifications are on for this browser.'
-				: 'Get a notification on this device when someone likes, regiorgios, quotes, replies, mentions, follows or messages you.'}
-		</p>
-		<Button disabled={pushBusy} onclick={togglePush}>
-			{push === 'on' ? 'Turn off' : 'Turn on'}
-		</Button>
-	</div>
-	{#if pushError === 'unavailable'}
-		<p class="mt-2.5 text-muted">
-			This browser has no push service, so it can't receive push notifications. Browsers without
-			Google services (like Helium or ungoogled-chromium) don't support them; in Brave, turn on "Use
-			Google services for push messaging". Chrome, Edge, Firefox and Safari work.
-		</p>
-	{:else if pushError === 'failed'}
-		<p class="mt-2.5 text-muted">Something went wrong, try again.</p>
-	{/if}
-{:else if push === 'denied'}
-	<p class="mt-2.5 text-muted">
-		Notifications are blocked for this site: allow them in your browser settings to turn them on.
+{#if push === 'off'}
+	<!-- turning push on lives in the settings; this only points there while it is off -->
+	<p class="mt-2.5 text-[0.85em] text-muted">
+		Get notified on this device too: turn on
+		<a href="/settings/notifications">push notifications</a>.
 	</p>
 {/if}
 <div class="mt-2.5 flex flex-col gap-3.75">

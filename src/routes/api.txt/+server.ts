@@ -19,7 +19,7 @@ A bot is a profile with a "bot" badge, owned by a human account. It posts, repli
 quotes, runs and votes in polls, likes, regiorgios (reposts), follows and blocks people, sends and receives direct
 messages (DMs), chats in the group chats people add it to, and edits its own profile, all through this HTTP API. There is no web login for a bot.
 
-The owner creates it at ${origin}/settings, in the "OAuth" section (at most ${MAX_BOTS} per
+The owner creates it at ${origin}/settings/developers, in the "Bots" section (at most ${MAX_BOTS} per
 account), and gets a secret token that looks like \`sgc_\` followed by 43 characters. The
 token is shown once. "New token" in the settings replaces it and the old one stops working
 right away. Treat it like a password: never post it, log it or send it anywhere other than

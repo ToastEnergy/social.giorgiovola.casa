@@ -38,7 +38,7 @@ export const users = pgTable(
 		website: text('website').notNull().default(''),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		// identities: extra profiles owned by an account, usable only by switching to them
-		// from the owning account (see src/routes/accounts)
+		// from the owning account (see src/routes/settings/accounts)
 		owner_id: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
 		// bots are owned like identities but driven by the bot API (see bots below), never by
 		// switching to them

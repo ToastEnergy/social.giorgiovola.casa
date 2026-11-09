@@ -142,6 +142,7 @@
 
 	// canvases are swapped on crop, rotate and undo; the element shown is the current one
 	$effect(() => {
+		// eslint-disable-next-line svelte/no-dom-manipulating -- host has no svelte-managed children
 		if (host && canvas) host.replaceChildren(canvas);
 	});
 

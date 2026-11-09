@@ -23,6 +23,7 @@
 		Pick<HTMLAnchorAttributes, 'href' | 'target' | 'rel' | 'download'>;
 
 	// the app builds no custom elements
+	// eslint-disable-next-line svelte/no-unused-svelte-ignore -- svelte-check does warn here
 	// svelte-ignore custom_element_props_identifier
 	let {
 		variant = 'default',

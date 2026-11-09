@@ -85,7 +85,9 @@
 					err instanceof WebAuthnError &&
 					err.code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED'
 				)
-					throw new Error('This device already has a passkey for your account.');
+					throw new Error('This device already has a passkey for your account.', {
+						cause: err
+					});
 				// cancelled by the user, or timed out: nothing to report
 				if (err instanceof Error && err.name === 'NotAllowedError') return;
 				throw err;

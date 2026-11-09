@@ -3,6 +3,10 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import Header from '#lib/components/Header.svelte';
+	import Sidebar from '#lib/components/Sidebar.svelte';
+	import Rail from '#lib/components/Rail.svelte';
+	import TopBar from '#lib/components/TopBar.svelte';
+	import BottomNav from '#lib/components/BottomNav.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
 	import { navigating, page } from '$app/state';
@@ -26,6 +30,9 @@
 		id === '/messages/[username]' || id === '/messages/groups/[id]';
 	// the messages index is wide too: conversation list beside an empty chat
 	const isWide = (id: string | null) => isChat(id) || id === '/messages';
+	// sizes of the centred group on mouse devices (app.css)
+	const frame = (signedIn: unknown, id: string | null) =>
+		`frame ${signedIn ? 'frame-sidebar' : ''} ${isWide(id) ? 'frame-wide' : ''}`;
 	$user = data.user;
 	$notisCount = data.notisCount;
 	$messagesCount = data.messagesCount;
@@ -126,12 +133,26 @@
 	});
 </script>
 
-<div class={isChat(page.route.id) ? 'max-lg:hidden' : ''}>
-	<Header />
+<div class={frame($user, page.route.id)}>
+	<div class={isChat(page.route.id) ? 'max-lg:hidden' : ''}>
+		<Header />
+	</div>
+	{#if $user}
+		<Sidebar wide={isWide(page.route.id)} />
+		<!-- the wide pages (messages) have the search and profile on top instead -->
+		{#if !isWide(page.route.id)}
+			<Rail />
+		{/if}
+		<TopBar wide={isWide(page.route.id)} />
+		<!-- an open chat has its own input, with the bar joined under it (Chat) -->
+		{#if !isChat(page.route.id)}
+			<BottomNav />
+		{/if}
+	{/if}
+	<ImageViewer />
+	<ProfileCard />
+	<ShareDialog />
 </div>
-<ImageViewer />
-<ProfileCard />
-<ShareDialog />
 <svelte:head>
 	{#if page.route.id === '/@[username]/[post]' && !page.error}
 		<!-- Primary Meta Tags -->
@@ -230,13 +251,48 @@
 	{/if}
 	<link rel="canonical" href={`${PUBLIC_URL}${page.url.pathname}`} />
 </svelte:head>
-<main class="relative mt-20 flex justify-center {isChat(page.route.id) ? 'max-lg:mt-0' : ''}">
-	<!-- an open chat takes the full width, and sits beside the conversation list on wide screens
-		(messages/+layout) -->
-	<div class="w-full p-5 {isWide(page.route.id) ? 'lg:max-w-260' : 'max-w-160'}">
-		<slot />
-	</div>
-	{#if navigating.to}
-		<LoadingOverlay />
-	{/if}
-</main>
+<!-- devices with a mouse: the logo, sidebar, header and content form one centred group (the
+	`frame` variables in app.css). the header and sidebar share the page background and the content
+	sits on a darker, rounded panel. the window still scrolls (infinite lists watch it), so a fixed
+	frame paints the background around the panel's edges and the content scrolls under it. the
+	spread "shadow" is a mask in the page colour, not a visible shadow -->
+<div class={frame($user, page.route.id)}>
+	<!-- prettier-ignore -->
+	<div
+		aria-hidden="true"
+		class="pointer-events-none fixed bottom-5 left-[calc(var(--left)+var(--side))] z-997 w-(--panel) rounded-[15px] shadow-[0_0_0_100vmax_var(--color-background)] pointer-coarse:hidden {$user
+			? isWide(page.route.id)
+				? 'top-[calc(20px+var(--bar))]'
+				: 'top-[calc(20px+var(--bar))] max-nav:right-0 max-nav:bottom-0 max-nav:w-auto max-nav:rounded-r-none max-nav:rounded-bl-none'
+			: 'top-20'}"
+	></div>
+	<!-- the panel (mouse) or room for the bottom bar (touch). the wide pages (messages) have no panel
+		on mouse devices: their blocks (messages/+layout) are the black, rounded surfaces -->
+	<main
+		class="relative mt-20 flex justify-center not-pointer-coarse:mb-5 not-pointer-coarse:ml-[calc(var(--left)+var(--side))] not-pointer-coarse:w-(--panel) {$user &&
+		isWide(page.route.id)
+			? 'pointer-coarse:mt-0 not-pointer-coarse:mt-[calc(20px+var(--bar))]'
+			: $user
+			? 'pointer-coarse:mt-0 not-pointer-coarse:mt-[calc(20px+var(--bar))] not-pointer-coarse:min-h-[calc(100dvh-40px-var(--bar))] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black max-nav:not-pointer-coarse:mb-0 max-nav:not-pointer-coarse:w-auto max-nav:not-pointer-coarse:min-h-[calc(100dvh-20px-var(--bar))] max-nav:not-pointer-coarse:rounded-r-none max-nav:not-pointer-coarse:rounded-bl-none'
+			: 'not-pointer-coarse:min-h-[calc(100dvh-100px)] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black'} {isChat(
+			page.route.id
+		)
+			? 'max-lg:mt-0 max-lg:not-pointer-coarse:mt-[calc(20px+var(--bar))]'
+			: $user
+			? 'pointer-coarse:pb-[calc(56px+env(safe-area-inset-bottom))]'
+			: ''}"
+	>
+		<!-- an open chat takes the full width, and sits beside the conversation list on wide screens
+			(messages/+layout) -->
+		<div
+			class="w-full {isWide(page.route.id)
+				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
+				: 'max-w-160 p-5'}"
+		>
+			<slot />
+		</div>
+		{#if navigating.to}
+			<LoadingOverlay />
+		{/if}
+	</main>
+</div>

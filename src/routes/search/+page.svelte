@@ -40,7 +40,7 @@
 				{#each data.users as user (user.username)}
 					<li>
 						<a
-							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 							href="/@{user.username}"
 							use:profileHover={user.username}
 						>
@@ -68,7 +68,7 @@
 		{#each data.hashtags as hashtag (hashtag.tag)}
 			<li>
 				<a
-					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 					href={hashtagHref(hashtag.tag)}
 				>
 					<span class="min-w-0 truncate font-bold">#{hashtag.tag}</span>

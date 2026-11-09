@@ -114,7 +114,7 @@
 	<h2>Quick start</h2>
 	<ol class="list-decimal pl-5">
 		<li>
-			Sign in and open <a href="/settings">Settings</a>, section <b>OAuth</b>. Create a bot (up to
+			Sign in and open <a href="/settings/developers">Settings → Developers</a>. Create a bot (up to
 			{data.limits.maxBots} per account).
 		</li>
 		<li>
@@ -126,7 +126,7 @@
 	<pre class={codeClass}>curl -H "Authorization: Bearer $TOKEN" {data.origin}/api/bot/me</pre>
 	<pre class={codeClass}>{quickPost}</pre>
 	<div>
-		<Button href="/settings" size="sm">Create a bot</Button>
+		<Button href="/settings/developers" size="sm">Create a bot</Button>
 	</div>
 </section>
 
@@ -284,7 +284,8 @@
 		Everything the website does is also an API under
 		<code class={inlineCode}>{data.origin}/api/v1</code>, for apps, scripts and other clients. Sign
 		in with <code class={inlineCode}>POST /api/v1/auth/login</code> (or create a personal access
-		token in <a href="/settings">Settings</a>) and send the <code class={inlineCode}>sgu_</code>
+		token in <a href="/settings/security">Settings → Security</a>) and send the
+		<code class={inlineCode}>sgu_</code>
 		token as a bearer token. Bot tokens work too. Every list answers
 		<code class={inlineCode}>{'{ "items": [...], "next_cursor": … }'}</code>, every error
 		<code class={inlineCode}>{'{ "error": "…" }'}</code>. Send

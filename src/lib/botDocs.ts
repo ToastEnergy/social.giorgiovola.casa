@@ -709,7 +709,7 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/timeline?feed=all|following',
 				auth: 'public / signed in',
-				summary: 'the home timeline (following brings in regiorgs)'
+				summary: 'the home timeline (following brings in regiorgs; all says who regiorged)'
 			},
 			{
 				method: 'GET',
@@ -826,9 +826,9 @@ export const v1Groups: V1Group[] = [
 			},
 			{
 				method: 'GET',
-				path: '/api/v1/users/:username/posts?tab=posts|replies',
+				path: '/api/v1/users/:username/posts?tab=posts|replies|regiorgs',
 				auth: 'public',
-				summary: "a profile's posts and regiorgs, or its replies"
+				summary: "a profile's posts, its replies or the posts it regiorged"
 			},
 			{
 				method: 'GET',

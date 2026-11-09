@@ -28,10 +28,20 @@
 		posts = [post, ...posts];
 	}
 
-	// a followed profile (or you) regiorged a post: it moves to the top of the following feed
+	// a followed profile (or you) regiorged a post: it moves to the top of the following feed.
+	// In the all feed it stays where it is and says who regiorged it last
 	function addRegiorg(post: PostType) {
-		const by = post.regiorged_by?.username;
-		if (data.feed !== 'following' || !by) return;
+		if (!post.regiorged_by) return;
+		const by = post.regiorged_by.username;
+		if (data.feed !== 'following') {
+			const regiorged_by = { ...post.regiorged_by, others: Math.max(0, post.regiorgs - 1) };
+			posts = posts.map((p) =>
+				p.id === post.id
+					? { ...p, regiorged_by, regiorged: by === $user?.username || p.regiorged }
+					: p
+			);
+			return;
+		}
 		const mine = by === $user?.username;
 		if (!mine && !data.following?.includes(by)) return;
 		if (pinned.some((p) => p.id === post.id)) return;

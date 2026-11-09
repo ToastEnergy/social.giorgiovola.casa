@@ -1,7 +1,7 @@
-import { desc, eq, isNotNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { Post, User } from '#lib/types.js';
 import { db, likes, posts, regiorgs, users } from './db/index.js';
-import { followedAuthors, getPinnedId, getPosts, getTimeline, profileAuthor } from './posts.js';
+import { followedAuthors, getPinnedId, getPosts, getTimeline } from './posts.js';
 
 /** Lists of posts: every function returns `limit + 1` rows, the extra one tells there is more. */
 
@@ -11,9 +11,11 @@ export type Feed = 'all' | 'following';
 
 /**
  * The home timeline. "all" already has every post, so only the following feed brings in
- * regiorgs. The posts staff pinned to the timeline sit above both feeds, so they are left out.
+ * regiorgs; "all" still says who regiorged each post (`regiorged_by`: the latest regiorger and
+ * how many others). The posts staff pinned to the timeline sit above both feeds, so they are left
+ * out.
  */
-export function homeTimeline(feed: Feed, viewer: Viewer, limit: number, offset: number) {
+export async function homeTimeline(feed: Feed, viewer: Viewer, limit: number, offset: number) {
 	if (feed === 'following' && viewer)
 		return getTimeline({
 			loggedUser: viewer,
@@ -23,21 +25,50 @@ export function homeTimeline(feed: Feed, viewer: Viewer, limit: number, offset: 
 			limit: limit + 1,
 			offset
 		});
-	return getPosts({
-		loggedUser: viewer,
-		excludeReplies: true,
-		excludeTimelinePinned: true,
-		order: 'DESC',
-		limit: limit + 1,
-		offset
+	return withLatestRegiorger(
+		await getPosts({
+			loggedUser: viewer,
+			excludeReplies: true,
+			excludeTimelinePinned: true,
+			order: 'DESC',
+			limit: limit + 1,
+			offset
+		})
+	);
+}
+
+/** Sets `regiorged_by` to the latest regiorger of each post, with how many others regiorged it. */
+async function withLatestRegiorger(found: Post[]): Promise<Post[]> {
+	const ids = found.filter((p) => p.regiorgs > 0).map((p) => p.id);
+	if (!ids.length) return found;
+	const latest = await db
+		.selectDistinctOn([regiorgs.post_id], {
+			post_id: regiorgs.post_id,
+			username: users.username,
+			name: users.name
+		})
+		.from(regiorgs)
+		.innerJoin(users, eq(users.id, regiorgs.user_id))
+		.where(inArray(regiorgs.post_id, ids))
+		.orderBy(regiorgs.post_id, desc(regiorgs.created_at), desc(regiorgs.user_id));
+	const byPost = new Map(latest.map((r) => [r.post_id, r]));
+	return found.map((post) => {
+		const r = byPost.get(post.id);
+		if (!r) return post;
+		const regiorged_by = {
+			username: r.username,
+			name: r.name ?? r.username,
+			others: post.regiorgs - 1
+		};
+		return { ...post, regiorged_by };
 	});
 }
 
-export type ProfileTab = 'posts' | 'replies';
+export type ProfileTab = 'posts' | 'replies' | 'regiorgs';
 
 /**
- * A profile's posts (with its regiorgs, the pinned post left out: it sits above them) or its
- * replies. Null when the profile doesn't exist.
+ * A profile's own posts (the pinned post left out: it sits above them), its replies or the posts
+ * it regiorged, latest regiorg first. Null when the profile doesn't exist.
  */
 export async function profilePosts(
 	username: string,
@@ -47,10 +78,19 @@ export async function profilePosts(
 	offset: number
 ): Promise<Post[] | null> {
 	const [profile] = await db
-		.select({ id: users.id, pinned: users.pinned_post_id })
+		.select({
+			id: users.id,
+			username: users.username,
+			name: users.name,
+			pinned: users.pinned_post_id
+		})
 		.from(users)
 		.where(eq(users.username, username));
 	if (!profile) return null;
+	if (tab === 'regiorgs') {
+		const by = { username: profile.username, name: profile.name ?? profile.username };
+		return regiorgedBy(profile.id, by, viewer, limit, offset);
+	}
 	if (tab === 'replies')
 		return getPosts({
 			loggedUser: viewer,
@@ -60,13 +100,47 @@ export async function profilePosts(
 			limit: limit + 1,
 			offset
 		});
-	return getTimeline({
+	return getPosts({
 		loggedUser: viewer,
-		authors: profileAuthor(username),
-		excludeReplies: true,
-		excludeId: profile.pinned,
+		fromUser: { id: profile.id },
+		where: and(
+			isNull(posts.reply_to),
+			profile.pinned != null ? ne(posts.id, profile.pinned) : undefined
+		),
+		order: 'DESC',
 		limit: limit + 1,
 		offset
+	});
+}
+
+/** The posts a profile regiorged, latest regiorg first, each with `regiorged_by` set to it. */
+async function regiorgedBy(
+	userId: number,
+	by: { username: string; name: string },
+	viewer: Viewer,
+	limit: number,
+	offset: number
+): Promise<Post[]> {
+	const entries = await db
+		.select({ post_id: regiorgs.post_id })
+		.from(regiorgs)
+		.where(eq(regiorgs.user_id, userId))
+		.orderBy(desc(regiorgs.created_at), desc(regiorgs.post_id))
+		.limit(limit + 1)
+		.offset(offset);
+	if (!entries.length) return [];
+	const found = await getPosts({
+		loggedUser: viewer,
+		where: inArray(
+			posts.id,
+			entries.map((e) => e.post_id)
+		)
+	});
+	const byId = new Map(found.map((p) => [p.id, p]));
+	return entries.flatMap((e): Post[] => {
+		const post = byId.get(e.post_id);
+		if (!post) return [];
+		return [{ ...post, regiorged_by: by }];
 	});
 }
 

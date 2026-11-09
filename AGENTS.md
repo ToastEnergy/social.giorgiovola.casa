@@ -99,6 +99,7 @@ The project is on Prettier 2 and `prettier-plugin-svelte` 2, which can't print S
 - `src/service-worker.ts` — service worker (web push).
 - `drizzle/` — generated SQL migrations and snapshots (committed).
 - `migrate.ts` — migration runner, executed on every container start.
+- `workers/link-preview/` — optional Cloudflare Worker that downloads link previews for `LINK_PREVIEWS=remote`, so linked sites don't see the server's IP. It has its own `package.json` and `bun.lock` (not a workspace), isn't in the Docker image and isn't covered by the root `bun run check`: run `bun run check` inside it when you change it. It bundles `src/lib/linkPreviewMeta.ts`, so that file must only use web APIs: no `node:*`, `$app/*` or `#lib` imports.
 
 Import aliases: `#lib` / `#lib/*` map to `src/lib/` (defined in `package.json` `imports`); SvelteKit's `$app/*` and `$app/env/*` modules are also used. Prefer these over deep relative paths.
 

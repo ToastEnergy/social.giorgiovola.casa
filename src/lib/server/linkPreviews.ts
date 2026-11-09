@@ -1,8 +1,17 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { inArray } from 'drizzle-orm';
+import {
+	FETCH_TIMEOUT_MS,
+	MAX_URL,
+	checkUrlShape,
+	fetchMeta,
+	sanitizeMeta,
+	type Meta
+} from '#lib/linkPreviewMeta.js';
 import type { LinkPreview } from '#lib/types.js';
 import { isHttpLink } from '#lib/utils.js';
+import { LINK_PREVIEWS, LINK_PREVIEWS_SECRET, LINK_PREVIEWS_URL } from '$app/env/private';
 import { PUBLIC_URL } from '$app/env/public';
 import { db, link_previews } from './db/index.js';
 
@@ -10,16 +19,33 @@ import { db, link_previews } from './db/index.js';
 // readers never contact the site, except for the preview image) and cached in link_previews.
 // Reads never wait on the network: a URL without a fresh row is fetched in the background and
 // shows up on the next load. Writing a post waits a little for its own link (see warmLinkPreview).
+//
+// LINK_PREVIEWS picks who downloads the pages: `local` (this server, which shows its IP address
+// to every linked site), `remote` (the Cloudflare Worker in workers/link-preview, at
+// LINK_PREVIEWS_URL, for instances whose address is hidden behind a proxy) or `off`.
 
 const FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 // a page that had no preview (or was down) is retried sooner
 const FAILED_FRESH_MS = 24 * 60 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 5000;
-const MAX_REDIRECTS = 4;
-// the tags are in <head>, but some sites (YouTube) put ~800KB of scripts before them
-const MAX_BYTES = 1024 * 1024;
-const MAX_URL = 2048;
 const MAX_CONCURRENT = 4;
+// how long to stop calling the worker after it failed, so an outage or a wrong secret doesn't
+// mean one failing request per link on every page load
+const WORKER_BACKOFF_MS = 60 * 1000;
+
+/** Refuses an incomplete remote setup at startup instead of failing on every link later. */
+export function checkLinkPreviewConfig() {
+	if (LINK_PREVIEWS !== 'remote') return;
+	if (!LINK_PREVIEWS_URL || !LINK_PREVIEWS_SECRET)
+		throw new Error('LINK_PREVIEWS=remote needs LINK_PREVIEWS_URL and LINK_PREVIEWS_SECRET');
+	let protocol = '';
+	try {
+		protocol = new URL(LINK_PREVIEWS_URL).protocol;
+	} catch {
+		// reported below
+	}
+	if (protocol !== 'https:' && protocol !== 'http:')
+		throw new Error('LINK_PREVIEWS_URL must be an http(s) URL');
+}
 
 const ownHost = (() => {
 	try {
@@ -48,6 +74,7 @@ export function firstExternalLink(content: string): string | null {
 
 /** The preview of the first external link of each text (null when there's none, yet). */
 export async function linkPreviews(contents: string[]): Promise<(LinkPreview | null)[]> {
+	if (LINK_PREVIEWS === 'off') return contents.map(() => null);
 	const urls = contents.map(firstExternalLink);
 	const unique = [...new Set(urls.filter((u): u is string => u !== null))];
 	if (unique.length === 0) return urls.map(() => null);
@@ -69,6 +96,7 @@ export async function linkPreviews(contents: string[]): Promise<(LinkPreview | n
  * stays quick on slow sites (the fetch goes on in the background).
  */
 export async function warmLinkPreview(content: string, waitMs = 2500) {
+	if (LINK_PREVIEWS === 'off') return;
 	const url = firstExternalLink(content);
 	if (!url) return;
 	const [row] = await db
@@ -102,15 +130,17 @@ function toPreview(row: Row): LinkPreview | null {
 const inFlight = new Map<string, Promise<void>>();
 let running = 0;
 const queue: (() => void)[] = [];
+let workerDownUntil = 0;
 
 function refresh(url: string): Promise<void> {
 	const pending = inFlight.get(url);
 	if (pending) return pending;
+	if (LINK_PREVIEWS === 'remote' && Date.now() < workerDownUntil) return Promise.resolve();
 	const job = (async () => {
 		if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => queue.push(resolve));
 		running++;
 		try {
-			const meta = await fetchMeta(url).catch(() => null);
+			const meta = LINK_PREVIEWS === 'remote' ? await remoteMeta(url) : await localMeta(url);
 			const values = {
 				title: meta?.title ?? null,
 				description: meta?.description ?? null,
@@ -134,169 +164,46 @@ function refresh(url: string): Promise<void> {
 	return job;
 }
 
-type Meta = Omit<LinkPreview, 'url' | 'site_name'> & { site_name: string | null };
+const userAgent = `Mozilla/5.0 (compatible; LinkPreview/1.0${
+	ownHost ? `; +https://${ownHost}` : ''
+})`;
 
-/** Downloads the page (following redirects to public hosts only) and reads its meta tags. */
-async function fetchMeta(start: string): Promise<Meta | null> {
-	const signal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-	let url = new URL(start);
-	for (let hop = 0; ; hop++) {
-		await assertPublic(url);
-		const res = await fetch(url, {
-			redirect: 'manual',
-			signal,
-			headers: {
-				'user-agent': `Mozilla/5.0 (compatible; LinkPreview/1.0${
-					ownHost ? `; +https://${ownHost}` : ''
-				})`,
-				accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
-				'accept-language': 'en;q=0.9,*;q=0.5'
-			}
+/** Downloads the page from this server: every hop must resolve to public addresses only. */
+function localMeta(url: string): Promise<Meta | null> {
+	return fetchMeta(url, { check: assertPublic, userAgent }).catch(() => null);
+}
+
+/**
+ * Asks the worker (workers/link-preview) for the page's tags, so the linked site sees a
+ * Cloudflare address instead of this server's. A page without a preview is `null`; a worker that
+ * can't be reached or refuses the secret throws, so no row is written and the link is retried
+ * once the worker is back instead of being cached as a failure for a day.
+ */
+async function remoteMeta(url: string): Promise<Meta | null> {
+	try {
+		const endpoint = new URL(LINK_PREVIEWS_URL);
+		endpoint.searchParams.set('url', url);
+		const res = await fetch(endpoint, {
+			headers: { authorization: `Bearer ${LINK_PREVIEWS_SECRET}`, accept: 'application/json' },
+			// the worker has FETCH_TIMEOUT_MS for the site, plus the round trip
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS + 3000)
 		});
-		if (res.status >= 300 && res.status < 400) {
-			await res.body?.cancel();
-			const location = res.headers.get('location');
-			if (!location || hop >= MAX_REDIRECTS) return null;
-			url = new URL(location, url);
-			continue;
-		}
 		if (!res.ok) {
 			await res.body?.cancel();
-			return null;
+			throw new Error(`worker answered ${res.status}`);
 		}
-		const type = res.headers.get('content-type') ?? '';
-		if (!/text\/html|application\/xhtml\+xml/i.test(type)) {
-			await res.body?.cancel();
-			return null;
-		}
-		const html = await readHead(res, type);
-		return parseMeta(html, url);
+		const body = (await res.json()) as { meta?: unknown } | null;
+		return sanitizeMeta(body?.meta);
+	} catch (e) {
+		workerDownUntil = Date.now() + WORKER_BACKOFF_MS;
+		throw e;
 	}
-}
-
-/** The start of the body, up to </head> or MAX_BYTES, decoded with the page's charset. */
-async function readHead(res: Response, type: string) {
-	const reader = res.body?.getReader();
-	if (!reader) return '';
-	const chunks: Uint8Array[] = [];
-	let size = 0;
-	let tail = '';
-	const ascii = new TextDecoder('latin1');
-	while (size < MAX_BYTES) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		chunks.push(value);
-		size += value.byteLength;
-		// latin1 never fails, enough to spot the end of <head>
-		tail = (tail + ascii.decode(value)).slice(-4096);
-		if (/<\/head>|<body[\s>]/i.test(tail)) break;
-	}
-	await reader.cancel().catch(() => {});
-	const bytes = new Uint8Array(size);
-	let offset = 0;
-	for (const chunk of chunks) {
-		bytes.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	const declared =
-		type.match(/charset=["']?([\w-]+)/i)?.[1] ??
-		ascii.decode(bytes.subarray(0, 2048)).match(/<meta[^>]+charset=["']?([\w-]+)/i)?.[1];
-	try {
-		return new TextDecoder(declared || 'utf-8').decode(bytes);
-	} catch {
-		return new TextDecoder('utf-8').decode(bytes);
-	}
-}
-
-const clean = (s: string | undefined, max: number) => {
-	const text = s && decodeEntities(s).replace(/\s+/g, ' ').trim();
-	if (!text) return null;
-	return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
-};
-
-/** Open Graph / Twitter card / plain HTML metadata of a page. */
-export function parseMeta(html: string, base: URL): Meta | null {
-	const end = html.search(/<\/head>/i);
-	const head = end === -1 ? html : html.slice(0, end);
-	const tags = new Map<string, string>();
-	for (const [tag] of head.matchAll(/<meta\s[^>]*>/gi)) {
-		const attrs = new Map<string, string>();
-		for (const m of tag.matchAll(/([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g))
-			attrs.set(m[1].toLowerCase(), m[2] ?? m[3] ?? m[4] ?? '');
-		const key = (attrs.get('property') ?? attrs.get('name') ?? '').toLowerCase();
-		const content = attrs.get('content');
-		// the first one wins, like in most crawlers
-		if (key && content !== undefined && !tags.has(key)) tags.set(key, content);
-	}
-	const titleTag = head.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
-
-	const title = clean(tags.get('og:title') ?? tags.get('twitter:title') ?? titleTag, 200);
-	if (!title) return null;
-	const description = clean(
-		tags.get('og:description') ?? tags.get('twitter:description') ?? tags.get('description'),
-		300
-	);
-	const site_name = clean(tags.get('og:site_name') ?? tags.get('application-name'), 100);
-
-	let image: string | null = null;
-	const rawImage =
-		tags.get('og:image:secure_url') ??
-		tags.get('og:image') ??
-		tags.get('og:image:url') ??
-		tags.get('twitter:image') ??
-		tags.get('twitter:image:src');
-	if (rawImage) {
-		try {
-			const resolved = new URL(decodeEntities(rawImage.trim()), base);
-			// https only: an http image would be mixed content
-			if (resolved.protocol === 'https:' && resolved.href.length <= MAX_URL) image = resolved.href;
-		} catch {
-			// not a URL
-		}
-	}
-	return { title, description, image, site_name };
-}
-
-const named: Record<string, string> = {
-	amp: '&',
-	lt: '<',
-	gt: '>',
-	quot: '"',
-	apos: "'",
-	nbsp: ' ',
-	ndash: '–',
-	mdash: '—',
-	hellip: '…',
-	laquo: '«',
-	raquo: '»',
-	lsquo: '‘',
-	rsquo: '’',
-	ldquo: '“',
-	rdquo: '”',
-	middot: '·',
-	bull: '•',
-	copy: '©',
-	reg: '®',
-	trade: '™'
-};
-
-function decodeEntities(s: string) {
-	return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, code: string) => {
-		if (code[0] === '#') {
-			const n =
-				code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : Number(code.slice(1));
-			return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : entity;
-		}
-		return named[code.toLowerCase()] ?? entity;
-	});
 }
 
 // --- SSRF guard: only public hosts on the default ports ---
 
 async function assertPublic(url: URL) {
-	if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('bad protocol');
-	if (url.port && url.port !== '80' && url.port !== '443') throw new Error('bad port');
-	if (url.username || url.password) throw new Error('credentials in url');
+	checkUrlShape(url);
 	const host = url.hostname.replace(/^\[|\]$/g, '');
 	if (host.toLowerCase() === ownHost?.split(':')[0]) throw new Error('own host');
 	const addresses = isIP(host)

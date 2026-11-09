@@ -23,6 +23,18 @@ export const variables = defineEnvVars({
 		schema: (input: string | undefined) => input || 'Nessuno ha ancora giorgiato qui'
 	},
 	SIGNUP_PASSWORD: { schema: optional },
+	// who downloads the pages of links in posts (src/lib/server/linkPreviews.ts). remote needs the
+	// URL and the secret, which checkLinkPreviewConfig refuses at startup when missing
+	LINK_PREVIEWS: {
+		schema: (input: string | undefined) => {
+			const mode = input || 'local';
+			if (mode !== 'local' && mode !== 'remote' && mode !== 'off')
+				throw new Error('LINK_PREVIEWS must be local, remote or off');
+			return mode;
+		}
+	},
+	LINK_PREVIEWS_URL: { schema: optional },
+	LINK_PREVIEWS_SECRET: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },
 	// the bucket for avatars and images, the local disk when empty. The schemas can't see each

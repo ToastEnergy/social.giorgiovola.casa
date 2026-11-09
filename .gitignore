@@ -16,3 +16,7 @@ static/uploads/*
 # wrangler state and local secrets of the workers in workers/
 .wrangler
 .dev.vars
+
+# scripts/deploy.sh on the server
+.deploy.lock
+predeploy-dumps

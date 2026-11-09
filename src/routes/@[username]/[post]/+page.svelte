@@ -10,6 +10,7 @@
 	import LoadingScreen from '#lib/components/LoadingScreen.svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import { PUBLIC_NO_REPLIES_MESSAGE } from '$app/env/public';
+	import { tick } from 'svelte';
 
 	let { data }: PageProps = $props();
 
@@ -34,6 +35,33 @@
 		return () => (current = false);
 	});
 
+	// the thread above a reply. they arrive after the post is on screen: the post keeps its place
+	// and the parents are reached by scrolling up
+	let parents: PostType[] = $state([]);
+	let parentsFailed = $state(false);
+	let opened: HTMLDivElement | undefined = $state();
+
+	$effect(() => {
+		const pending = data.streamed.parents;
+		let current = true;
+		parents = [];
+		parentsFailed = false;
+		pending.then(async (list) => {
+			// a frame later: after the navigation's own scroll to the top, before anything is painted
+			await new Promise(requestAnimationFrame);
+			if (!current) return;
+			if (!list) return (parentsFailed = true);
+			if (!list.length) return;
+			const before = opened?.getBoundingClientRect().top;
+			parents = list;
+			await tick();
+			// whatever the browser's own scroll anchoring did, the post ends up where it was
+			if (current && opened && before !== undefined)
+				window.scrollBy(0, opened.getBoundingClientRect().top - before);
+		});
+		return () => (current = false);
+	});
+
 	$effect(() =>
 		onRealtime('post', (post) => {
 			if (post.reply_to?.id !== data.post.id || replies.some((r) => r.id === post.id)) return;
@@ -51,9 +79,17 @@
 <div
 	class="not-pointer-coarse:mb-2.5 not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black not-pointer-coarse:p-5 not-pointer-coarse:max-nav:rounded-r-none"
 >
-	<!-- touch devices: as close to the screen's edges as the timeline, like the replies -->
+	<!-- touch devices: as close to the screen's edges as the timeline, like the replies. the
+		parents share the post's block so the thread line runs from avatar to avatar -->
 	<div class="pointer-coarse:-mx-2.5">
-		<Post post={data.post} showReplyTo={true} isPostOpen={true} loadReplies={false} />
+		{#each parents as parent, i (parent.id)}
+			<!-- the first one links further up when the thread goes on above it -->
+			<Post post={parent} showReplyTo={i === 0} threadDown={true} loadReplies={false} />
+		{/each}
+		<div bind:this={opened}>
+			<!-- the "Replying to" link only when the parents couldn't be shown -->
+			<Post post={data.post} showReplyTo={parentsFailed} isPostOpen={true} loadReplies={false} />
+		</div>
 	</div>
 </div>
 <!-- touch devices: an edge to edge line between the post and its replies, like the top bar's -->

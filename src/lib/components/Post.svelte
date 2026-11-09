@@ -36,6 +36,8 @@
 		showReplyTo?: boolean;
 		isPostOpen?: boolean;
 		showThread?: boolean;
+		/** a parent above an open reply: a line runs from its avatar down to the next post's */
+		threadDown?: boolean;
 		/** shown at the top of its author's profile, or of the home timeline */
 		pinned?: boolean;
 		/** the text of the pinned marker */
@@ -49,6 +51,7 @@
 		showReplyTo = false,
 		isPostOpen = false,
 		showThread = false,
+		threadDown = false,
 		pinned = false,
 		pinnedLabel = 'Pinned',
 		onpostdeleted
@@ -692,6 +695,12 @@
 				});
 			}}
 		>
+			{#if threadDown}
+				<!-- from 5px under the avatar (10px padding + 45px) to 5px into the next post, whose
+					avatar starts 10px down: centred under the avatar -->
+				<!-- prettier-ignore -->
+				<span aria-hidden="true" class="pointer-events-none absolute top-[60px] -bottom-[5px] left-[31.5px] w-0.5 bg-line"></span>
+			{/if}
 			{#each hearts as heart (heart.id)}
 				<span
 					class="double-tap-heart pointer-events-none absolute z-10 flex size-20 text-danger"

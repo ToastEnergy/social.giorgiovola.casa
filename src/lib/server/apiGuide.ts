@@ -196,12 +196,17 @@ Message (direct message):
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
                   "images": 2 } | null,
     "reactions": [ { "emoji", "username", "name", "avatar" } ],
-    "linked_post": <QuotedPost> | null }
+    "linked_post": <QuotedPost> | null,
+    "link_preview": <LinkPreview> | null }   // first link to another site in the text
+  A message is answered without waiting for its link's page: when the card isn't cached yet,
+  "link_preview" is null in the response and both sides get message_edited (same text,
+  "edited_at" unchanged) once it is ready.
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
     "renamed" | "owner", "sender": User, "target": User | null, "content", "images" (like
-    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post",
+    "link_preview" }   (a late card comes as group_message_edited, like for Message)
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.
@@ -594,11 +599,11 @@ GET /stream                           public or signed in
                     messages, sent on connect and on change
     message         <Message> sent or received
     message_deleted { "id" }
-    message_edited  <Message> with its new text
+    message_edited  <Message> with its new text, or with its link_preview once ready
     message_reactions        { "id", "reactions" }
     group_message            <GroupMessage> (events included)
     group_message_deleted    { "group_id", "id" }
-    group_message_edited     <GroupMessage> with its new text
+    group_message_edited     <GroupMessage> with its new text, or its link_preview
     group_message_reactions  { "group_id", "id", "reactions" }
     group_updated   { "id" }   renamed or members changed: GET /groups/:id again (404 =
                                you were removed)

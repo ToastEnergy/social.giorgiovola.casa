@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-or
 import { db, blocks, dm_mutes, messages, users } from './db/index.js';
 import type { ChatMessage, ChatPeer, Conversation } from '#lib/types.js';
 import { linkedPosts } from './linkedPosts.js';
+import { linkPreviews } from './linkPreviews.js';
 import { unreadGroupCount } from './groups.js';
 import { markDirectReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
@@ -113,13 +114,38 @@ const toChatMessage = (row: Row, sender: string, recipient: string) => ({
 	edited_at: row.edited_at
 });
 
-/** Fills `linked_post` (the post each message links to, if any), `reply_to` and `reactions`. */
+/**
+ * Fills `linked_post` (the post each message links to, if any), `link_preview` (its first link
+ * to another site), `reply_to` and `reactions`.
+ */
 async function complete(found: ReturnType<typeof toChatMessage>[]): Promise<ChatMessage[]> {
-	const [linked, withExtras] = await Promise.all([
+	const [linked, previews, withExtras] = await Promise.all([
 		linkedPosts(found.map((m) => m.content)),
+		linkPreviews(found.map((m) => m.content)),
 		withRepliesAndReactions('direct', found)
 	]);
-	return withExtras.map((m, i) => ({ ...m, linked_post: linked[i] }));
+	return withExtras.map((m, i) => ({ ...m, linked_post: linked[i], link_preview: previews[i] }));
+}
+
+/** A message `sender` sent to `recipient`, as it is now; null when it was deleted. */
+export async function getDirectMessage(
+	id: number,
+	sender: Party,
+	recipient: Party
+): Promise<ChatMessage | null> {
+	const [row] = await db
+		.select(editedColumns)
+		.from(messages)
+		.where(
+			and(
+				eq(messages.id, id),
+				eq(messages.sender_id, sender.id),
+				eq(messages.recipient_id, recipient.id)
+			)
+		);
+	if (!row) return null;
+	const [message] = await complete([toChatMessage(row, sender.username, recipient.username)]);
+	return message;
 }
 
 /** A page of a conversation, oldest first: the latest messages, or the ones before `before`. */

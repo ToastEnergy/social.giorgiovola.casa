@@ -192,6 +192,8 @@ export type ChatMessage = {
 	edited_at: Date | null;
 	/** the first post on this instance linked in the content, shown like a quote */
 	linked_post: QuotedPost | null;
+	/** the Open Graph card of the first link to another site in the content, null when none (yet) */
+	link_preview: LinkPreview | null;
 	/** the message this one answers, null when it isn't a reply or that message was deleted */
 	reply_to: MessageReplyTo | null;
 	/** oldest first, one per profile */
@@ -254,6 +256,8 @@ export type GroupMessage = {
 	edited_at: Date | null;
 	/** the first post on this instance linked in the content, shown like a quote */
 	linked_post: QuotedPost | null;
+	/** the Open Graph card of the first link to another site in the content, null when none (yet) */
+	link_preview: LinkPreview | null;
 	/** the message this one answers, null when it isn't a reply or that message was deleted */
 	reply_to: MessageReplyTo | null;
 	/** oldest first, one per profile */

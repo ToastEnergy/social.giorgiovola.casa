@@ -15,6 +15,7 @@
 	import UploadProgress from './UploadProgress.svelte';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
 	import QuoteCard from './QuoteCard.svelte';
+	import LinkPreviewCard from './LinkPreviewCard.svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import BottomNav from './BottomNav.svelte';
 	import { keyboard as screenKeyboard, writingHandlers } from '#lib/keyboard.svelte.js';
@@ -1463,7 +1464,8 @@
 				{/if}
 				{@const swiped = swipe?.id === message.id ? swipe.dx : 0}
 				<!-- the time sits on the text's last line when it fits, like on Telegram -->
-				{@const inlineMeta = !!message.content && !message.linked_post}
+				{@const card = message.linked_post ? null : message.link_preview}
+				{@const inlineMeta = !!message.content && !message.linked_post && !card}
 				<div
 					id={`message-${message.id}`}
 					style:animation-delay={message.id in rising ? `${rising[message.id]}ms` : undefined}
@@ -1594,6 +1596,12 @@
 								<!-- on its own dark ground, so it reads the same in both bubble colors -->
 								<div class="rounded-[5px] bg-background text-foreground">
 									<QuoteCard quote={message.linked_post} />
+								</div>
+							{:else if card}
+								<!-- a fixed width like the images: the bubble fits its content, so a link-only
+								     message would otherwise squeeze the card to the width of its title -->
+								<div class="w-[min(320px,60vw)] max-w-full rounded-[5px] bg-background">
+									<LinkPreviewCard preview={card} showImage={!message.images?.length} />
 								</div>
 							{/if}
 							<!-- over the space the invisible copy at the end of the text keeps free -->

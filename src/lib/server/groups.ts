@@ -10,6 +10,7 @@ import type {
 } from '#lib/types.js';
 import { groupEventText } from '#lib/groupEvents.js';
 import { linkedPosts } from './linkedPosts.js';
+import { linkPreviews } from './linkPreviews.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
 import { markGroupReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { hit, isLimited } from './ratelimit.js';
@@ -380,8 +381,10 @@ type MessageRow = Awaited<ReturnType<typeof selectMessages>>[number];
 
 async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 	// events carry a group name as content, not something to link
-	const [linked, extras] = await Promise.all([
-		linkedPosts(rows.map((r) => (r.kind === 'message' ? r.content : ''))),
+	const texts = rows.map((r) => (r.kind === 'message' ? r.content : ''));
+	const [linked, previews, extras] = await Promise.all([
+		linkedPosts(texts),
+		linkPreviews(texts),
 		withRepliesAndReactions('group', rows)
 	]);
 	return rows.map((r, i) => ({
@@ -398,6 +401,7 @@ async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 		created_at: r.created_at,
 		edited_at: r.edited_at,
 		linked_post: linked[i],
+		link_preview: previews[i],
 		reply_to: extras[i].reply_to,
 		reactions: extras[i].reactions
 	}));
@@ -407,6 +411,12 @@ async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 async function loadMessages(ids: number[]) {
 	if (ids.length === 0) return [];
 	return toGroupMessages((await selectMessages(inArray(group_messages.id, ids))).reverse());
+}
+
+/** A message of a group as it is now; null when it was deleted. */
+export async function getGroupMessage(id: number): Promise<GroupMessage | null> {
+	const [message] = await loadMessages([id]);
+	return message ?? null;
 }
 
 /** A page of a group's messages, oldest first: the latest ones, or the ones before `before`. */

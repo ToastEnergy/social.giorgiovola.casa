@@ -99,15 +99,35 @@ export async function warmLinkPreview(content: string, waitMs = 2500) {
 	if (LINK_PREVIEWS === 'off') return;
 	const url = firstExternalLink(content);
 	if (!url) return;
-	const [row] = await db
-		.select()
-		.from(link_previews)
-		.where(inArray(link_previews.url, [url]));
+	const row = await cached(url);
 	if (row && !isStale(row)) return;
 	await Promise.race([refresh(url), new Promise((resolve) => setTimeout(resolve, waitMs))]);
 }
 
+/**
+ * Resolves true once the link of `content` has a preview it didn't have before. Messages are
+ * sent without waiting for the page, and shown again when this says so. False when there's
+ * nothing new to show: no link, previews off, a card already cached, or a page without one.
+ */
+export async function linkPreviewArrived(content: string): Promise<boolean> {
+	if (LINK_PREVIEWS === 'off') return false;
+	const url = firstExternalLink(content);
+	if (!url) return false;
+	// a stale card was already shown with the message, a refreshed one isn't worth an update
+	if ((await cached(url))?.title) return false;
+	await refresh(url);
+	return !!(await cached(url))?.title;
+}
+
 type Row = typeof link_previews.$inferSelect;
+
+async function cached(url: string): Promise<Row | undefined> {
+	const [row] = await db
+		.select()
+		.from(link_previews)
+		.where(inArray(link_previews.url, [url]));
+	return row;
+}
 
 function isStale(row: Row) {
 	const age = Date.now() - new Date(row.fetched_at).getTime();

@@ -387,6 +387,9 @@ export const messageShape = `{
     "id": 57, "user": { "name", "username", "avatar" },
     "content": "…", "images": ["/uploads/…"], "created_at": "ISO date", "is_quote": false
   } | null,
+  "link_preview": { "url", "title", "description", "image", "site_name" } | null,
+                           // the first link to another site, like in Post (null while
+                           // it is still being fetched: it shows up on later reads)
   "reply_to": {            // the message this one replies to, or null
     "id": 75, "sender": { "username", "name" },
     "content": "…",        // cut to 200 characters
@@ -407,6 +410,7 @@ export const groupMessageShape = `{
   "images": ["/dm-uploads/…"],   // private, like in Message
   "created_at": "ISO date",
   "linked_post": { … } | null,   // like in Message
+  "link_preview": { … } | null,  // like in Message
   "reply_to": {            // the message this one replies to, or null
     "id": 299, "sender": { "username", "name" }, "content": "…", "images": 0
   } | null,

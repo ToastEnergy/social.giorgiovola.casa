@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types';
 import { botError, botHandler, botLimited, listParams, readBody } from '#lib/server/bots.js';
+import { previewDirectLater } from '#lib/server/chat.js';
 import { findPeer, getBlock, getThreadFrom, sendMessage } from '#lib/server/messages.js';
 import { isDirectMessageBetween } from '#lib/server/messageReactions.js';
 import { publishMessage } from '#lib/server/realtime.js';
@@ -47,5 +48,6 @@ export const POST: RequestHandler = botHandler(async (bot, { params, request }) 
 	if (botLimited(bot.user.id, 'messages', MAX_MESSAGES)) return botError(429, 'Messaging too fast');
 	const message = await sendMessage(bot.user, peer, content, [], replyTo);
 	void publishMessage(message, bot.user.id, peer.id, bot.user.name);
+	previewDirectLater(message, bot.user, peer);
 	return Response.json(message, { status: 201 });
 });

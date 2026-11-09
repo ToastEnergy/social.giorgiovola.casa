@@ -106,6 +106,10 @@ Message (a direct message):
       "created_at": "ISO date",
       "is_quote": false                          // it quotes another post itself
     } | null,
+    "link_preview": {                            // the first link to another site in
+      "url", "title", "description", "image",    // "content", like in a post, or null
+      "site_name"                                // (also while it is still being fetched:
+    } | null,                                    // it shows up on later reads)
     "reply_to": {                                // the message this one replies to, or null
       "id": 75,                                  // when it isn't a reply or that message
       "sender": { "username": "mybot",           // was deleted
@@ -150,6 +154,7 @@ Group message (a message or event of a group chat):
                                        // like in Message
     "created_at": "ISO date",
     "linked_post": { … } | null,       // same as in Message
+    "link_preview": { … } | null,      // same as in Message
     "reply_to": { "id", "sender": { "username", "name" }, "content", "images" } | null,
                                        // same as in Message
     "reactions": [ { "emoji", "username", "name", "avatar" } ]   // same as in Message

@@ -7,6 +7,7 @@ import {
 	listParams,
 	readBody
 } from '#lib/server/bots.js';
+import { previewGroupLater } from '#lib/server/chat.js';
 import { getGroupMessagesFrom, sendGroupMessage } from '#lib/server/groups.js';
 import { isGroupMessage } from '#lib/server/messageReactions.js';
 import { publishGroupMessage } from '#lib/server/realtime.js';
@@ -55,6 +56,10 @@ export const POST: RequestHandler = botHandler(async (bot, { params, request }) 
 		bot.user.id,
 		group.members.map((m) => m.id),
 		group.name
+	);
+	previewGroupLater(
+		message,
+		group.members.map((m) => m.id)
 	);
 	return Response.json(message, { status: 201 });
 });

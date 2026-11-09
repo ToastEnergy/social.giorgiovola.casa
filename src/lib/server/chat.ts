@@ -1,4 +1,4 @@
-import type { ShareRecipient, User } from '#lib/types.js';
+import type { ChatMessage, GroupMessage, ShareRecipient, User } from '#lib/types.js';
 import { fail, rateLimit } from './api.js';
 import {
 	addMembers,
@@ -8,6 +8,7 @@ import {
 	editGroupMessage,
 	getGroup,
 	getGroupConversations,
+	getGroupMessage,
 	firstUnreadGroupMessage,
 	getGroupThread,
 	isGroupMuted,
@@ -24,6 +25,7 @@ import {
 	type GroupState
 } from './groups.js';
 import { removeUploads } from './images.js';
+import { linkPreviewArrived } from './linkPreviews.js';
 import {
 	checkMessage,
 	countMessage,
@@ -52,6 +54,7 @@ import {
 	firstUnreadMessage,
 	getBlock,
 	getConversations,
+	getDirectMessage,
 	getThread,
 	isDmMuted,
 	markThreadRead,
@@ -255,7 +258,46 @@ export async function sendDirect(locals: App.Locals, me: User, username: string,
 		throw e;
 	}
 	void publishMessage(message, me.id, peer.id, me.name);
+	previewDirectLater(message, me, peer);
 	return message;
+}
+
+/**
+ * Messages are answered without waiting for the page their link points to, so sending stays
+ * instant. Once its preview is ready the message goes out again as edited (same text and
+ * edited_at), so open chats show the card; whoever loads it later gets it anyway.
+ */
+function whenPreviewArrives<M>(
+	content: string,
+	reload: () => Promise<M | null>,
+	publish: (message: M) => void
+) {
+	void linkPreviewArrived(content)
+		.then(async (arrived) => {
+			const message = arrived ? await reload() : null;
+			if (message) publish(message);
+		})
+		.catch((e) => console.error('chat: link preview update failed', e));
+}
+
+type Party = { id: number; username: string };
+
+/** See whenPreviewArrives. Also used by the bot API, whose messages show the card too. */
+export function previewDirectLater(message: ChatMessage, sender: Party, recipient: Party) {
+	whenPreviewArrives(
+		message.content,
+		() => getDirectMessage(message.id, sender, recipient),
+		(m) => publishMessageEdited(m, [sender.id, recipient.id])
+	);
+}
+
+/** See whenPreviewArrives. Also used by the bot API, whose messages show the card too. */
+export function previewGroupLater(message: GroupMessage, members: number[]) {
+	whenPreviewArrives(
+		message.content,
+		() => getGroupMessage(message.id),
+		(m) => publishGroupMessageEdited(m, members)
+	);
 }
 
 // edits, per profile over direct and group messages together
@@ -294,6 +336,7 @@ export async function editDirect(
 	rateLimit(`message-edit:${me.id}`, MAX_EDITS, 60_000, 'Editing too fast');
 	const message = edited(await editMessage(me, peer, id, content));
 	publishMessageEdited(message, [me.id, peer.id]);
+	previewDirectLater(message, me, peer);
 	return message;
 }
 
@@ -440,6 +483,10 @@ export async function sendToGroup(
 		group.members.map((m) => m.id),
 		group.name
 	);
+	previewGroupLater(
+		message,
+		group.members.map((m) => m.id)
+	);
 	return message;
 }
 
@@ -455,6 +502,10 @@ export async function editInGroup(
 	rateLimit(`message-edit:${me.id}`, MAX_EDITS, 60_000, 'Editing too fast');
 	const message = edited(await editGroupMessage(group.id, me.id, messageId, content));
 	publishGroupMessageEdited(
+		message,
+		group.members.map((m) => m.id)
+	);
+	previewGroupLater(
 		message,
 		group.members.map((m) => m.id)
 	);

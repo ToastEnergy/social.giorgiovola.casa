@@ -149,7 +149,7 @@ The bars button in the composer adds a poll to a post (or a reply, or a quote): 
 
 ## link previews
 
-The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never visit the page, only load the image from the site; the page itself is downloaded once on the server side and cached for 7 days (1 day when it had no preview). `LINK_PREVIEWS` picks who downloads it:
+The first link to another site in a post or a message (direct or group) shows a card with the page's title, description and image (its Open Graph tags). A message is sent without waiting for the page: when its card isn't cached yet, it shows up in the open chat a moment later. Readers' browsers never visit the page, only load the image from the site; the page itself is downloaded once on the server side and cached for 7 days (1 day when it had no preview). `LINK_PREVIEWS` picks who downloads it:
 
 - `local` (the default): the app does. Simple, but **every linked site sees your server's IP address**, and anyone can post a link to a site of their own to learn it. That's fine if the server's address isn't secret, and defeats the point if it's hidden behind Cloudflare or another proxy.
 - `remote`: a [Cloudflare Worker](https://developers.cloudflare.com/workers/) does, so linked sites see a Cloudflare address. The worker is in `workers/link-preview` and runs on the free plan.

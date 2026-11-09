@@ -12,6 +12,7 @@
 	import { navigating, page } from '$app/state';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
+	import PhotoEditor from '#lib/components/PhotoEditor.svelte';
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
@@ -160,6 +161,7 @@
 	<ProfileCard />
 	<ShareDialog />
 	<ComposeSheet />
+	<PhotoEditor />
 </div>
 <svelte:head>
 	{#if page.route.id === '/@[username]/[post]' && !page.error}

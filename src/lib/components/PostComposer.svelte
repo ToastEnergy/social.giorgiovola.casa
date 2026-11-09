@@ -13,6 +13,8 @@
 	import LoadingScreen from './LoadingScreen.svelte';
 	import UploadProgress from './UploadProgress.svelte';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
+	import { canEdit, editImage } from '#lib/photoEditor.svelte.js';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import { user } from '#lib/store.js';
 	import {
 		clearDraft,
@@ -214,17 +216,32 @@
 				showError(`You can attach at most ${MAX_IMAGES} images.`);
 				break;
 			}
-			// uploaded right away, so posting doesn't wait for it
-			const attachment = new Attachment(file);
-			attachment.done.catch((e) => {
-				// once it's part of a post, submit reports it
-				if (!attachments.includes(attachment)) return;
-				showError(e instanceof UploadError ? e.message : 'Could not upload the image.');
-				removeAttachment(attachment);
-			});
-			added.push(attachment);
+			added.push(stage(file));
 		}
 		if (added.length) attachments = [...attachments, ...added];
+	}
+
+	/** starts uploading `file` as an attachment */
+	function stage(file: File) {
+		// uploaded right away, so posting doesn't wait for it
+		const attachment = new Attachment(file);
+		attachment.done.catch((e) => {
+			// once it's part of a post, submit reports it
+			if (!attachments.includes(attachment)) return;
+			showError(e instanceof UploadError ? e.message : 'Could not upload the image.');
+			removeAttachment(attachment);
+		});
+		return attachment;
+	}
+
+	/** opens the photo editor; the edited copy replaces the attachment, uploaded anew */
+	async function editAttachment(attachment: Attachment) {
+		const file = await editImage(attachment.file);
+		const i = attachments.indexOf(attachment);
+		if (!file || i < 0) return;
+		const next = stage(file);
+		attachment.discard();
+		attachments = [...attachments.slice(0, i), next, ...attachments.slice(i + 1)];
 	}
 
 	function removeAttachment(attachment: Attachment) {
@@ -508,9 +525,28 @@
 		<div class="flex flex-wrap gap-2.5">
 			{#each attachments as attachment (attachment.url)}
 				<div class="relative size-20 overflow-hidden rounded-[5px] border border-line">
-					<img class="size-full object-cover" src={attachment.url} alt="" />
+					{#if canEdit(attachment.file)}
+						<button
+							type="button"
+							class="block size-full cursor-pointer outline-none focus-visible:opacity-80"
+							title="Edit image"
+							aria-label="Edit image"
+							onmousedown={keepFocus}
+							onclick={() => editAttachment(attachment)}
+						>
+							<img class="size-full object-cover" src={attachment.url} alt="" />
+							<span
+								class="absolute bottom-0.5 left-0.5 flex size-5 items-center justify-center rounded-full bg-background/80"
+								><Pencil size={11} /></span
+							>
+						</button>
+					{:else}
+						<img class="size-full object-cover" src={attachment.url} alt="" />
+					{/if}
 					{#if !attachment.id}
-						<div class="absolute inset-0 flex items-center justify-center bg-black/50">
+						<div
+							class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50"
+						>
 							<UploadProgress progress={attachment.progress} />
 						</div>
 					{/if}

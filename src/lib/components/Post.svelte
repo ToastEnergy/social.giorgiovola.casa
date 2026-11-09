@@ -26,7 +26,7 @@
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import { markMentionSeen, mentions, splitMentions } from '#lib/mentions.js';
-	import { isHttpLink, isRatio, ratioPercent } from '#lib/utils.js';
+	import { isHttpLink, isRatio, ratioPercent, unwrapMarkdownImages } from '#lib/utils.js';
 	import { hashtagHref, parseHashtag } from '#lib/hashtags.js';
 	import { openImage } from '#lib/imageViewer.svelte.js';
 	import { profileHover } from '#lib/profileCard.svelte.js';
@@ -99,18 +99,9 @@
 	// the parent's likes decide whether this reply ratios it
 	let parentLikes = $derived(post.reply_to?.likes ?? 0);
 
-	const imageRegex = /!\[[^\]]*\]\((?<filename>.*?)(?="|\))(?<optionalpart>".*")?\)/;
-
-	// an image linked with markdown syntax in the content: only absolute https images, no
-	// same-origin URLs that could trigger actions
-	const linkedImage = $derived.by(() => {
-		const match = post.content.match(imageRegex);
-		const src = match?.[1].trim();
-		return src && src.startsWith('https://') && isHttpLink(src) ? src : null;
-	});
-	const contentParts = $derived(post.content.replace(imageRegex, '').trim().split(/(\s)/));
-	// uploaded images first, then the linked one
-	const gallery = $derived([...(post.images ?? []), ...(linkedImage ? [linkedImage] : [])]);
+	// images linked with markdown syntax show as plain links, never loaded (unwrapMarkdownImages)
+	const contentParts = $derived(unwrapMarkdownImages(post.content).trim().split(/(\s)/));
+	const gallery = $derived(post.images ?? []);
 
 	const ratioPost = $derived({
 		likes,

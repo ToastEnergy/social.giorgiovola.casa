@@ -2,6 +2,7 @@ import Bell from '@lucide/svelte/icons/bell';
 import House from '@lucide/svelte/icons/house';
 import MessageCircle from '@lucide/svelte/icons/message-circle';
 import Settings from '@lucide/svelte/icons/settings';
+import Shield from '@lucide/svelte/icons/shield';
 
 export type NavItem = {
 	href: string;
@@ -17,6 +18,9 @@ export const navItems: NavItem[] = [
 	{ href: '/messages', label: 'Messages', icon: MessageCircle, count: 'messages' },
 	{ href: '/settings', label: 'Settings', icon: Settings }
 ];
+
+// staff only, and only in the sidebar (touch devices reach it from the profile menu)
+export const moderationItem: NavItem = { href: '/admin', label: 'Moderation', icon: Shield };
 
 // home is its own item so the bottom bar can put it first
 export const homeItem: NavItem = { href: '/', label: 'Home', icon: House };

@@ -176,12 +176,17 @@
 					{/if}
 				{/each}
 
+				<!-- moderation and settings are in the sidebar on mouse devices -->
 				<div class="flex flex-col border-t border-line pt-1">
 					{#if page.data.role && page.data.role !== 'user'}
-						<a class={linkClass} href="/admin" role="menuitem">Moderation</a>
+						<a class="{linkClass} not-pointer-coarse:hidden" href="/admin" role="menuitem"
+							>Moderation</a
+						>
 					{/if}
 					<a class={linkClass} href="/accounts" role="menuitem">+ New identity / manage</a>
-					<a class={linkClass} href="/settings" role="menuitem">Settings</a>
+					<a class="{linkClass} not-pointer-coarse:hidden" href="/settings" role="menuitem"
+						>Settings</a
+					>
 					<a class={linkClass} href="/install" role="menuitem">Install app</a>
 					<a class={linkClass} href="/login" role="menuitem">+ Sign in to another account</a>
 					<a class="{linkClass} text-danger" href="/logout" role="menuitem">Log out</a>

@@ -77,16 +77,19 @@
 		row into --sidebar-width; until then an icon row is 44px and a labelled one is about as
 		wide as "Notifications" */
 	.frame-sidebar {
-		--side: var(--sidebar-width, 54px);
+		--nav-side: var(--sidebar-width, 54px);
+		--nav-rail: 0px;
+		--side: var(--nav-side);
+		--rail: var(--nav-rail);
 
 		@variant nav {
-			--side: var(--sidebar-width, 180px);
+			--nav-side: var(--sidebar-width, 180px);
 		}
 
 		/* the sidebar is as wide as the rail, so the panel sits in the middle of the window */
 		@variant rail {
-			--rail: 300px;
-			--side: 300px;
+			--nav-rail: 300px;
+			--nav-side: 300px;
 		}
 	}
 
@@ -112,19 +115,34 @@
 		}
 	}
 
-	/* the messages pages: the conversation list and the chat as two blocks. the sidebar stays icon
-		only and search and the profile stay on top (TopBar) at any window width. the blocks take the
-		window right of the icons until --col, then the chat stops growing and the group (icons
-		included) is centred with margins on both sides. the max-nav rules above set --left and
-		--panel for the plain pages, so both are set again here */
+	/* the messages pages: the conversation list and the chat as two blocks. the sidebar collapses
+		to its icons and search and the profile stay on top (TopBar) at any window width. --left is
+		the plain pages' one (--nav-side and --nav-rail are their sidebar and rail), so the logo and
+		the icons stay where they were while the labels fold away. the blocks start right of the
+		icons and take the window until --col. at nav width and up the icons keep their 10px inset,
+		so the collapsed column is the inset, the 45px logo and the 10px gap */
 	.frame-sidebar.frame-wide {
 		--rail: 0px;
 		--side: var(--sidebar-width, 54px);
 		--edge: 20px;
 		--bar: 55px;
 		--col: 1200px;
-		--panel: min(var(--col), 100vw - var(--side) - 30px);
-		--left: max(10px, (100vw - var(--side) - var(--panel)) / 2);
+		--left: max(
+			10px,
+			(
+					100vw - var(--nav-side) - min(640px, 100vw - var(--nav-side) - var(--nav-rail) - 30px) -
+						var(--nav-rail)
+				) / 2
+		);
+		--panel: min(var(--col), 100vw - var(--left) - var(--side) - 20px);
+
+		@variant nav {
+			--side: 65px;
+		}
+
+		@variant max-nav {
+			--left: 10px;
+		}
 	}
 
 	/* touch devices have the bottom bar instead */

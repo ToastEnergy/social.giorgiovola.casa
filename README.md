@@ -374,16 +374,16 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Moderation and realtime**
 
-| method           | path                                     | who                |                                                                    |
-| ---------------- | ---------------------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `GET`            | `/api/v1/admin/users?q=&filter=`         | staff              | accounts with their identities and what you may do                 |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`      | staff              | ban `{ reason? }` / unban                                          |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`     | staff              | mute `{ reason? }` / unmute                                        |
-| `PUT`            | `/api/v1/admin/users/:username/role`     | admin              | `{ role: "mod" \| "user" }`                                        |
-| `PUT`            | `/api/v1/admin/users/:username/password` | admin              | `{ password }`, signs them out                                     |
-| `GET` / `PUT`    | `/api/v1/admin/motd`                     | admin              | message of the day / set `{ motd }`                                |
-| `GET`            | `/api/v1/stream`                         | public / signed in | server-sent events: posts, counts, notifications, messages, typing |
-| `GET`            | `/api/v1/stream/bot`                     | bot                | the bot stream (same as /api/bot/stream)                           |
+| method           | path                                     | who                |                                                                                      |
+| ---------------- | ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------ |
+| `GET`            | `/api/v1/admin/users?q=&filter=`         | staff              | accounts with their identities and what you may do                                   |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`      | staff              | ban `{ reason? }` / unban                                                            |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`     | staff              | mute `{ reason? }` / unmute                                                          |
+| `PUT`            | `/api/v1/admin/users/:username/role`     | admin              | `{ role: "mod" \| "user" }`                                                          |
+| `PUT`            | `/api/v1/admin/users/:username/password` | admin              | `{ password }`, signs them out                                                       |
+| `GET` / `PUT`    | `/api/v1/admin/motd`                     | admin              | message of the day / set `{ motd }`                                                  |
+| `GET`            | `/api/v1/stream`                         | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s |
+| `GET`            | `/api/v1/stream/bot`                     | bot                | the bot stream (same as /api/bot/stream)                                             |
 
 ## message images
 

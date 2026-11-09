@@ -1092,7 +1092,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/stream',
 				auth: 'public / signed in',
-				summary: 'server-sent events: posts, counts, notifications, messages, typing'
+				summary:
+					'server-sent events: posts, counts, notifications, messages, typing, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show)'
 			},
 			{
 				method: 'GET',

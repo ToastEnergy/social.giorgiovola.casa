@@ -29,9 +29,14 @@ const HEARTBEAT_MS = 8000;
 const frame = (event: string, data: unknown) =>
 	`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
-/** An event stream body: `register` adds the client to a hub and returns how to remove it. */
+/**
+ * An event stream body: `register` adds the client to a hub and returns how to remove it.
+ * `heartbeat` is sent every HEARTBEAT_MS: it keeps proxies and the runtime's idle timeout from
+ * closing a quiet stream.
+ */
 function eventStream(
 	signal: AbortSignal,
+	heartbeat: string,
 	register: (send: (chunk: string) => void, close: () => void) => () => void
 ) {
 	let cleanup = () => {};
@@ -44,15 +49,14 @@ function eventStream(
 					cleanup();
 				}
 			};
-			// comments keep proxies and the runtime's idle timeout from closing a quiet stream
-			const heartbeat = setInterval(() => send(': ping\n\n'), HEARTBEAT_MS);
+			const timer = setInterval(() => send(heartbeat), HEARTBEAT_MS);
 			let closed = false;
 			send('retry: 3000\n\n');
 			const unregister = register(send, () => cleanup());
 			cleanup = () => {
 				if (closed) return;
 				closed = true;
-				clearInterval(heartbeat);
+				clearInterval(timer);
 				unregister();
 				try {
 					controller.close();
@@ -77,7 +81,9 @@ export function openStream(
 	botId: number | null,
 	signal: AbortSignal
 ) {
-	return eventStream(signal, (send, close) => {
+	// a real event, not a comment: clients can't see comments (EventSource drops them), and a
+	// client that hears nothing for a while knows the connection died without telling it
+	return eventStream(signal, frame('ping', {}), (send, close) => {
 		const client: Client = { userId, sessionKey, botId, send, close };
 		clients.add(client);
 		if (userId !== null) void sendUnreadCount(client);
@@ -112,7 +118,8 @@ const botClients = new Set<BotClient>();
  * `group_message` (in a group the bot is in) events.
  */
 export function openBotStream(bot: { id: number; username: string }, signal: AbortSignal) {
-	return eventStream(signal, (send, close) => {
+	// a comment: the bot API's contract stays as it was
+	return eventStream(signal, ': ping\n\n', (send, close) => {
 		// usernames are [a-z0-9_], nothing to escape. same rule as MENTION_RE (#lib/mentions.ts)
 		const client: BotClient = {
 			botId: bot.id,

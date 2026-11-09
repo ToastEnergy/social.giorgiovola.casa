@@ -32,6 +32,8 @@ export type RealtimeEvents = {
 	group_updated: { id: number };
 	/** someone is writing to you: in a group, or in your direct conversation (group_id null) */
 	typing: { group_id: number | null; user: { username: string; name: string } };
+	/** the server's heartbeat, every 8 seconds: the stream is alive */
+	ping: Record<string, never>;
 	/** the stream (re)connected: anything sent while it was down was missed */
 	open: undefined;
 };
@@ -49,6 +51,11 @@ const RETRY_MAX_MS = 30_000;
 // hidden this long, the stream is opened again on return: a locked phone or a backgrounded app
 // may have lost the connection without the page ever hearing about it
 const STALE_AFTER_MS = 60_000;
+// the server pings every 8s: hearing nothing for this long, the connection is dead even though
+// the browser still thinks it's open (a network that changed or a NAT that forgot it)
+const SILENT_AFTER_MS = 20_000;
+const WATCHDOG_MS = 5000;
+const VISIBLE_GRACE_MS = 10_000;
 
 let source: EventSource | null = null;
 let active = false;
@@ -57,6 +64,9 @@ let missed = false;
 let attempts = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let hiddenAt: number | null = null;
+/** when the stream last said anything (an event or the open) */
+let heardAt = 0;
+let watchdog: ReturnType<typeof setInterval> | undefined;
 
 /** Subscribes to an event; returns the unsubscribe function. */
 export function onRealtime<K extends keyof RealtimeEvents>(event: K, fn: Listener<K>) {
@@ -97,7 +107,8 @@ const events: (keyof RealtimeEvents)[] = [
 	'group_message_edited',
 	'group_message_reactions',
 	'group_updated',
-	'typing'
+	'typing',
+	'ping'
 ];
 
 function open() {
@@ -107,6 +118,7 @@ function open() {
 	source = es;
 	es.addEventListener('open', () => {
 		if (source !== es) return;
+		heardAt = Date.now();
 		attempts = 0;
 		const resumed = missed;
 		missed = false;
@@ -131,6 +143,7 @@ function open() {
 			} catch {
 				return;
 			}
+			heardAt = Date.now();
 			emit(event, data);
 		});
 	}
@@ -165,7 +178,16 @@ function onVisibility() {
 	}
 	const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
 	hiddenAt = null;
-	if (!source || source.readyState !== EventSource.OPEN || away >= STALE_AFTER_MS) reopen();
+	if (!source || source.readyState !== EventSource.OPEN || away >= STALE_AFTER_MS) return reopen();
+	// asleep in the background, the page heard nothing even if the stream is fine: give it a
+	// heartbeat's time (and what was buffered meanwhile) before calling it dead
+	heardAt = Math.max(heardAt, Date.now() - SILENT_AFTER_MS + VISIBLE_GRACE_MS);
+}
+
+// hidden pages have their timers slowed down or stopped: checked again once visible
+function checkSilence() {
+	if (document.visibilityState === 'hidden') return;
+	if (source?.readyState === EventSource.OPEN && Date.now() - heardAt > SILENT_AFTER_MS) reopen();
 }
 
 function onOffline() {
@@ -190,12 +212,14 @@ export function connectRealtime() {
 	window.addEventListener('online', reopen);
 	window.addEventListener('offline', onOffline);
 	window.addEventListener('pageshow', onPageShow);
+	watchdog = setInterval(checkSilence, WATCHDOG_MS);
 	open();
 }
 
 export function disconnectRealtime() {
 	active = false;
 	clearTimeout(retryTimer);
+	clearInterval(watchdog);
 	source?.close();
 	source = null;
 	connection.state = 'connecting';

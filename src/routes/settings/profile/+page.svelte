@@ -4,6 +4,8 @@
 	import type { PageProps } from './$types';
 	import { invalidateAll } from '$app/navigation';
 	import { api, messageOf } from '#lib/api.js';
+	import { userOf, type Me } from '#lib/me.js';
+	import { user } from '#lib/store.js';
 	import {
 		fieldClass,
 		fileInputClass,
@@ -41,7 +43,7 @@
 			} else if (fields.get('removeAvatar')) {
 				await api('me/avatar', { method: 'DELETE' });
 			}
-			await api('me', {
+			const me = await api<Me>('me', {
 				method: 'PATCH',
 				json: {
 					name: fields.get('name'),
@@ -50,7 +52,8 @@
 					website: fields.get('website')
 				}
 			});
-			// the layout refreshes the signed in user (header, menus) from the same load
+			// the header and menus read the store, which the layout only fills on the first load
+			user.set(userOf(me));
 			await invalidateAll();
 			saved = true;
 		} catch (err) {

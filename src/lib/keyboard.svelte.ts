@@ -90,9 +90,58 @@ export function watchKeyboard() {
 	window.addEventListener('resize', fit);
 	vv?.addEventListener('resize', fit);
 	vv?.addEventListener('scroll', fit);
+
+	// iOS (WebKit bug 297779 and the like, installed app above all): once the keyboard is gone
+	// the viewport can stay as short as it was above it, so what's fixed to the bottom (the
+	// bottom bar) floats halfway up the screen until the app is restarted. hiding and showing
+	// an element as tall as the viewport, with a reflow in between, makes WebKit measure it
+	// again. it's invisible and out of the flow, so where it's not needed nothing changes
+	const probe = document.createElement('div');
+	probe.setAttribute('aria-hidden', 'true');
+	Object.assign(probe.style, {
+		position: 'fixed',
+		top: '0',
+		left: '0',
+		width: '1px',
+		height: '100dvh',
+		visibility: 'hidden',
+		pointerEvents: 'none'
+	});
+	document.body.append(probe);
+	const remeasure = () => {
+		if (editing()) return;
+		probe.style.display = 'none';
+		void probe.offsetHeight;
+		probe.style.display = '';
+		void probe.offsetHeight;
+		window.scrollTo(window.scrollX, window.scrollY);
+		fit();
+	};
+	// after the keyboard's closing animation, and again in case it was slow
+	let timers: ReturnType<typeof setTimeout>[] = [];
+	const onFocusOut = (e: FocusEvent) => {
+		if (!isField(e.target)) return;
+		timers.forEach(clearTimeout);
+		timers = [setTimeout(remeasure, 150), setTimeout(remeasure, 600)];
+	};
+	document.addEventListener('focusout', onFocusOut);
+	// coming back to the app (it may have been left with the keyboard up)
+	const onVisible = () => {
+		if (document.visibilityState === 'visible') setTimeout(remeasure, 150);
+	};
+	document.addEventListener('visibilitychange', onVisible);
+
 	return () => {
 		window.removeEventListener('resize', fit);
 		vv?.removeEventListener('resize', fit);
 		vv?.removeEventListener('scroll', fit);
+		document.removeEventListener('focusout', onFocusOut);
+		document.removeEventListener('visibilitychange', onVisible);
+		timers.forEach(clearTimeout);
+		probe.remove();
 	};
 }
+
+const isField = (el: EventTarget | null) =>
+	el instanceof HTMLElement && (el.isContentEditable || el.matches('input, textarea, select'));
+const editing = () => isField(document.activeElement);

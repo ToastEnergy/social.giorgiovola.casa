@@ -1,4 +1,13 @@
 <script lang="ts">
+	import X from '@lucide/svelte/icons/x';
+	import Pin from '@lucide/svelte/icons/pin';
+	import Repeat from '@lucide/svelte/icons/repeat';
+	import Heart from '@lucide/svelte/icons/heart';
+	import MessageCircle from '@lucide/svelte/icons/message-circle';
+	import Forward from '@lucide/svelte/icons/forward';
+	import LinkIcon from '@lucide/svelte/icons/link';
+	import Share from '@lucide/svelte/icons/share';
+	import Trash from '@lucide/svelte/icons/trash';
 	import Button from '#lib/components/Button.svelte';
 	import { user, isMobile } from '#lib/store.js';
 	import type { Post } from '#lib/types.js';
@@ -588,18 +597,10 @@
 							showing = null;
 						}}
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							height="1.6em"
-							viewBox="0 0 384 512"
-							fill="#bb5353"
-							><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-								d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"
-							/></svg
-						>
+						<X size={26} class="text-danger" />
 					</button>
 				</div>
-				<div class="max-h-[calc(var(--fh)-160px)] cursor-pointer overflow-auto hover:underline">
+				<div class="max-h-[calc(var(--fh)-160px)] overflow-auto">
 					{#key showing}
 						<Likes postId={post.id} kind={showing} />
 					{/key}
@@ -627,15 +628,7 @@
 						aria-label="Close"
 						onclick={() => (quoting = false)}
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							height="1.6em"
-							viewBox="0 0 384 512"
-							fill="#bb5353"
-							><path
-								d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"
-							/></svg
-						>
+						<X size={26} class="text-danger" />
 					</button>
 				</div>
 				<PostComposer quoteOf={asQuoted} placeholder="Add a comment" oncreated={onQuoted} />
@@ -647,17 +640,7 @@
 	<div class="flex flex-col gap-2.5">
 		{#if pinned}
 			<p class="ml-0.75 flex items-center gap-[5px] text-[0.85em] text-muted">
-				<svg
-					class="stroke-muted"
-					height="14px"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					xmlns="http://www.w3.org/2000/svg"
-					aria-hidden="true"><path d="M12 17v5" /><path d="M5 17h14l-2-8V4H7v5z" /></svg
-				>
+				<Pin size={14} class="text-muted" />
 				{pinnedLabel}
 			</p>
 		{/if}
@@ -666,20 +649,7 @@
 				class="ml-0.75 flex items-center gap-[5px] text-[0.85em] text-muted"
 				href={'/@' + post.regiorged_by.username}
 			>
-				<svg
-					class="stroke-muted"
-					height="14px"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					xmlns="http://www.w3.org/2000/svg"
-					aria-hidden="true"
-					><path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path
-						d="M7 23l-4-4 4-4"
-					/><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg
-				>
+				<Repeat size={14} class="text-muted" />
 				{post.regiorged_by.username === $user?.username ? 'You' : post.regiorged_by.name}
 				{#if post.regiorged_by.others}
 					and {post.regiorged_by.others}
@@ -699,7 +669,7 @@
 				? 'select-none [-webkit-touch-callout:none]'
 				: ''} {showThread
 				? 'before:absolute before:top-[27.5px] before:-left-5 before:block before:h-1.5 before:w-[21px] before:rounded-bl-[10px] before:border-b before:border-l before:border-accent'
-				: ''} {!isPostOpen && !$isMobile ? 'hover:bg-black' : ''}"
+				: ''} {!isPostOpen && !$isMobile ? 'hover:bg-white/5' : ''}"
 			tabindex="0"
 			role="button"
 			aria-pressed="false"
@@ -723,16 +693,12 @@
 			}}
 		>
 			{#each hearts as heart (heart.id)}
-				<svg
-					class="double-tap-heart pointer-events-none absolute z-10 size-20 fill-danger"
+				<span
+					class="double-tap-heart pointer-events-none absolute z-10 flex size-20 text-danger"
 					style="left: {heart.x}px; top: {heart.y}px; --tilt: {heart.tilt}deg"
-					viewBox="0 0 24 24"
-					xmlns="http://www.w3.org/2000/svg"
 					aria-hidden="true"
 					onanimationend={() => (hearts = hearts.filter((h) => h.id !== heart.id))}
-					><path
-						d="M2 9.1371C2 14 6.01943 16.5914 8.96173 18.9109C10 19.7294 11 20.5 12 20.5C13 20.5 14 19.7294 15.0383 18.9109C17.9806 16.5914 22 14 22 9.1371C22 4.27416 16.4998 0.825464 12 5.50063C7.50016 0.825464 2 4.27416 2 9.1371Z"
-					/></svg
+					><Heart class="size-full fill-current" strokeWidth={1.5} /></span
 				>
 			{/each}
 			<div class="flex self-start" use:profileHover={post.user.username}>
@@ -823,13 +789,7 @@
 					{/if}
 				</div>
 				<div class="mt-2.5 flex w-full items-center gap-2.5">
-					<svg xmlns="http://www.w3.org/2000/svg" height="18px" viewBox="0 0 512 512"
-						><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-							fill="#d9d9d9"
-							fill-opacity="0.5"
-							d="M123.6 391.3c12.9-9.4 29.6-11.8 44.6-6.4c26.5 9.6 56.2 15.1 87.8 15.1c124.7 0 208-80.5 208-160s-83.3-160-208-160S48 160.5 48 240c0 32 12.4 62.8 35.7 89.2c8.6 9.7 12.8 22.5 11.8 35.5c-1.4 18.1-5.7 34.7-11.3 49.4c17-7.9 31.1-16.7 39.4-22.7zM21.2 431.9c1.8-2.7 3.5-5.4 5.1-8.1c10-16.6 19.5-38.4 21.4-62.9C17.7 326.8 0 285.1 0 240C0 125.1 114.6 32 256 32s256 93.1 256 208s-114.6 208-256 208c-37.1 0-72.3-6.4-104.1-17.9c-11.9 8.7-31.3 20.6-54.3 30.6c-15.1 6.6-32.3 12.6-50.1 16.1c-.8 .2-1.6 .3-2.4 .5c-4.4 .8-8.7 1.5-13.2 1.9c-.2 0-.5 .1-.7 .1c-5.1 .5-10.2 .8-15.3 .8c-6.5 0-12.3-3.9-14.8-9.9c-2.5-6-1.1-12.8 3.4-17.4c4.1-4.2 7.8-8.7 11.3-13.5c1.7-2.3 3.3-4.6 4.8-6.9c.1-.2 .2-.3 .3-.5z"
-						/></svg
-					>
+					<MessageCircle size={18} class="opacity-50" />
 					<p>{repliesCount ? repliesCount : '0'}</p>
 					<div class="relative flex" bind:this={menu}>
 						<button
@@ -844,23 +804,14 @@
 							aria-haspopup="menu"
 							aria-expanded={menuOpen}
 						>
-							<svg
-								height="19px"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								xmlns="http://www.w3.org/2000/svg"
-								class="{regiorged ? 'stroke-accent' : 'stroke-foreground'} {$isMobile
+							<Repeat
+								size={19}
+								class="{regiorged ? 'text-accent' : 'text-foreground'} {$isMobile
 									? ''
-									: `transition-[stroke] duration-100 ease-in-out ${
-											!regiorged && $user ? 'group-hover:stroke-accent' : ''
+									: `transition-colors duration-100 ease-in-out ${
+											!regiorged && $user ? 'group-hover:text-accent' : ''
 									  }`}"
-								><path d="M17 1l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path
-									d="M7 23l-4-4 4-4"
-								/><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg
-							>
+							/>
 						</button>
 						{#if menuOpen}
 							<div
@@ -919,27 +870,15 @@
 						aria-pressed={liked}
 					>
 						{#key likePop}
-							<svg
-								class={likePop ? 'like-pop' : ''}
-								height="20px"
-								viewBox="0 0 24 24"
-								xmlns="http://www.w3.org/2000/svg"
-								><g id="SVGRepo_bgCarrier" stroke-width="0" /><g
-									id="SVGRepo_tracerCarrier"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/><g id="SVGRepo_iconCarrier">
-									<path
-										class={$isMobile
-											? ''
-											: `transition-[fill,stroke] duration-100 ease-in-out ${
-													!liked && $user ? 'group-hover:fill-foreground' : ''
-											  }`}
-										d="M2 9.1371C2 14 6.01943 16.5914 8.96173 18.9109C10 19.7294 11 20.5 12 20.5C13 20.5 14 19.7294 15.0383 18.9109C17.9806 16.5914 22 14 22 9.1371C22 4.27416 16.4998 0.825464 12 5.50063C7.50016 0.825464 2 4.27416 2 9.1371Z"
-										fill={liked ? '#bb5353' : 'transparent'}
-										stroke={liked ? '#bb5353' : '#d9d9d9'}
-									/>
-								</g></svg
+							<span class="flex {likePop ? 'like-pop' : ''}"
+								><Heart
+									size={20}
+									class="{liked ? 'fill-danger text-danger' : 'text-foreground'} {$isMobile
+										? ''
+										: `transition-[fill,color] duration-100 ease-in-out ${
+												!liked && $user ? 'group-hover:fill-foreground' : ''
+										  }`}"
+								/></span
 							>
 						{/key}
 					</button>
@@ -980,23 +919,12 @@
 							aria-expanded={shareOpen}
 							bind:this={shareButton}
 						>
-							<svg
-								height="28px"
-								viewBox="0 -0.5 25 25"
-								fill="none"
-								xmlns="http://www.w3.org/2000/svg"
-							>
-								<path
-									class={$isMobile ? '' : 'group-hover:fill-foreground'}
-									fill-rule="evenodd"
-									clip-rule="evenodd"
-									d="M14.734 15.8974L19.22 12.1374C19.3971 11.9927 19.4998 11.7761 19.4998 11.5474C19.4998 11.3187 19.3971 11.1022 19.22 10.9574L14.734 7.19743C14.4947 6.9929 14.1598 6.94275 13.8711 7.06826C13.5824 7.19377 13.3906 7.47295 13.377 7.78743V9.27043C7.079 8.17943 5.5 13.8154 5.5 16.9974C6.961 14.5734 10.747 10.1794 13.377 13.8154V15.3024C13.3888 15.6178 13.5799 15.8987 13.8689 16.0254C14.158 16.1521 14.494 16.1024 14.734 15.8974Z"
-									stroke="#d9d9d9"
-									stroke-width="0.9"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
+							<Forward
+								size={21}
+								class="text-foreground {$isMobile
+									? ''
+									: 'transition-colors duration-100 ease-in-out group-hover:text-accent'}"
+							/>
 						</button>
 						{#if shareOpen}
 							<!-- drawn over the share button, like the regiorgio menu. the keys are handled on the
@@ -1018,38 +946,11 @@
 										onclick={(e) => {
 											e.stopPropagation();
 											sendViaMessage();
-										}}
-										><svg
-											height="18px"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="#d9d9d9"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											xmlns="http://www.w3.org/2000/svg"
-											aria-hidden="true"
-											><path
-												d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-4-.9L3 20l1.1-4A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"
-											/></svg
-										>Send via message</button
+										}}><MessageCircle size={18} />Send via message</button
 									>
 								{:else}
 									<a role="menuitem" class={shareItemClass} href="/login" onclick={stop}
-										><svg
-											height="18px"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="#d9d9d9"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											xmlns="http://www.w3.org/2000/svg"
-											aria-hidden="true"
-											><path
-												d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-4-.9L3 20l1.1-4A8.4 8.4 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5z"
-											/></svg
-										>Log in to send via message</a
+										><MessageCircle size={18} />Log in to send via message</a
 									>
 								{/if}
 								<button
@@ -1058,21 +959,7 @@
 									onclick={(e) => {
 										e.stopPropagation();
 										copyLink();
-									}}
-									><svg
-										height="18px"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="#d9d9d9"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										xmlns="http://www.w3.org/2000/svg"
-										aria-hidden="true"
-										><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
-											d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-										/></svg
-									>Copy link</button
+									}}><LinkIcon size={18} />Copy link</button
 								>
 								{#if canNativeShare}
 									<button
@@ -1081,21 +968,7 @@
 										onclick={(e) => {
 											e.stopPropagation();
 											nativeShare();
-										}}
-										><svg
-											height="18px"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="#d9d9d9"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											xmlns="http://www.w3.org/2000/svg"
-											aria-hidden="true"
-											><path d="M12 15V3" /><path d="M7 8l5-5 5 5" /><path
-												d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"
-											/></svg
-										>Share via…</button
+										}}><Share size={18} />Share via…</button
 									>
 								{/if}
 							</div>
@@ -1112,19 +985,12 @@
 								togglePin();
 							}}
 						>
-							<svg
-								height="17px"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								xmlns="http://www.w3.org/2000/svg"
-								class="{isPinned ? 'stroke-accent' : 'stroke-foreground'} {$isMobile
+							<Pin
+								size={17}
+								class="{isPinned ? 'text-accent' : 'text-foreground'} {$isMobile
 									? ''
-									: 'transition-[stroke] duration-100 ease-in-out group-hover:stroke-accent'}"
-								><path d="M12 17v5" /><path d="M5 17h14l-2-8V4H7v5z" /></svg
-							>
+									: 'transition-colors duration-100 ease-in-out group-hover:text-accent'}"
+							/>
 						</button>
 					{/if}
 					{#if canTimelinePin}
@@ -1140,19 +1006,12 @@
 								toggleTimelinePin();
 							}}
 						>
-							<svg
-								height="17px"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								xmlns="http://www.w3.org/2000/svg"
-								class="{isTimelinePinned ? 'stroke-accent' : 'stroke-foreground'} {$isMobile
+							<Pin
+								size={17}
+								class="{isTimelinePinned ? 'text-accent' : 'text-foreground'} {$isMobile
 									? ''
-									: 'transition-[stroke] duration-100 ease-in-out group-hover:stroke-accent'}"
-								><path d="M12 17v5" /><path d="M5 17h14l-2-8V4H7v5z" /></svg
-							>
+									: 'transition-colors duration-100 ease-in-out group-hover:text-accent'}"
+							/>
 						</button>
 					{/if}
 					{#if $user && ($user.username === post.user.username || page.data.role !== 'user')}
@@ -1165,17 +1024,10 @@
 								isModalOpen = true;
 							}}
 						>
-							<svg
-								class="fill-foreground"
-								xmlns="http://www.w3.org/2000/svg"
-								height="15px"
-								viewBox="0 0 448 512"
-								><path
-									class={$isMobile ? '' : 'group-hover:[fill-opacity:0.8]'}
-									fill-opacity=".4"
-									d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z"
-								/>
-							</svg>
+							<Trash
+								size={16}
+								class="text-foreground opacity-40 {$isMobile ? '' : 'group-hover:opacity-80'}"
+							/>
 						</button>
 					{/if}
 				</div>

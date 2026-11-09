@@ -1,4 +1,6 @@
 <script lang="ts">
+	import X from '@lucide/svelte/icons/x';
+	import Check from '@lucide/svelte/icons/check';
 	import { errorOf } from '#lib/api.js';
 	import { afterNavigate } from '$app/navigation';
 	import Avatar from '#lib/components/Avatar.svelte';
@@ -163,15 +165,7 @@
 						aria-label="Close"
 						onclick={closeShare}
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							height="1.6em"
-							viewBox="0 0 384 512"
-							fill="#bb5353"
-							><path
-								d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"
-							/></svg
-						>
+						<X size={26} class="text-danger" />
 					</button>
 				</div>
 				<input
@@ -238,17 +232,7 @@
 								</span>
 							{/if}
 							{#if isSelected}
-								<svg
-									height="18px"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="#799a74"
-									stroke-width="2.5"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									xmlns="http://www.w3.org/2000/svg"
-									aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg
-								>
+								<Check size={18} strokeWidth={2.5} class="text-accent" />
 							{/if}
 						</button>
 					{:else}

@@ -1,4 +1,10 @@
 <script lang="ts">
+	import ZoomOut from '@lucide/svelte/icons/zoom-out';
+	import ZoomIn from '@lucide/svelte/icons/zoom-in';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import X from '@lucide/svelte/icons/x';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { flushSync } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { viewer, closeImage } from '#lib/imageViewer.svelte.js';
@@ -335,9 +341,7 @@
 				disabled={!zoomed}
 				onclick={() => zoomAt(scale / 1.5)}
 			>
-				<svg viewBox="0 0 24 24" class="size-5" fill="currentColor" aria-hidden="true"
-					><path d="M5 11h14v2H5z" /></svg
-				>
+				<ZoomOut class="size-5" />
 			</button>
 			<button
 				type="button"
@@ -347,9 +351,7 @@
 				disabled={scale >= MAX_SCALE}
 				onclick={() => zoomAt(scale * 1.5)}
 			>
-				<svg viewBox="0 0 24 24" class="size-5" fill="currentColor" aria-hidden="true"
-					><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" /></svg
-				>
+				<ZoomIn class="size-5" />
 			</button>
 			<a
 				class={control}
@@ -359,18 +361,14 @@
 				aria-label="Open original"
 				title="Open original"
 			>
-				<svg viewBox="0 0 24 24" class="size-5" fill="currentColor" aria-hidden="true"
-					><path
-						d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42L17.59 5H14zM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"
-					/></svg
-				>
+				<ExternalLink class="size-5" />
 			</a>
 			<button
 				type="button"
-				class="{control} text-2xl"
+				class={control}
 				aria-label="Close preview"
 				title="Close (Esc)"
-				onclick={closeImage}>&times;</button
+				onclick={closeImage}><X class="size-5" /></button
 			>
 		</div>
 
@@ -379,13 +377,13 @@
 				type="button"
 				class="{control} absolute top-1/2 left-4 -translate-y-1/2 text-2xl"
 				aria-label="Previous image"
-				onclick={() => slide(-1)}>&lsaquo;</button
+				onclick={() => slide(-1)}><ChevronLeft class="size-6" /></button
 			>
 			<button
 				type="button"
 				class="{control} absolute top-1/2 right-4 -translate-y-1/2 text-2xl"
 				aria-label="Next image"
-				onclick={() => slide(1)}>&rsaquo;</button
+				onclick={() => slide(1)}><ChevronRight class="size-6" /></button
 			>
 		{/if}
 

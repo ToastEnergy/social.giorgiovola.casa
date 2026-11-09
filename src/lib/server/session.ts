@@ -19,7 +19,18 @@ export const MAX_PERSONAL_TOKENS = 20;
 const TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const cookieOptions = { path: '/', httpOnly: true, sameSite: 'lax' } as const;
 
-export type SessionRef = { token: string; accountId: number };
+/**
+ * A browser session: `token` is the cookie value, `key` the sessions row it opens (sessions.token,
+ * the sha256 of the cookie, or the cookie itself for sessions made before cookies were hashed).
+ */
+export type SessionRef = { token: string; key: string; accountId: number };
+
+/**
+ * The sessions.token values a cookie can match: its sha256 (every session since cookies are
+ * hashed) and, until the last of them expires (SESSION_DAYS after this shipped), the cookie
+ * itself for older rows. Cookies are uuids and hashes 64 hex digits, so the two never collide.
+ */
+export const cookieKeys = (token: string) => [hashToken(token), token];
 
 /** Every well formed token the browser holds, active first. Not checked against the database. */
 export function cookieTokens(cookies: Cookies): string[] {
@@ -72,15 +83,15 @@ export async function createSession(
 	userAgent?: string | null
 ) {
 	await removeExpired();
-	const [created] = await db
-		.insert(sessions)
-		.values({
-			user_id: userId,
-			kind: 'cookie',
-			user_agent: shortAgent(userAgent),
-			expires_at: sql`NOW() + make_interval(days => ${SESSION_DAYS})`
-		})
-		.returning({ token: sessions.token });
+	// only the hash is stored, so a copy of the database (a dump, a backup) holds no live cookies
+	const cookie = crypto.randomUUID();
+	await db.insert(sessions).values({
+		token: hashToken(cookie),
+		user_id: userId,
+		kind: 'cookie',
+		user_agent: shortAgent(userAgent),
+		expires_at: sql`NOW() + make_interval(days => ${SESSION_DAYS})`
+	});
 
 	// signing in to an account that is already signed in replaces its old session,
 	// and the oldest account is signed out once there are too many
@@ -88,13 +99,10 @@ export async function createSession(
 	const dropped = [
 		...signedIn.filter((s) => s.accountId === userId),
 		...others.slice(MAX_SESSIONS - 1)
-	].map((s) => s.token);
+	].map((s) => s.key);
 	if (dropped.length > 0) await deleteSessions(inArray(sessions.token, dropped));
 
-	setSessionCookies(cookies, [
-		created.token,
-		...others.slice(0, MAX_SESSIONS - 1).map((s) => s.token)
-	]);
+	setSessionCookies(cookies, [cookie, ...others.slice(0, MAX_SESSIONS - 1).map((s) => s.token)]);
 }
 
 /** Human API tokens look like bot tokens with another prefix. */
@@ -189,7 +197,7 @@ export const revokeOtherSessions = (accountId: number, keepKey: string | null) =
 /** Signs out the active account; the next signed in account (if any) becomes active. */
 export async function destroySession(cookies: Cookies, signedIn: SessionRef[]) {
 	const token = cookies.get(SESSION_COOKIE);
-	if (token) await deleteSessions(eq(sessions.token, token));
+	if (token) await deleteSessions(inArray(sessions.token, cookieKeys(token)));
 	setSessionCookies(
 		cookies,
 		signedIn.map((s) => s.token).filter((t) => t !== token)
@@ -199,19 +207,22 @@ export async function destroySession(cookies: Cookies, signedIn: SessionRef[]) {
 /** Signs out every account on this browser. */
 export async function destroyAllSessions(cookies: Cookies) {
 	const tokens = cookieTokens(cookies);
-	if (tokens.length > 0) await deleteSessions(inArray(sessions.token, tokens));
+	if (tokens.length > 0) await deleteSessions(inArray(sessions.token, tokens.flatMap(cookieKeys)));
 	setSessionCookies(cookies, []);
 }
 
-/** Makes `token` the active browser session, acting as `actingId` (null = the account itself). */
+/** Makes `session` the active browser session, acting as `actingId` (null = the account itself). */
 export async function activateSession(
 	cookies: Cookies,
 	signedIn: SessionRef[],
-	token: string,
+	session: SessionRef,
 	actingId: number | null
 ) {
-	await db.update(sessions).set({ acting_id: actingId }).where(eq(sessions.token, token));
-	setSessionCookies(cookies, [token, ...signedIn.map((s) => s.token).filter((t) => t !== token)]);
+	await db.update(sessions).set({ acting_id: actingId }).where(eq(sessions.token, session.key));
+	setSessionCookies(cookies, [
+		session.token,
+		...signedIn.map((s) => s.token).filter((t) => t !== session.token)
+	]);
 }
 
 /** Changes which profile a token acts as. */

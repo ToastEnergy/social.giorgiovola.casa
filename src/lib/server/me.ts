@@ -74,12 +74,15 @@ export async function switchProfile(locals: App.Locals, cookies: Cookies, userna
 	if (locals.auth === 'cookie') {
 		const found = await findSessionFor(locals, target.id);
 		if (!found) fail(403, "You can't switch to that profile.");
-		await activateSession(cookies, locals.sessions, found.session.token, found.actingId);
+		await activateSession(cookies, locals.sessions, found.session, found.actingId);
 		return meOfSession(found.session.accountId, found.actingId);
 	}
 	// a token belongs to one account: it can only move between that account's profiles
 	if (!locals.sessionKey || locals.accountId === null) fail(403, "Bots can't switch profiles");
-	const own = { ...locals, sessions: [{ token: locals.sessionKey, accountId: locals.accountId }] };
+	const own = {
+		...locals,
+		sessions: [{ token: locals.sessionKey, key: locals.sessionKey, accountId: locals.accountId }]
+	};
 	const found = await findSessionFor(own, target.id);
 	if (!found) fail(403, "You can't switch to that profile.");
 	await setActing(locals.sessionKey, found.actingId);

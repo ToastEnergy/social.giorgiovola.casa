@@ -74,8 +74,9 @@ export const users = pgTable(
 export const sessions = pgTable(
 	'sessions',
 	{
-		// cookie: the session cookie itself (a uuid). token / personal: the sha256 hex of the bearer
-		// token, which is only shown once and never stored
+		// the sha256 hex of the secret, which is never stored: the session cookie (a uuid; sessions
+		// made before cookies were hashed hold the cookie itself until they expire, see cookieKeys)
+		// or the bearer token, which is only shown once
 		token: text('token')
 			.primaryKey()
 			.default(sql`gen_random_uuid()`),

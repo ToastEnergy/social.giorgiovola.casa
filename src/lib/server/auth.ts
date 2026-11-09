@@ -6,7 +6,13 @@ import { PUBLIC_URL } from '$app/env/public';
 import { db, identity_members, sessions, users } from './db/index.js';
 import { authenticateBot } from './bots.js';
 import { apiError } from './api.js';
-import { USER_TOKEN_RE, cookieTokens, hashToken, setSessionCookies } from './session.js';
+import {
+	USER_TOKEN_RE,
+	cookieKeys as keysOfCookie,
+	cookieTokens,
+	hashToken,
+	setSessionCookies
+} from './session.js';
 
 /**
  * The one way a request is authenticated, whatever the client: the web UI (session cookie), a
@@ -258,19 +264,29 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 		cookieKeys.set(locals, key);
 		return null;
 	}
-	const valid = await loadSessions(tokens, 'cookie');
+	const rows = await loadSessions(tokens.flatMap(keysOfCookie), 'cookie');
+	// each cookie with the row it opens, in the cookie's order
+	const valid = tokens.flatMap((token) => {
+		const keys = keysOfCookie(token);
+		const row = rows.find((r) => keys.includes(r.token));
+		return row ? [{ token, row }] : [];
+	});
 	cookieKeys.set(locals, key);
 
 	// the active session expired (or a token went stale): fall back to the next signed in account
 	if (valid.length !== tokens.length)
 		setSessionCookies(
 			cookies,
-			valid.map((r) => r.token)
+			valid.map((v) => v.token)
 		);
 
-	locals.sessions = valid.map((r) => ({ token: r.token, accountId: r.account.id }));
+	locals.sessions = valid.map((v) => ({
+		token: v.token,
+		key: v.row.token,
+		accountId: v.row.account.id
+	}));
 	if (valid.length > 0) {
-		fromSession(locals, valid[0]);
+		fromSession(locals, valid[0].row);
 		locals.auth = 'cookie';
 	}
 	return null;

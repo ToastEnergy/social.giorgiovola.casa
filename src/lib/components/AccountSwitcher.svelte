@@ -18,8 +18,10 @@
 		above?: boolean;
 		/** a wide badge with the name and username next to the avatar */
 		badge?: boolean;
+		/** open the menu below, aligned to the button's left edge (top left of the screen) */
+		start?: boolean;
 	};
-	let { size = 50, up = false, above = false, badge = false }: Props = $props();
+	let { size = 50, up = false, above = false, badge = false, start = false }: Props = $props();
 
 	const menuPlace = $derived(
 		// against the rail's badge + search wrapper, so it opens under the search box
@@ -29,6 +31,8 @@
 			? 'right-2.5 bottom-[calc(100%+10px)] w-71'
 			: above
 			? 'bottom-[calc(100%+10px)] left-0 w-71'
+			: start
+			? 'top-[calc(100%+10px)] left-0 w-71'
 			: 'top-[calc(100%+10px)] right-0 w-71'
 	);
 

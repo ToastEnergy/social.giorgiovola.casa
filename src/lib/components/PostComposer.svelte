@@ -24,10 +24,18 @@
 		quoteOf?: QuotedPost | null;
 		/** Defaults to the message of the day set by the admins. */
 		placeholder?: string;
+		/** focuses the input when mounted (the full screen composer) */
+		autofocus?: boolean;
 		oncreated?: (post: Post) => void;
 	};
 
-	let { replyTo = null, quoteOf = null, placeholder: placeholderProp, oncreated }: Props = $props();
+	let {
+		replyTo = null,
+		quoteOf = null,
+		placeholder: placeholderProp,
+		autofocus = false,
+		oncreated
+	}: Props = $props();
 
 	const placeholder = $derived(placeholderProp ?? page.data.motd ?? '');
 
@@ -64,6 +72,7 @@
 	let dragging = $state(false);
 	let dragDepth = 0;
 	let fileInput: HTMLInputElement | undefined = $state();
+	let textarea: HTMLTextAreaElement | undefined = $state();
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();
@@ -149,6 +158,8 @@
 	const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
 
 	onMount(() => {
+		// synchronous, so that iOS still counts it as part of the tap and opens the keyboard
+		if (autofocus) textarea?.focus();
 		const onDragEnter = (e: DragEvent) => {
 			if (!hasFiles(e)) return;
 			e.preventDefault();
@@ -318,6 +329,7 @@
 	<div class="flex flex-col">
 		<MentionInput
 			bind:value={content}
+			bind:element={textarea}
 			required={attachments.length === 0 || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
 			inputClass="bg-transparent p-2.5 outline-none"

@@ -13,6 +13,7 @@
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
+	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -145,6 +146,7 @@
 	<ImageViewer />
 	<ProfileCard />
 	<ShareDialog />
+	<ComposeSheet />
 </div>
 <svelte:head>
 	{#if page.route.id === '/@[username]/[post]' && !page.error}

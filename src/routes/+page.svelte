@@ -7,6 +7,9 @@
 	import { user } from '#lib/store.js';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
+	import { onComposed } from '#lib/compose.svelte.js';
+	import AccountSwitcher from '#lib/components/AccountSwitcher.svelte';
+	import Settings from '@lucide/svelte/icons/settings';
 
 	let { data }: PageProps = $props();
 
@@ -43,7 +46,10 @@
 	onMount(() => {
 		const offPost = onRealtime('post', add);
 		const offRegiorg = onRealtime('regiorg', addRegiorg);
+		// written in the full screen composer (touch devices)
+		const offComposed = onComposed(add);
 		return () => {
+			offComposed();
 			offPost();
 			offRegiorg();
 		};
@@ -54,6 +60,33 @@
 			active ? 'border-accent' : 'border-transparent opacity-60 hover:opacity-100'
 		}`;
 </script>
+
+<!-- touch devices: the profile, the logo and settings in a row above the timeline (mouse devices
+	have them in the sidebar and the rail) -->
+<!-- 15px between the logo and the line, the same as between the line and the first post's avatar:
+	12px padding + 3px of the row's height the 32px logo leaves free next to the 38px avatar, and
+	5px margin + the post's 10px padding. above the timeline, so the profile menu opens over the posts -->
+<div class="relative z-10 hidden grid-cols-3 items-center py-3 pointer-coarse:grid">
+	<div class="flex justify-start">
+		<AccountSwitcher size={38} start />
+	</div>
+	<a href="/" class="flex justify-center hover:no-underline" aria-label="Home">
+		<img class="size-8 max-w-none" src="/Logo.png" alt="" width="32" height="32" />
+	</a>
+	<div class="flex justify-end">
+		{#if $user}
+			<a
+				href="/settings"
+				class="flex size-8 items-center justify-center text-foreground hover:no-underline"
+				title="Settings"
+				aria-label="Settings"><Settings size={24} strokeWidth={2} /></a
+			>
+		{/if}
+	</div>
+</div>
+<!-- edge to edge, thin like the composer's divider -->
+<!-- prettier-ignore -->
+<div class="-mx-5 mb-[5px] hidden h-px scale-y-50 bg-foreground/60 pointer-coarse:block"></div>
 
 {#if $user}
 	{#if data.followingFeedEnabled}
@@ -70,24 +103,30 @@
 			>
 		</nav>
 	{/if}
-	<PostComposer oncreated={add} />
+	<!-- touch devices write posts from the button in the bottom bar instead -->
+	<div class="pointer-coarse:hidden">
+		<PostComposer oncreated={add} />
+	</div>
 {/if}
 
-{#each pinned as post (post.id)}
-	<Post
-		pinned
-		pinnedLabel="Pinned for everyone"
-		{post}
-		onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
-	/>
-{/each}
+<!-- on touch devices the timeline reaches closer to the screen's edges -->
+<div class="pointer-coarse:-mx-2.5">
+	{#each pinned as post (post.id)}
+		<Post
+			pinned
+			pinnedLabel="Pinned for everyone"
+			{post}
+			onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
+		/>
+	{/each}
 
-{#if data.feed === 'following' && posts.length === 0}
-	<p class="text-center text-muted">
-		Nothing here yet. Follow people from their profile to see their posts.
-	</p>
-{/if}
+	{#if data.feed === 'following' && posts.length === 0}
+		<p class="text-center text-muted">
+			Nothing here yet. Follow people from their profile to see their posts.
+		</p>
+	{/if}
 
-{#key data.feed}
-	<Posts source={data.source} next={data.next} {posts} />
-{/key}
+	{#key data.feed}
+		<Posts source={data.source} next={data.next} {posts} />
+	{/key}
+</div>

@@ -29,6 +29,8 @@
 		/** the reply bar fixed at the bottom of an open post (touch devices): a single field, with
 		 * the buttons in a row under it once tapped */
 		docked?: boolean;
+		/** sits in a block of its own: no divider or space below it */
+		alone?: boolean;
 		oncreated?: (post: Post) => void;
 	};
 
@@ -38,6 +40,7 @@
 		placeholder: placeholderProp,
 		autofocus = false,
 		docked = false,
+		alone = false,
 		oncreated
 	}: Props = $props();
 
@@ -340,7 +343,7 @@
 
 <form
 	bind:this={form}
-	class="flex flex-col {docked ? 'gap-[5px]' : 'mb-5 gap-2.5'}"
+	class="flex flex-col {docked ? 'gap-[5px]' : alone ? 'gap-2.5' : 'mb-5 gap-2.5'}"
 	onfocusin={() => (expanded = true)}
 	onsubmit={(e) => {
 		e.preventDefault();
@@ -479,7 +482,7 @@
 	{#if quoteOf}
 		<QuoteCard quote={quoteOf} link={false} />
 	{/if}
-	{#if !docked}
+	{#if !docked && !alone}
 		<!-- divides the composer from the posts below: thin and rounded -->
 		<!-- prettier-ignore -->
 		<div class="-mx-5 mt-2.5 h-px scale-y-50 rounded-full bg-foreground/60"></div>

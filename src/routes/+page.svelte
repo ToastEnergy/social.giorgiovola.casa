@@ -59,45 +59,54 @@
 		}`;
 </script>
 
+<!-- mouse devices: the composer and the timeline are two separate black blocks -->
 {#if $user}
-	{#if data.followingFeedEnabled}
-		<nav class="mb-5 flex">
-			<a
-				class={tabClass(data.feed === 'all')}
-				href="/?feed=all"
-				aria-current={data.feed === 'all' ? 'page' : undefined}>All</a
-			>
-			<a
-				class={tabClass(data.feed === 'following')}
-				href="/?feed=following"
-				aria-current={data.feed === 'following' ? 'page' : undefined}>Following</a
-			>
-		</nav>
-	{/if}
-	<!-- touch devices write posts from the button in the bottom bar instead -->
-	<div class="pointer-coarse:hidden">
-		<PostComposer oncreated={add} />
+	<div
+		class="not-pointer-coarse:mb-2.5 not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black not-pointer-coarse:p-5 not-pointer-coarse:max-nav:rounded-r-none"
+	>
+		{#if data.followingFeedEnabled}
+			<nav class="mb-5 flex">
+				<a
+					class={tabClass(data.feed === 'all')}
+					href="/?feed=all"
+					aria-current={data.feed === 'all' ? 'page' : undefined}>All</a
+				>
+				<a
+					class={tabClass(data.feed === 'following')}
+					href="/?feed=following"
+					aria-current={data.feed === 'following' ? 'page' : undefined}>Following</a
+				>
+			</nav>
+		{/if}
+		<!-- touch devices write posts from the button in the bottom bar instead -->
+		<div class="pointer-coarse:hidden">
+			<PostComposer alone oncreated={add} />
+		</div>
 	</div>
 {/if}
 
-<!-- on touch devices the timeline reaches closer to the screen's edges -->
-<div class="pointer-coarse:-mx-2.5">
-	{#each pinned as post (post.id)}
-		<Post
-			pinned
-			pinnedLabel="Pinned for everyone"
-			{post}
-			onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
-		/>
-	{/each}
+<div
+	class="not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black not-pointer-coarse:p-5 not-pointer-coarse:max-nav:rounded-r-none not-pointer-coarse:max-nav:rounded-bl-none"
+>
+	<!-- on touch devices the timeline reaches closer to the screen's edges -->
+	<div class="pointer-coarse:-mx-2.5">
+		{#each pinned as post (post.id)}
+			<Post
+				pinned
+				pinnedLabel="Pinned for everyone"
+				{post}
+				onpostdeleted={(id) => (pinned = pinned.filter((p) => p.id !== id))}
+			/>
+		{/each}
 
-	{#if data.feed === 'following' && posts.length === 0}
-		<p class="text-center text-muted">
-			Nothing here yet. Follow people from their profile to see their posts.
-		</p>
-	{/if}
+		{#if data.feed === 'following' && posts.length === 0}
+			<p class="text-center text-muted">
+				Nothing here yet. Follow people from their profile to see their posts.
+			</p>
+		{/if}
 
-	{#key data.feed}
-		<Posts source={data.source} next={data.next} {posts} />
-	{/key}
+		{#key data.feed}
+			<Posts source={data.source} next={data.next} {posts} />
+		{/key}
+	</div>
 </div>

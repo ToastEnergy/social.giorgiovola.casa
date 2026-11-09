@@ -727,6 +727,13 @@ export const v1Groups: V1Group[] = [
 				auth: 'public',
 				summary: 'replies, ratioing ones first'
 			},
+			{
+				method: 'GET',
+				path: '/api/v1/posts/:id/ancestors',
+				auth: 'public',
+				summary:
+					'the thread above a reply, root first (`?limit=` 1–50, default 20); a first item that still has `reply_to` means the chain goes on'
+			},
 			{ method: 'GET', path: '/api/v1/posts/:id/likes', auth: 'public', summary: 'who liked it' },
 			{
 				method: 'GET',

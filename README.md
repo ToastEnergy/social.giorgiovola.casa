@@ -276,6 +276,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, reply_to?, quote_of?, poll? }`        |
 | `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                 |
 | `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                |
+| `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)   |
 | `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                |
 | `GET`                      | `/api/v1/posts/:id/regiorgs`           | public                            | who regiorged it                                            |
 | `GET`                      | `/api/v1/posts/:id/quotes`             | public                            | quotes of it                                                |

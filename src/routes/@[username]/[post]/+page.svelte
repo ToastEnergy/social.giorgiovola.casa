@@ -9,6 +9,7 @@
 	import { user } from '#lib/store.js';
 	import LoadingScreen from '#lib/components/LoadingScreen.svelte';
 	import { onRealtime } from '#lib/realtime.js';
+	import { PUBLIC_NO_REPLIES_MESSAGE } from '$app/env/public';
 
 	let { data }: PageProps = $props();
 
@@ -45,16 +46,26 @@
 	}
 </script>
 
-<Post post={data.post} showReplyTo={true} isPostOpen={true} loadReplies={false} />
+<!-- touch devices: as close to the screen's edges as the timeline, like the replies -->
+<div class="pointer-coarse:-mx-2.5">
+	<Post post={data.post} showReplyTo={true} isPostOpen={true} loadReplies={false} />
+</div>
+<!-- touch devices: an edge to edge line between the post and its replies, like the top bar's -->
+<!-- prettier-ignore -->
+<div class="-mx-5 mt-2.5 hidden h-px scale-y-50 bg-foreground/60 pointer-coarse:block"></div>
 
 {#if !loaded}
 	<div class="mt-5 flex items-center justify-center">
 		<LoadingScreen size={64} />
 	</div>
 {:else}
-	<div class="mt-5">
+	<!-- touch devices: the replies reach as close to the screen's edges as the timeline -->
+	<div class="mt-5 pointer-coarse:-mx-2.5">
 		{#if $user && !touch.current}
 			<PostComposer replyTo={data.post.id} oncreated={onCreated} />
+		{/if}
+		{#if replies.length === 0}
+			<p class="mt-5 text-center text-muted">{PUBLIC_NO_REPLIES_MESSAGE}</p>
 		{/if}
 		<Posts scrollToNew={true} loadReplies={true} replies={true} posts={replies} />
 	</div>

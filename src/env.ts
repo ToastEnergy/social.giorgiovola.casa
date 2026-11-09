@@ -17,6 +17,11 @@ export const variables = defineEnvVars({
 		public: true,
 		schema: (input: string | undefined) => input || 'Giorgia un commento'
 	},
+	// shown under an open post that has no replies yet
+	PUBLIC_NO_REPLIES_MESSAGE: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Nessuno ha ancora giorgiato qui'
+	},
 	SIGNUP_PASSWORD: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },

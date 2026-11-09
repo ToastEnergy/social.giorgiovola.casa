@@ -6,6 +6,7 @@
 	import Rail from '#lib/components/Rail.svelte';
 	import TopBar from '#lib/components/TopBar.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
+	import MobileHeader from '#lib/components/MobileHeader.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
 	import { navigating, page } from '$app/state';
@@ -279,6 +280,11 @@
 				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
 				: 'max-w-160 p-5 max-nav:max-w-none'}"
 		>
+			<!-- touch devices: profile, logo and settings on top. messages have their own (the
+				list's search, the chat's back arrow) -->
+			{#if !isWide(page.route.id)}
+				<MobileHeader />
+			{/if}
 			<slot />
 		</div>
 		{#if navigating.to}

@@ -10,18 +10,19 @@ That's it: the database is created and migrated automatically on every start. Th
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
-| variable                    | default                 | description                                                                                                                                           |
-| --------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                      | `7777`                  | port the app listens on                                                                                                                               |
-| `PUBLIC_URL`                | `http://localhost:PORT` | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
-| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa` | placeholder text of the search box                                                                                                                    |
-| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`   | placeholder of the reply bar on an open post (touch devices)                                                                                          |
-| `DISCORD_WEBHOOK_URL`       | empty                   | optional, new posts are announced to this webhook                                                                                                     |
-| `SIGNUP_PASSWORD`           | empty                   | password required to register; registration is closed if empty                                                                                        |
-| `ADDRESS_HEADER`            | empty                   | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
-| `BIND_ADDRESS`              | `127.0.0.1`             | interface the port is published on                                                                                                                    |
-| `POSTGRES_PASSWORD`         | `postgres`              | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
-| `POSTGRES_PORT`             | `5432`                  | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
+| variable                    | default                           | description                                                                                                                                           |
+| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `7777`                            | port the app listens on                                                                                                                               |
+| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
+| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                    |
+| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                          |
+| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                      |
+| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                     |
+| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                        |
+| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
+| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                    |
+| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
+| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
 
 Data lives in the `postgres-data`, `avatars` and `uploads` docker volumes (`uploads` holds the images attached to posts: up to 5 per post, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
 

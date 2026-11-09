@@ -20,11 +20,38 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                     |
 | `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                        |
 | `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
+| `S3_BUCKET`                 | empty                             | bucket for avatars and post images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                   |
+| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                      |
+| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                         |
+| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                |
+| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                    |
 | `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                    |
 | `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
 | `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
 
-Data lives in the `postgres-data`, `avatars` and `uploads` docker volumes (`uploads` holds the images attached to posts: up to 5 per post, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
+Data lives in the `postgres-data`, `avatars` and `uploads` docker volumes (`uploads` holds the images attached to posts and messages: up to 5 per post, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the two volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
+
+## storing assets in S3 / R2
+
+By default avatars and images are files in the `avatars` and `uploads` volumes. Set `S3_BUCKET` to keep them in an S3-compatible bucket instead, such as [Cloudflare R2](https://developers.cloudflare.com/r2/). The bucket stays private: the app still serves every file from its own `/avatars/…` and `/uploads/…` URLs (so stored links don't change), reading them from the bucket, and a cache in front of the app (such as Cloudflare) keeps most requests from reaching it. Images that are picked in the composer but not posted yet stay in a temporary directory on the server.
+
+With Cloudflare R2:
+
+1. In the Cloudflare dashboard, go to R2 and create a bucket. Leave public access off (no public `r2.dev` URL and no custom domain).
+2. Under **Manage API tokens**, create an API token with the **Object Read & Write** permission, applied to that bucket only. Note its access key ID and secret access key, and your account's S3 endpoint (`https://<account id>.r2.cloudflarestorage.com`).
+3. Set the variables in `.env` and restart with `docker compose up -d`:
+
+```
+S3_BUCKET=my-social-assets
+S3_ENDPOINT=https://<account id>.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_ACCESS_KEY_ID=…
+S3_SECRET_ACCESS_KEY=…
+```
+
+`S3_BUCKET` needs the endpoint and both keys: the app refuses to start when one of them is missing. Other S3-compatible services (AWS S3, MinIO, Backblaze B2…) work the same way with their endpoint and region; requests use path-style URLs (`<endpoint>/<bucket>/<key>`). Objects are stored under `uploads/` and `avatars/`.
+
+Files still in the volumes keep being served while the bucket is configured (the app looks there when the bucket doesn't have a file, and deletes both copies), so switching doesn't break existing images; a script to copy them into the bucket is planned. `scripts/backup.sh` doesn't include the bucket yet.
 
 ## backups
 

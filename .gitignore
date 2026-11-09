@@ -11,3 +11,5 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 static/avatars/*
 static/uploads/*
+# private files of the local storage driver (src/lib/server/storage.ts)
+/data

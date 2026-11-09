@@ -25,6 +25,13 @@ export const variables = defineEnvVars({
 	SIGNUP_PASSWORD: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },
+	// the bucket for avatars and images, the local disk when empty. The schemas can't see each
+	// other, so checkStorageConfig (src/lib/server/storage.ts) refuses an incomplete set at startup
+	S3_BUCKET: { schema: optional },
+	S3_ENDPOINT: { schema: optional },
+	S3_REGION: { schema: (input: string | undefined) => input || 'auto' },
+	S3_ACCESS_KEY_ID: { schema: optional },
+	S3_SECRET_ACCESS_KEY: { schema: optional },
 	DATABASE_URL: {
 		// server modules are imported during `vite build`, when no database is configured
 		schema: (input: string | undefined) => {

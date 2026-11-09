@@ -1,7 +1,8 @@
-import type { Handle } from '@sveltejs/kit/hooks';
+import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { CORS_HEADERS, PREFLIGHT_HEADERS, apiError } from '#lib/server/api.js';
 import { authenticate, shareAuth } from '#lib/server/auth.js';
 import { PUBLIC_URL } from '$app/env/public';
+import { checkStorageConfig } from '#lib/server/storage.js';
 
 const securityHeaders: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
@@ -16,6 +17,8 @@ function setHeaders(response: Response, headers: Record<string, string>) {
 		// some responses (e.g. Response.redirect) have immutable headers
 	}
 }
+
+export const init: ServerInit = () => checkStorageConfig();
 
 export const handle = (async ({ event, resolve }) => {
 	const api = event.url.pathname.startsWith('/api/v1/') || event.url.pathname === '/api/v1';

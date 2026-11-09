@@ -1,8 +1,8 @@
-import fs from 'fs';
 import { eq } from 'drizzle-orm';
 import { db, users } from './db/index.js';
 import { removeAvatarFiles } from './accounts.js';
 import { AVATAR_SIZE, ImageError, sniffImage, toWebp } from './images.js';
+import * as storage from './storage.js';
 import {
 	LIMITS,
 	isUniqueViolation,
@@ -40,10 +40,8 @@ export async function saveAvatar(
 	}
 	// avatars used to keep their uploaded format: drop any older file first
 	await removeAvatarFiles(userId);
-	const path = `/avatars/${userId}.webp`;
-	await fs.promises.mkdir('static/avatars', { recursive: true });
-	await fs.promises.writeFile(`static${path}`, webp);
-	return { avatar: `${path}?hash=${Date.now()}` };
+	await storage.put(`avatars/${userId}.webp`, webp, 'image/webp');
+	return { avatar: `/avatars/${userId}.webp?hash=${Date.now()}` };
 }
 
 export type ProfileChanges = {

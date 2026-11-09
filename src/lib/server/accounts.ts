@@ -1,7 +1,7 @@
-import fs from 'fs';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, users } from './db/index.js';
+import * as storage from './storage.js';
 import type { SwitcherAccount, SwitcherProfile } from '#lib/types.js';
 
 /** How many identities a single account can own. */
@@ -157,9 +157,7 @@ export async function findSessionFor(locals: App.Locals, userId: number) {
 }
 
 export async function removeAvatarFiles(userId: number) {
-	for (const ext of AVATAR_EXTS) {
-		await fs.promises.rm(`static/avatars/${userId}.${ext}`, { force: true });
-	}
+	await storage.remove(AVATAR_EXTS.map((ext) => `avatars/${userId}.${ext}`));
 }
 
 /** A same-site path to go back to after a form post, so `//evil.com` can't be used. */

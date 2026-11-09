@@ -1,15 +1,23 @@
 import { randomBytes, pbkdf2, scrypt, timingSafeEqual, createHash } from 'crypto';
+import { limitConcurrency } from './concurrency.js';
 
 // ~32MB of memory per hash; maxmem has to be above 128 * N * r
 const SCRYPT_OPTS = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const SCRYPT_PREFIX = 'scrypt$';
 
+// logins need no account, so a flood of them would otherwise run any number of hashes at once:
+// at most this many (~32MB each) run together, the rest wait
+const hashing = limitConcurrency(8);
+
 function scryptHex(password: string, salt: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		scrypt(password, salt, 64, SCRYPT_OPTS, (err, key) =>
-			err ? reject(err) : resolve(key.toString('hex'))
-		);
-	});
+	return hashing(
+		() =>
+			new Promise((resolve, reject) => {
+				scrypt(password, salt, 64, SCRYPT_OPTS, (err, key) =>
+					err ? reject(err) : resolve(key.toString('hex'))
+				);
+			})
+	);
 }
 
 // legacy hashes (no prefix): PBKDF2-SHA512 with 1000 iterations

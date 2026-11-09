@@ -579,7 +579,9 @@ GET /uploads/<uuid>.webp               the same rules for a message image sent b
 POST /uploads                         signed in, not muted
   One image, as the raw request body with its Content-Type (image/png, image/jpeg, …),
   at most 10 MB. It is compressed right away and kept for you for a day: pass its id in
-  "uploads" when posting or messaging. 201: { "id": "uuid" }. 30 a minute.
+  "uploads" when posting or messaging. 201: { "id": "uuid" }. 30 a minute per account (its
+  identities share them). Images above 100 million pixels (all the frames of an animation
+  together) are refused with a 400.
   (Browsers on the website send multipart with an "image" field instead.)
 DELETE /uploads/:id                   an upload you no longer need → 204
 

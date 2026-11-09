@@ -15,8 +15,14 @@ const MAX_UPLOADS = 30;
 export const POST: RequestHandler = v1(async ({ locals, request }) => {
 	refuseBots(locals, "Bots can't attach images");
 	const user = requireUnmuted(locals);
-	// count before reading the body, so a client over the limit doesn't get its bytes buffered
-	rateLimit(`uploads:${user.id}`, MAX_UPLOADS, 60_000, 'You are uploading too fast');
+	// count before reading the body, so a client over the limit doesn't get its bytes buffered.
+	// Per account: its identities share the limit, so they can't multiply the decoding work
+	rateLimit(
+		`uploads:${locals.accountId ?? user.id}`,
+		MAX_UPLOADS,
+		60_000,
+		'You are uploading too fast'
+	);
 	const image = await readImageBody(request, LIMITS.imageBytes, ['image']);
 	const id = await stageImage(user.id, new File([new Uint8Array(image)], 'upload'));
 	if (id instanceof Response) return id;

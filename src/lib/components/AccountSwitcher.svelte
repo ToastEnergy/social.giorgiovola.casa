@@ -21,7 +21,7 @@
 	let { size = 50, up = false, above = false, badge = false }: Props = $props();
 
 	const menuPlace = $derived(
-		// against the rail, so it opens under the search box beneath the badge
+		// against the rail's badge + search wrapper, so it opens under the search box
 		badge
 			? 'top-[calc(100%+10px)] left-0 w-full'
 			: up

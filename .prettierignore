@@ -22,3 +22,4 @@ src/routes/messages/+layout.svelte
 src/lib/components/BottomNav.svelte
 src/lib/components/MobileHeader.svelte
 src/routes/settings/+layout.svelte
+src/lib/components/SectionSwipe.svelte

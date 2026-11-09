@@ -7,6 +7,7 @@
 	import TopBar from '#lib/components/TopBar.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
 	import MobileHeader from '#lib/components/MobileHeader.svelte';
+	import SectionSwipe from '#lib/components/SectionSwipe.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
 	import { navigating, page } from '$app/state';
@@ -301,7 +302,7 @@
 			{#if !isWide(page.route.id)}
 				<MobileHeader />
 			{/if}
-			<slot />
+			<SectionSwipe><slot /></SectionSwipe>
 		</div>
 		{#if navigating.to}
 			<LoadingOverlay />

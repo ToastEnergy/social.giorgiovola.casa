@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { goto } from '$app/navigation';
 	import Button from '#lib/components/Button.svelte';
 	import UserPicker from '#lib/components/UserPicker.svelte';
@@ -46,10 +47,8 @@
 </svelte:head>
 
 <div class="mb-5 flex items-center gap-2.5">
-	<a
-		class="px-1 text-[1.4em] text-inherit hover:no-underline"
-		href="/messages"
-		title="Back to messages">&larr;</a
+	<a class="flex px-1 text-inherit hover:no-underline" href="/messages" title="Back to messages"
+		><ArrowLeft size={22} /></a
 	>
 	<h1>New group</h1>
 </div>

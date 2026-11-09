@@ -1,4 +1,8 @@
 <script lang="ts">
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import ChartNoAxesColumn from '@lucide/svelte/icons/chart-no-axes-column';
+	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
+	import X from '@lucide/svelte/icons/x';
 	import { errorOf } from '#lib/api.js';
 	import { onMount } from 'svelte';
 	import type { Post, QuotedPost } from '#lib/types.js';
@@ -20,10 +24,25 @@
 		quoteOf?: QuotedPost | null;
 		/** Defaults to the message of the day set by the admins. */
 		placeholder?: string;
+		/** focuses the input when mounted (the full screen composer) */
+		autofocus?: boolean;
+		/** the reply bar fixed at the bottom of an open post (touch devices): a single field, with
+		 * the buttons in a row under it once tapped */
+		docked?: boolean;
+		/** sits in a block of its own: no divider or space below it */
+		alone?: boolean;
 		oncreated?: (post: Post) => void;
 	};
 
-	let { replyTo = null, quoteOf = null, placeholder: placeholderProp, oncreated }: Props = $props();
+	let {
+		replyTo = null,
+		quoteOf = null,
+		placeholder: placeholderProp,
+		autofocus = false,
+		docked = false,
+		alone = false,
+		oncreated
+	}: Props = $props();
 
 	const placeholder = $derived(placeholderProp ?? page.data.motd ?? '');
 
@@ -60,6 +79,11 @@
 	let dragging = $state(false);
 	let dragDepth = 0;
 	let fileInput: HTMLInputElement | undefined = $state();
+	let textarea: HTMLTextAreaElement | undefined = $state();
+	let form: HTMLFormElement | undefined = $state();
+	// docked: the buttons show once the field is tapped, until a tap elsewhere with nothing written
+	let expanded = $state(false);
+	const tools = $derived(!docked || expanded);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();
@@ -69,6 +93,14 @@
 		replyTo != null ? `reply:${replyTo}` : quoteOf ? `quote:${quoteOf.id}` : 'post';
 
 	const isEmpty = () => !content.trim() && attachments.length === 0 && !pollOptions;
+
+	/**
+	 * Tapping a button would move focus off the field and close the on-screen keyboard (iOS doesn't
+	 * focus buttons, so the bar would also fold before the tap lands). Keeps the focus where it is.
+	 */
+	function keepFocus(e: MouseEvent) {
+		if (docked && document.activeElement === textarea) e.preventDefault();
+	}
 
 	function showError(message: string) {
 		error = message;
@@ -145,6 +177,8 @@
 	const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
 
 	onMount(() => {
+		// synchronous, so that iOS still counts it as part of the tap and opens the keyboard
+		if (autofocus) textarea?.focus();
 		const onDragEnter = (e: DragEvent) => {
 			if (!hasFiles(e)) return;
 			e.preventDefault();
@@ -172,6 +206,11 @@
 		window.addEventListener('dragover', onDragOver);
 		window.addEventListener('dragleave', onDragLeave);
 		window.addEventListener('drop', onDrop);
+		// a tap outside the bar folds it back, unless something is written
+		const onPointerDown = (e: PointerEvent) => {
+			if (docked && !form?.contains(e.target as Node) && isEmpty()) expanded = false;
+		};
+		window.addEventListener('pointerdown', onPointerDown);
 
 		let destroyed = false;
 		// written before a profile switch (which reloads the page): put it back
@@ -204,6 +243,7 @@
 			window.removeEventListener('dragover', onDragOver);
 			window.removeEventListener('dragleave', onDragLeave);
 			window.removeEventListener('drop', onDrop);
+			window.removeEventListener('pointerdown', onPointerDown);
 			clearTimeout(errorTimeout);
 			clearAttachments();
 			for (const draft of pending) for (const a of draft.attachments) a.release();
@@ -296,13 +336,15 @@
 {/if}
 
 {#if error}
-	<div class="mb-5 rounded-[5px] bg-danger p-2.5">
+	<div class="{docked ? 'mb-[5px]' : 'mb-5'} rounded-[5px] bg-danger p-2.5">
 		<p>{error}</p>
 	</div>
 {/if}
 
 <form
-	class="mb-5 flex flex-col gap-2.5"
+	bind:this={form}
+	class="flex flex-col {docked ? 'gap-[5px]' : alone ? 'gap-2.5' : 'mb-5 gap-2.5'}"
+	onfocusin={() => (expanded = true)}
 	onsubmit={(e) => {
 		e.preventDefault();
 		const sending = submit();
@@ -311,12 +353,20 @@
 	}}
 	onpaste={onPaste}
 >
-	<div class="flex">
+	<div class="flex flex-col">
 		<MentionInput
 			bind:value={content}
+			bind:element={textarea}
 			required={attachments.length === 0 || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
+			placement={docked ? 'above' : 'below'}
+			maxHeight={docked ? 'max-h-[30vh]' : undefined}
+			inputClass={docked
+				? 'rounded-[15px] bg-black px-2.5 py-2 outline-none'
+				: 'bg-transparent p-2.5 outline-none'}
 		/>
+	</div>
+	<div class="flex items-center gap-[5px] {tools ? '' : 'hidden'}">
 		<input
 			bind:this={fileInput}
 			onchange={onFilesSelected}
@@ -330,50 +380,38 @@
 			title="Attach images"
 			aria-label="Attach images"
 			disabled={attachments.length >= MAX_IMAGES}
+			onmousedown={keepFocus}
 			onclick={() => fileInput?.click()}
-			class="flex cursor-pointer items-end border-b border-foreground p-2.5 outline-none disabled:cursor-default disabled:opacity-40"
-			><svg
-				xmlns="http://www.w3.org/2000/svg"
-				height="20px"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="#d9d9d9"
-				stroke-width="1.8"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8.5" cy="8.5" r="1.5" /><path
-					d="M21 15l-5-5L5 21"
-				/></svg
-			></button
+			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
+			><ImageIcon size={20} strokeWidth={1.8} /></button
 		>
 		<button
 			type="button"
 			title={pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-label={pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-pressed={!!pollOptions}
+			onmousedown={keepFocus}
 			onclick={() => (pollOptions = pollOptions ? null : ['', ''])}
-			class="flex cursor-pointer items-end border-b border-foreground p-2.5 outline-none"
-			><svg
-				xmlns="http://www.w3.org/2000/svg"
-				height="20px"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke={pollOptions ? '#799a74' : '#d9d9d9'}
-				stroke-width="1.8"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				><path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" /></svg
-			></button
+			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent"
+			><ChartNoAxesColumn
+				size={20}
+				strokeWidth={1.8}
+				class={pollOptions ? 'text-accent' : ''}
+			/></button
 		>
-		<button
+		{#if docked && pending.length > 0}
+			<span class="ml-auto flex" aria-busy="true"><LoadingScreen size={20} /></span>
+		{/if}
+		<Button
 			type="submit"
+			variant="primary"
+			size="sm"
+			onmousedown={keepFocus}
+			class="{docked && pending.length > 0
+				? ''
+				: 'ml-auto'} w-10 transition-transform duration-200 ease-out hover:scale-115 hover:rotate-15 hover:bg-accent! hover:text-background!"
 			aria-label="Post"
-			class="flex cursor-pointer items-end border-b border-foreground p-2.5 outline-none"
-			><svg fill="#d9d9d9" xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 0 512 512"
-				><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-					d="M16.1 260.2c-22.6 12.9-20.5 47.3 3.6 57.3L160 376V479.3c0 18.1 14.6 32.7 32.7 32.7c9.7 0 18.9-4.3 25.1-11.8l62-74.3 123.9 51.6c18.9 7.9 40.8-4.5 43.9-24.7l64-416c1.9-12.1-3.4-24.3-13.5-31.2s-23.3-7.5-34-1.4l-448 256zm52.1 25.5L409.7 90.6 190.1 336l1.2 1L68.2 285.7zM403.3 425.4L236.7 355.9 450.8 116.6 403.3 425.4z"
-				/></svg
-			></button
+			title="Post"><SendHorizontal size={18} strokeWidth={1.8} /></Button
 		>
 	</div>
 	{#if attachments.length > 0}
@@ -391,8 +429,8 @@
 						title="Remove"
 						aria-label="Remove image"
 						onclick={() => removeAttachment(attachment)}
-						class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 text-[0.8rem] leading-none outline-none hover:bg-danger"
-						>×</button
+						class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 outline-none hover:bg-danger"
+						><X size={12} /></button
 					>
 				</div>
 			{/each}
@@ -417,8 +455,8 @@
 							title="Remove option"
 							aria-label="Remove option {i + 1}"
 							onclick={() => removeOption(i)}
-							class="flex size-6 cursor-pointer items-center justify-center rounded-full leading-none outline-none hover:bg-danger"
-							>×</button
+							class="flex size-6 cursor-pointer items-center justify-center rounded-full outline-none hover:bg-danger"
+							><X size={14} /></button
 						>
 					{/if}
 				</div>
@@ -444,9 +482,15 @@
 	{#if quoteOf}
 		<QuoteCard quote={quoteOf} link={false} />
 	{/if}
+	{#if !docked && !alone}
+		<!-- divides the composer from the posts below: thin and rounded -->
+		<!-- prettier-ignore -->
+		<div class="-mx-5 mt-2.5 h-px scale-y-50 rounded-full bg-foreground/60"></div>
+	{/if}
 </form>
 
-{#each pending as draft (draft.key)}
+<!-- docked, the bar only shows the loading mark: the reply shows up in the list once it lands -->
+{#each docked ? [] : pending as draft (draft.key)}
 	<!-- on its way: dimmed, with the loading mark, until the real post replaces it -->
 	<div class="mb-5 flex gap-2.5 opacity-70" aria-busy="true">
 		{#if $user}

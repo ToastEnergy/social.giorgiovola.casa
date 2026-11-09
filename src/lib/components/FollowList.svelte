@@ -143,7 +143,7 @@
 {:else}
 	<ul class="flex flex-col">
 		{#each entries as entry (entry.username)}
-			<li class="flex items-start gap-2.5 rounded-md p-2.5 hover:bg-black">
+			<li class="flex items-start gap-2.5 rounded-md p-2.5 hover:bg-white/5">
 				<div class="flex" use:profileHover={entry.username}>
 					<Avatar size={45} user={entry} />
 				</div>

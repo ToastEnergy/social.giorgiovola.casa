@@ -1,13 +1,12 @@
 <script lang="ts">
-	import Search from '@lucide/svelte/icons/search';
 	import Plus from '@lucide/svelte/icons/plus';
+	import LogIn from '@lucide/svelte/icons/log-in';
 	import { flushSync } from 'svelte';
 	import { openCompose } from '#lib/compose.svelte.js';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { countLabel, homeItem, isActive, navItems, navLabel, type NavItem } from '#lib/nav.js';
 	import { messagesCount, notisCount, user } from '#lib/store.js';
-	import { focusSearch } from '#lib/searchFocus.js';
+	import AccountSwitcher from './AccountSwitcher.svelte';
 
 	// in a chat the bar continues the message input above it: in the flow, full width, no border
 	let { joined = false }: { joined?: boolean } = $props();
@@ -15,15 +14,11 @@
 	// an open post has the reply bar right above (ReplyDock), which takes over the top border
 	const docked = $derived(!!$user && page.route.id === '/@[username]/[post]' && !page.error);
 	const counts = $derived({ notifications: $notisCount, messages: $messagesCount });
-	// home, search, chat and notifications (the profile and settings are at the top of home)
+	// home, chat, new post, notifications and the profile menu (switching, settings). search is
+	// in the top row (MobileHeader)
 	const [notifications, messages] = navItems;
-	const searchItem: NavItem = { href: '/search', label: 'Search', icon: Search };
-	const items = $derived(
-		$user ? [homeItem, searchItem, messages, notifications] : [homeItem, searchItem]
-	);
-	// the new post button sits in the middle, after search
-	const before = $derived(items.slice(0, 2));
-	const after = $derived(items.slice(2));
+	const before = $derived($user ? [homeItem, messages] : [homeItem]);
+	const after = $derived($user ? [notifications] : []);
 
 	const itemClass = (active: boolean) =>
 		`flex h-14 flex-1 items-center justify-center hover:no-underline [-webkit-tap-highlight-color:transparent] ${
@@ -31,11 +26,12 @@
 		}`;
 </script>
 
-<!-- touch devices: home, search, new post, chat and notifications in a bar along the bottom edge -->
+<!-- touch devices: home, chat, new post, notifications and the profile in a bar along the bottom
+	edge. positioned in a chat too, so the profile menu opens above the bar -->
 <nav
 	aria-label="Main"
 	class="flex bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
-		? '-mx-5 -mb-5 shrink-0'
+		? 'relative z-10 -mx-5 -mb-5 shrink-0'
 		: `fixed right-0 bottom-0 left-0 z-998 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >
 	{#snippet link(item: NavItem)}
@@ -47,16 +43,6 @@
 			title={navLabel(item, count)}
 			aria-label={navLabel(item, count)}
 			aria-current={active ? 'page' : undefined}
-			onclick={(e) => {
-				if (item !== searchItem) return;
-				e.preventDefault();
-				// already there: no navigation (which would drop the query), just the field
-				const field = document.querySelector<HTMLInputElement>('[data-search-field]');
-				if (active && field) return field.focus();
-				focusSearch();
-				// reset would blur the stand-in, closing the keyboard (the page scrolls up itself)
-				goto(item.href, { reset: false });
-			}}
 		>
 			<span class="relative flex">
 				<item.icon size={24} strokeWidth={active ? 2.5 : 2} />
@@ -89,4 +75,20 @@
 	{#each after as item (item.href)}
 		{@render link(item)}
 	{/each}
+	{#if $user}
+		<!-- the profile menu (switching, settings), opening up against the bar -->
+		<div class="flex h-14 flex-1 items-center justify-center">
+			<AccountSwitcher size={28} up />
+		</div>
+	{:else}
+		{@const active = isActive(page.url.pathname, '/login')}
+		<a
+			href="/login"
+			class={itemClass(active)}
+			title="Log in"
+			aria-label="Log in"
+			aria-current={active ? 'page' : undefined}
+			><LogIn size={24} strokeWidth={active ? 2.5 : 2} /></a
+		>
+	{/if}
 </nav>

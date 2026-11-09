@@ -8,7 +8,7 @@ import { hit, isLimited } from './ratelimit.js';
 import { isUniqueViolation, parseId, validateName, validateUsername } from './validation.js';
 import { ApiError } from './api.js';
 import { removeAvatarFiles } from './accounts.js';
-import { imagesOfPostTrees, removeUploads } from './images.js';
+import { imagesOfMessagesOf, imagesOfPostTrees, removeUploads } from './images.js';
 import { updateProfile, type ProfileChanges } from './profile.js';
 import { closeBotStreams } from './realtime.js';
 import type { User } from '#lib/types.js';
@@ -307,12 +307,15 @@ export async function editBot(
 	return result.profile;
 }
 
-/** Permanently deletes a bot with its posts. */
+/** Permanently deletes a bot with its posts and messages. */
 export async function deleteBot(accountId: number, username: string) {
 	manageLimited(accountId);
 	const bot = await ownedBot(accountId, username);
-	// collect the images first: replies to its posts go away with them
-	const images = await imagesOfPostTrees(sql`user_id = ${bot.id}`);
+	// collect the images first: replies to its posts and its messages go away with it
+	const images = [
+		...(await imagesOfPostTrees(sql`user_id = ${bot.id}`)),
+		...(await imagesOfMessagesOf(bot.id))
+	];
 	await db
 		.delete(users)
 		.where(and(eq(users.id, bot.id), eq(users.owner_id, accountId), eq(users.bot, true)));

@@ -4,7 +4,7 @@ import { db, identity_members, sessions, users } from './db/index.js';
 import { fail, rateLimit } from './api.js';
 import { closeSessionStreams } from './realtime.js';
 import { MAX_IDENTITIES, MAX_MEMBERS, removeAvatarFiles } from './accounts.js';
-import { imagesOfPostTrees, removeUploads } from './images.js';
+import { imagesOfMessagesOf, imagesOfPostTrees, removeUploads } from './images.js';
 import { isUniqueViolation, validateName, validateUsername } from './validation.js';
 
 /**
@@ -120,11 +120,14 @@ export async function createIdentity(accountId: number, rawName: string, rawUser
 	return created;
 }
 
-/** Permanently deletes one of the account's identities, with its posts. Owner only. */
+/** Permanently deletes one of the account's identities, with its posts and messages. Owner only. */
 export async function deleteIdentity(accountId: number, username: string) {
 	const identity = await ownedIdentity(accountId, username);
-	// collect the images first: the posts (and replies to them) go away with the identity
-	const images = await imagesOfPostTrees(sql`user_id = ${identity.id}`);
+	// collect the images first: its posts (and replies to them) and its messages go away with it
+	const images = [
+		...(await imagesOfPostTrees(sql`user_id = ${identity.id}`)),
+		...(await imagesOfMessagesOf(identity.id))
+	];
 	await db.delete(users).where(eq(users.id, identity.id));
 	await removeAvatarFiles(identity.id);
 	await removeUploads(images);

@@ -178,6 +178,9 @@ Builds on PR 1.
 - **`/dm-uploads/[file]`**: no matching message → 404; no access → 404; otherwise serve `dm/x`,
   falling back to `uploads/x` (files not moved yet), with `Cache-Control: private, max-age=3600`
   and no `immutable`.
+- **Tokens on uploads**: an invalid Bearer/Bot token doesn't fail `/uploads/` or `/dm-uploads/` in
+  `authenticate()` (it does under `/api/`): the request goes on anonymous with
+  `locals.invalidToken`, a post image is served as before, a message image answers the API's 401.
 - **`/uploads/[file]`**: if `x` belongs to a message, apply the same check and private caching
   (reading `dm/x`, then `uploads/x`); otherwise serve it publicly as now. Only cache misses reach
   this lookup for post images, because Cloudflare caches their responses.

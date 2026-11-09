@@ -12,3 +12,4 @@ docker-compose.yaml
 static/avatars/*
 
 static/uploads/*
+data

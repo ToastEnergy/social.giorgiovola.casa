@@ -280,6 +280,8 @@ export const messages = pgTable(
 		index('messages_unread')
 			.on(t.recipient_id, t.sender_id)
 			.where(sql`${t.read_at} IS NULL`),
+		// finds the message an image belongs to, to check who may see it (src/routes/dm-uploads)
+		index('messages_images').using('gin', t.images),
 		check('messages_not_self', sql`${t.sender_id} != ${t.recipient_id}`)
 	]
 );
@@ -353,6 +355,8 @@ export const group_messages = pgTable(
 	},
 	(t) => [
 		index('group_messages_group_id').on(t.group_id, t.id),
+		// finds the message an image belongs to, like messages_images
+		index('group_messages_images').using('gin', t.images),
 		index('group_messages_reply_to_id')
 			.on(t.reply_to_id)
 			.where(sql`${t.reply_to_id} IS NOT NULL`),

@@ -246,6 +246,13 @@
       "when": 1794137895687,
       "tag": "0034_reaction_read_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794141333016,
+      "tag": "0035_message_image_indexes",
+      "breakpoints": true
     }
   ]
 }

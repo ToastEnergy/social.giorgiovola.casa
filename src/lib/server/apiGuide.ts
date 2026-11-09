@@ -187,7 +187,7 @@ Me (GET /me):
 
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
-    "content", "images": ["/uploads/…"], "created_at",
+    "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
                   "images": 2 } | null,
@@ -196,8 +196,8 @@ Message (direct message):
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
-    "renamed" | "owner", "sender": User, "target": User | null, "content", "images",
-    "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    "renamed" | "owner", "sender": User, "target": User | null, "content", "images" (like
+    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.
@@ -502,6 +502,32 @@ DELETE /groups/:id/members/:username  the owner removes someone, or anyone remov
 POST /groups/:id/leave                → 204
 POST /groups/:id/typing               → 204
   Managing groups (create, rename, add, remove): limited per minute.
+
+### Message images
+
+Images of direct and group messages are private to their conversation. "images" is still a
+list of paths on ${origin}; new message images are /dm-uploads/<uuid>.webp, messages sent
+before images became private keep /uploads/<uuid>.webp paths (the same files, protected the
+same way). Post images (/uploads/ paths in a Post) stay public.
+
+GET /dm-uploads/<uuid>.webp            (not under /api/v1: prefix the path with ${origin})
+  Needs the same sign-in as reading the conversation: the website's cookie, or
+  \`Authorization: Bearer sgu_…\` / \`Bearer sgc_…\` (a bot token). Answers the image when a
+  profile you are signed in as (the account or any identity it can act as, or the bot) is the
+  sender or recipient of the direct message, or a current member of the group of the group
+  message. Leaving or being removed from a group ends access to its images.
+  200: the image (Content-Type image/webp), \`Cache-Control: private, max-age=3600\`: don't
+  share a cache of these between users.
+  404: missing, deleted, OR not yours / not signed in: the same answer, so a path doesn't
+  tell whether it exists.
+  401 (\`{ "error": … }\`, \`Cache-Control: private, no-store\`) when the file is a message
+  image and the bearer token is invalid, revoked or expired, as the API answers (a banned or
+  rate limited bot gets the API's 403 / 429). Sign in again.
+GET /uploads/<uuid>.webp               the same rules for a message image sent before; a post
+  image is public: 200 with \`Cache-Control: public, max-age=31536000, immutable\`, whatever
+  the Authorization header says (an invalid token is ignored there, never a 401).
+  Limitation: anyone who could see an image can keep a copy. Privacy keeps out people who
+  were never in the conversation, or no longer are.
 
 ### Uploads
 

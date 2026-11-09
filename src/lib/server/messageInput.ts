@@ -2,7 +2,7 @@ import {
 	ImageError,
 	POST_IMAGE_SIZE,
 	removeUploads,
-	saveUpload,
+	saveMessageUpload,
 	sniffImage,
 	toWebp
 } from './images.js';
@@ -110,7 +110,8 @@ export function checkMessage(body: MessageBody, userId: number): Response | null
 
 /**
  * Validates every image before anything is written to disk, then saves them as WebP and claims
- * the ones uploaded beforehand. Returns their URL paths, or the error to send back.
+ * the ones uploaded beforehand, as `/dm-uploads/` message images. Returns their URL paths, or
+ * the error to send back.
  */
 export async function saveMessageImages(
 	{ files, uploads: staged }: MessageBody,
@@ -141,8 +142,9 @@ export async function saveMessageImages(
 		if (e instanceof ImageError) return new Response(e.message, { status: 400 });
 		throw e;
 	}
-	const saved = await Promise.all(optimized.map(saveUpload));
-	const claimed = await claimStaged(userId, staged);
+	// stored as message images, which only the conversation can see
+	const saved = await Promise.all(optimized.map(saveMessageUpload));
+	const claimed = await claimStaged(userId, staged, 'dm');
 	if (claimed instanceof Response) {
 		await removeUploads(saved);
 		return claimed;

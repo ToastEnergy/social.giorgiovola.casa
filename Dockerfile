@@ -9,6 +9,8 @@ FROM deps AS build
 COPY . .
 # the public origin is compiled in for the CSRF check (SvelteKit 3 removed the runtime ORIGIN)
 ARG PUBLIC_URL
+# the SvelteKit app version (the commit, set by the deploy workflow); there is no .git in the build
+ARG VERSION
 RUN bun run build
 
 FROM base AS prod-deps
@@ -24,7 +26,7 @@ RUN apt-get update \
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json migrate.ts admin.ts ./
-COPY scripts/migrate-assets.ts ./scripts/
+COPY scripts/migrate-assets.ts scripts/seed.ts ./scripts/
 COPY drizzle ./drizzle
 
 ENV PORT=7777

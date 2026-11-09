@@ -10,29 +10,32 @@ That's it: the database is created and migrated automatically on every start. Th
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
-| variable                    | default                           | description                                                                                                                                                                     |
-| --------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                      | `7777`                            | port the app listens on                                                                                                                                                         |
-| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it                           |
-| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                                              |
-| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                                                    |
-| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                                                |
-| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                                               |
-| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                                                  |
-| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                                           |
-| `S3_BUCKET`                 | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                                                  |
-| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                                                |
-| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                                                   |
-| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                                          |
-| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                                              |
-| `LINK_PREVIEWS`             | `local`                           | who downloads linked pages for previews: `local` (this server, shows its IP address to the sites), `remote` (a Cloudflare Worker) or `off`; see [link previews](#link-previews) |
-| `LINK_PREVIEWS_URL`         | empty                             | URL of the link preview worker, required with `LINK_PREVIEWS=remote`                                                                                                            |
-| `LINK_PREVIEWS_SECRET`      | empty                             | secret shared with the worker, required with `LINK_PREVIEWS=remote`                                                                                                             |
-| `CLOUDFLARE_ZONE_ID`        | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                                                  |
-| `CLOUDFLARE_API_TOKEN`      | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)                                        |
-| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                                              |
-| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                                            |
-| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                                                 |
+| variable                             | default                           | description                                                                                                                                                                     |
+| ------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                               | `7777`                            | port the app listens on                                                                                                                                                         |
+| `PUBLIC_URL`                         | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it                           |
+| `PUBLIC_SEARCH_PLACEHOLDER`          | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                                              |
+| `PUBLIC_REPLY_PLACEHOLDER`           | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                                                    |
+| `PUBLIC_NO_REPLIES_MESSAGE`          | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                                                |
+| `DISCORD_WEBHOOK_URL`                | empty                             | optional, new posts are announced to this webhook                                                                                                                               |
+| `SIGNUP_PASSWORD`                    | empty                             | password required to register; registration is closed if empty                                                                                                                  |
+| `ADDRESS_HEADER`                     | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                                           |
+| `S3_BUCKET`                          | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                                                  |
+| `S3_ENDPOINT`                        | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                                                |
+| `S3_REGION`                          | `auto`                            | bucket region (`auto` for R2)                                                                                                                                                   |
+| `S3_ACCESS_KEY_ID`                   | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                                          |
+| `S3_SECRET_ACCESS_KEY`               | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                                              |
+| `LINK_PREVIEWS`                      | `local`                           | who downloads linked pages for previews: `local` (this server, shows its IP address to the sites), `remote` (a Cloudflare Worker) or `off`; see [link previews](#link-previews) |
+| `LINK_PREVIEWS_URL`                  | empty                             | URL of the link preview worker, required with `LINK_PREVIEWS=remote`                                                                                                            |
+| `LINK_PREVIEWS_SECRET`               | empty                             | secret shared with the worker, required with `LINK_PREVIEWS=remote`                                                                                                             |
+| `CLOUDFLARE_ZONE_ID`                 | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                                                  |
+| `CLOUDFLARE_API_TOKEN`               | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)                                        |
+| `SOCIAL_IMAGE`                       | `social-web`                      | image of the app; set by the deploy script to the one it pulled from the registry (see [deploying](#deploying-staging-and-production)), empty to build it from the checkout     |
+| `GREEN_PORT`                         | `7779`                            | host port of `web-green`, the second colour of the blue-green deploy (see [deploying](#deploying-staging-and-production))                                                       |
+| `SOCIAL_IMAGE_GREEN`, `SOCIAL_COLOR` | empty                             | set by the deploy script: the image of `web-green` and the colour that is live                                                                                                  |
+| `BIND_ADDRESS`                       | `127.0.0.1`                       | interface the port is published on                                                                                                                                              |
+| `POSTGRES_PASSWORD`                  | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                                            |
+| `POSTGRES_PORT`                      | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                                                 |
 
 Data lives in the `postgres-data`, `avatars`, `uploads` and `dm-uploads` docker volumes (`uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
 
@@ -133,6 +136,113 @@ When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backu
 `scripts/restore.sh` then puts the files snapshot back into the bucket with `rclone sync`, which also deletes the objects that aren't in the snapshot. The read-only token can't do that, so it asks for the key pair of a token with **Object Read & Write** on the bucket (the app's token works), or takes it from `RESTORE_ACCESS_KEY_ID` / `RESTORE_SECRET_ACCESS_KEY`. Don't keep that token in the backup config. Pass a files snapshot taken in bucket mode: older snapshots of the volumes go back into the volumes, with `S3_BUCKET` unset.
 
 **Privacy:** message images that were deleted (with their message, or with a deleted profile) stay in the backups until the retention drops every snapshot that holds them: up to 12 months with the default `KEEP_MONTHLY=12`. Lower `KEEP_MONTHLY` (and `KEEP_WEEKLY` / `KEEP_DAILY`) to keep them for less time. The same goes for the volumes, and for deleted posts in the database dumps.
+
+## deploying (staging and production)
+
+`.github/workflows/deploy.yml` deploys to two instances running on the same server with docker compose, each from its own checkout with its own `.env`, database and volumes:
+
+- **staging**: every push to `main` is checked (`bun run check`, `bun run lint`), built and deployed automatically. An empty staging database is filled with the test accounts of `scripts/seed.ts` (the same data as local development).
+- **production**: by hand, from _Actions → deploy → Run workflow_ with environment `production`. Leave _Commit_ empty to deploy the head of `main`, or paste the commit that is on staging. Only commits on `main` can be deployed. Before starting the new version the server dumps the database to `predeploy-dumps/` in the checkout (the last 5 are kept).
+
+`PUBLIC_URL` is compiled into the image, so the workflow builds one image per environment (`ghcr.io/<owner>/<repository>:<environment>-<commit>`) and pushes it to the GitHub container registry. It then connects to the server over SSH, where `scripts/deploy.sh` checks out the commit (so the compose file matches) and swaps the running version without downtime (blue-green):
+
+1. The compose file has two copies of the app: `web` (blue, on `PORT`) and `web-green` (green, on `GREEN_PORT`). One of them is live, the other is stopped.
+2. The new image starts on the stopped colour, next to the live one. Pending migrations are applied as it starts, while the old version still serves (so a migration has to work with the previous version of the code too).
+3. Once the new container answers with the deployed commit, caddy is pointed at it with a graceful reload. Requests in flight finish on the old one.
+4. A few seconds later the old colour stops. Open event streams reconnect to the new one.
+
+If the new version doesn't answer, the job fails with its logs and the live version keeps serving. `.env` records the live colour (`SOCIAL_COLOR`) and the image of each colour (`SOCIAL_IMAGE`, `SOCIAL_IMAGE_GREEN`), so the stopped colour keeps the previous version: to roll back, run the workflow again with the previous commit, which switches back without downloading anything. The live service is `web` or `web-green` depending on `SOCIAL_COLOR`: use that name with `docker compose exec` (e.g. for `admin.ts`). Pull requests are checked by `.github/workflows/ci.yml`.
+
+### setting up the server
+
+1. Create a deploy user that can run docker, and give it the production checkout (it has to be a git clone with an `https://` remote, so it can fetch without a key):
+
+   ```
+   adduser --disabled-password deploy && usermod -aG docker deploy
+   chown -R deploy: /opt/social
+   ```
+
+   Being in the `docker` group is as good as root, so the SSH key below is restricted to the deploy script.
+
+2. Clone the staging checkout and give it its own `.env`. `COMPOSE_PROJECT_NAME` keeps its containers and volumes apart from production's. Don't copy production's Discord webhook, bucket or signup password:
+
+   ```
+   sudo -u deploy git clone https://github.com/ToastEnergy/social.giorgiovola.casa.git /opt/social-staging
+   ```
+
+   ```
+   # /opt/social-staging/.env
+   COMPOSE_PROJECT_NAME=social-staging
+   PORT=7778
+   GREEN_PORT=7780
+   PUBLIC_URL=https://staging.social.giorgiovola.casa
+   POSTGRES_PASSWORD=<another password>
+   SIGNUP_PASSWORD=<another password>
+   ```
+
+   The staging site in caddy is set up like production's (next step), with `X-Robots-Tag: noindex` so search engines don't index it.
+
+3. Let the deploy switch caddy between the colours. Each site's `reverse_proxy` takes its upstream from a file the deploy user rewrites, and the deploy reloads caddy afterwards. Write each file with the port that serves today (`PORT`) and change the Caddyfile once:
+
+   ```
+   mkdir -p /etc/caddy/social
+   echo 'to 127.0.0.1:7777' > /etc/caddy/social/production.upstream
+   echo 'to 127.0.0.1:7778' > /etc/caddy/social/staging.upstream
+   chown -R deploy: /etc/caddy/social
+   ```
+
+   ```
+   social.giorgiovola.casa {
+   	reverse_proxy {
+   		import /etc/caddy/social/production.upstream
+   		# the options you already had (header_up …) stay here
+   	}
+   }
+
+   staging.social.giorgiovola.casa {
+   	header X-Robots-Tag noindex
+   	reverse_proxy {
+   		import /etc/caddy/social/staging.upstream
+   	}
+   }
+   ```
+
+   Run `systemctl reload caddy` and check that both sites still work. The deploy runs `caddy reload --config /etc/caddy/Caddyfile` as the deploy user, which talks to caddy's admin endpoint on `localhost:2019` (the default). If caddy runs in docker, set `CADDY_RELOAD` and `UPSTREAM_HOST` in `/etc/social-deploy.env` (see the comments there).
+
+4. Install the deploy script and its config:
+
+   ```
+   install -m 755 /opt/social/scripts/deploy.sh /usr/local/bin/social-deploy
+   install -m 640 -g deploy /opt/social/scripts/deploy.env.example /etc/social-deploy.env
+   ```
+
+   In `/etc/social-deploy.env`, check the paths and set `SEED_PASSWORD`, the password of every staging test account (`dev` is an admin there). Reinstall the script when `scripts/deploy.sh` changes: it runs from `/usr/local/bin` so that a deploy never rewrites it while it is running.
+
+5. Make a key pair for GitHub Actions and allow it only to run the deploy script, in `~deploy/.ssh/authorized_keys`:
+
+   ```
+   ssh-keygen -t ed25519 -N '' -C github-deploy -f deploy_key
+   ```
+
+   ```
+   command="/usr/local/bin/social-deploy",restrict ssh-ed25519 AAAA… github-deploy
+   ```
+
+6. The images are private on the registry the first time they are pushed. Either make the package public (_Packages → social.giorgiovola.casa → Package settings → Change visibility_; the images hold no secrets) or log the deploy user in with a token that has only `read:packages`: `sudo -u deploy docker login ghcr.io -u <user>`.
+
+### setting up GitHub
+
+In _Settings → Environments_ create `staging` and `production`, each with a `PUBLIC_URL` variable (the instance's public URL). For `production`, add yourself under _Required reviewers_ and restrict _Deployment branches_ to `main`. Then add these repository secrets (_Settings → Secrets and variables → Actions_):
+
+| secret                   | value                                                     |
+| ------------------------ | --------------------------------------------------------- |
+| `DEPLOY_SSH_HOST`        | the server's address                                      |
+| `DEPLOY_SSH_PORT`        | optional, `22` by default                                 |
+| `DEPLOY_SSH_USER`        | optional, `deploy` by default                             |
+| `DEPLOY_SSH_KEY`         | the private key, the contents of `deploy_key`             |
+| `DEPLOY_SSH_KNOWN_HOSTS` | the server's host key: the output of `ssh-keyscan <host>` |
+
+The first production deploy starts the registry's image on green (port `GREEN_PORT`, 7779 by default) while the container you run today (`web`, which counts as blue) keeps serving, then switches over. The data stays: both colours use the same database and volumes, which belong to the compose project. To build on the server again, set `SOCIAL_COLOR=blue`, remove `SOCIAL_IMAGE` from `.env`, run `docker compose up -d --build web` and point the upstream file back at `PORT`.
 
 ## regiorgios
 
@@ -419,6 +529,8 @@ cp .env.example .env # set DATABASE_URL to a postgres instance
 bun run db:migrate
 bun run dev
 ```
+
+`bun scripts/seed.ts` fills an empty database with test accounts (all with the password `dev`, `dev` is an admin), posts, direct messages, group chats and identities; the comment at the top of the script lists the test cases.
 
 ## database
 

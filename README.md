@@ -10,22 +10,96 @@ That's it: the database is created and migrated automatically on every start. Th
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
-| variable              | default                 | description                                                                                                                                           |
-| --------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                | `7777`                  | port the app listens on                                                                                                                               |
-| `PUBLIC_URL`          | `http://localhost:PORT` | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
-| `DISCORD_WEBHOOK_URL` | empty                   | optional, new posts are announced to this webhook                                                                                                     |
-| `SIGNUP_PASSWORD`     | empty                   | password required to register; registration is closed if empty                                                                                        |
-| `ADDRESS_HEADER`      | empty                   | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
-| `BIND_ADDRESS`        | `127.0.0.1`             | interface the port is published on                                                                                                                    |
-| `POSTGRES_PASSWORD`   | `postgres`              | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
-| `POSTGRES_PORT`       | `5432`                  | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
+| variable                    | default                           | description                                                                                                                                           |
+| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `7777`                            | port the app listens on                                                                                                                               |
+| `PUBLIC_URL`                | `http://localhost:PORT`           | public URL of your instance (links, social cards, CSRF check); baked into the image, so rebuild with `docker compose up -d --build` after changing it |
+| `PUBLIC_SEARCH_PLACEHOLDER` | `Giorgiocerca qualcosa`           | placeholder text of the search box                                                                                                                    |
+| `PUBLIC_REPLY_PLACEHOLDER`  | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                          |
+| `PUBLIC_NO_REPLIES_MESSAGE` | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                      |
+| `DISCORD_WEBHOOK_URL`       | empty                             | optional, new posts are announced to this webhook                                                                                                     |
+| `SIGNUP_PASSWORD`           | empty                             | password required to register; registration is closed if empty                                                                                        |
+| `ADDRESS_HEADER`            | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                 |
+| `S3_BUCKET`                 | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                        |
+| `S3_ENDPOINT`               | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                      |
+| `S3_REGION`                 | `auto`                            | bucket region (`auto` for R2)                                                                                                                         |
+| `S3_ACCESS_KEY_ID`          | empty                             | access key of the API token, required with `S3_BUCKET`                                                                                                |
+| `S3_SECRET_ACCESS_KEY`      | empty                             | secret of the API token, required with `S3_BUCKET`                                                                                                    |
+| `CLOUDFLARE_ZONE_ID`        | empty                             | only for `scripts/migrate-assets.ts --purge`: the Cloudflare zone to purge old URLs from (not read by the app)                                        |
+| `CLOUDFLARE_API_TOKEN`      | empty                             | only for `scripts/migrate-assets.ts --purge`: an API token with the **Zone > Cache Purge** permission on that zone (not read by the app)              |
+| `BIND_ADDRESS`              | `127.0.0.1`                       | interface the port is published on                                                                                                                    |
+| `POSTGRES_PASSWORD`         | `postgres`                        | database password (URL-safe characters only); only applied when the database volume is first created                                                  |
+| `POSTGRES_PORT`             | `5432`                            | host port of the database in `docker-compose.dev.yaml` (not published in the main compose file)                                                       |
 
-Data lives in the `postgres-data`, `avatars` and `uploads` docker volumes (`uploads` holds the images attached to posts: up to 5 per post, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
+Data lives in the `postgres-data`, `avatars`, `uploads` and `dm-uploads` docker volumes (`uploads` holds the images attached to posts, `dm-uploads` the ones attached to messages, which are only served to the people in the conversation: up to 5 per post or message, 10MB each; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, all re-encoded to WebP and scaled down to 2048px; avatars become 512px WebP squares). Avatars and images can be kept in an S3-compatible bucket instead of the volumes, see [storing assets in S3 / R2](#storing-assets-in-s3--r2). You should put the app behind a reverse proxy like [caddy](https://caddyserver.com/docs/quick-starts/caddyfile) or [nginx](https://gist.github.com/journeymanavi/dc7df599dd7618a12528c553ea47b1b1) to add at least https and gzip compression.
+
+## storing assets in S3 / R2
+
+By default avatars and images are files in the `avatars`, `uploads` and `dm-uploads` volumes. Set `S3_BUCKET` to keep them in an S3-compatible bucket instead, such as [Cloudflare R2](https://developers.cloudflare.com/r2/). The bucket stays private: the app still serves every file from its own `/avatars/…`, `/uploads/…` and `/dm-uploads/…` URLs (so stored links don't change), reading them from the bucket, and a cache in front of the app (such as Cloudflare) keeps most requests for public files from reaching it. Message images are answered with `Cache-Control: private`, so such a cache never keeps them. Images that are picked in the composer but not posted yet stay in a temporary directory on the server.
+
+With Cloudflare R2:
+
+1. In the Cloudflare dashboard, go to R2 and create a bucket. Leave public access off (no public `r2.dev` URL and no custom domain).
+2. Under **Manage API tokens**, create an API token with the **Object Read & Write** permission, applied to that bucket only. Note its access key ID and secret access key, and your account's S3 endpoint (`https://<account id>.r2.cloudflarestorage.com`).
+3. Set the variables in `.env` and restart with `docker compose up -d`:
+
+```
+S3_BUCKET=my-social-assets
+S3_ENDPOINT=https://<account id>.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_ACCESS_KEY_ID=…
+S3_SECRET_ACCESS_KEY=…
+```
+
+`S3_BUCKET` needs the endpoint and both keys: the app refuses to start when one of them is missing. Other S3-compatible services (AWS S3, MinIO, Backblaze B2…) work the same way with their endpoint and region; requests use path-style URLs (`<endpoint>/<bucket>/<key>`). Objects are stored under `uploads/`, `avatars/` and `dm/` (message images).
+
+Files still in the volumes keep being served while the bucket is configured (the app looks there when the bucket doesn't have a file, and deletes both copies), so switching doesn't break existing images; copy them into the bucket with the migration script (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)). `scripts/backup.sh` doesn't include the bucket yet.
+
+## moving existing assets to the bucket
+
+`scripts/migrate-assets.ts` copies the files in the volumes into the bucket and makes images of messages sent before images became private (stored as `/uploads/…`) private too. Run it in the container:
+
+```
+docker compose exec web bun scripts/migrate-assets.ts --dry-run
+```
+
+It reads the same `S3_*` variables as the app, plus `DATABASE_URL` and `PUBLIC_URL`, and runs these steps, printing a summary of each:
+
+1. **message images**: reads every image path of direct and group messages.
+2. **upload**: `uploads` volume files go to `dm/<file>` when they belong to a message and to `uploads/<file>` otherwise, the `avatars` volume to `avatars/<file>` and the `dm-uploads` volume to `dm/<file>`. Objects already in the bucket with the same size are skipped, so it can be stopped and run again.
+3. **verify**: every image path of posts and messages and every avatar (`users.avatar` without `?hash=`) must be in the bucket, under the key the app reads. If anything is missing, it prints the list and stops with an error before changing anything else.
+4. **rewrite**: message rows with `/uploads/x` paths are rewritten to `/dm-uploads/x`, in one transaction. A second run finds nothing left.
+5. **orphans**: objects and local files nothing references (such as images of deleted messages, or avatars in an old format). Only reported, unless `--delete-orphans` is passed, which deletes them from the bucket (and the volume) right away. Anything stored less than an hour ago is left alone, as it may belong to a post or message being sent.
+6. **Cloudflare purge**: prints the `${PUBLIC_URL}/uploads/…` URLs of message images and orphans, which a cache in front of the app may still hold from when they were public. With `--purge`, they are purged through Cloudflare's purge-by-URL API (100 URLs per request).
+
+| flag               | effect                                                                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dry-run`        | report what would happen; nothing is written to the bucket, the database, the volumes or Cloudflare                                                  |
+| `--delete-local`   | after a successful verification, delete the local files whose copy in the bucket is confirmed                                                        |
+| `--delete-orphans` | delete the orphans (step 5)                                                                                                                          |
+| `--purge`          | purge the URLs of step 6 from Cloudflare                                                                                                             |
+| `--purge-only`     | only step 6, which works without the `S3_*` variables: prints the URLs, and purges them when `CLOUDFLARE_ZONE_ID` and `CLOUDFLARE_API_TOKEN` are set |
+
+Steps 2–5 refuse to run without the `S3_*` variables. Purging needs `CLOUDFLARE_ZONE_ID` (on the zone's overview page in the dashboard) and `CLOUDFLARE_API_TOKEN`, an API token (My Profile > API Tokens > Create Token, custom) with the **Zone > Cache Purge** permission on that zone. The app doesn't read either of them, so pass them to the script only:
+
+```
+docker compose exec -e CLOUDFLARE_ZONE_ID=… -e CLOUDFLARE_API_TOKEN=… web bun scripts/migrate-assets.ts --purge
+```
+
+Moving an existing instance to the bucket, in order:
+
+1. Update and deploy without the `S3_*` variables. Nothing changes, except that message images are now only served to their conversation.
+2. Purge the old message image URLs from Cloudflare, since it may still have public copies: `--purge-only` (no bucket needed yet).
+3. Create the bucket and its token ([storing assets in S3 / R2](#storing-assets-in-s3--r2)), set the `S3_*` variables and restart with `docker compose up -d`. Files are read from the bucket, falling back to the volumes.
+4. Run the script with `--dry-run`, then without it, then with `--purge`.
+5. Run a backup and check it includes the bucket.
+6. Run it with `--delete-orphans`, and with `--delete-local` once you're satisfied. Keep a tarball of the volumes for a while.
+
+If step 3 reports missing files that you can't find anymore (in an old volume or a backup), the posts or messages pointing at them show broken images either way; the script won't go further until the paths are fixed or removed from the database.
 
 ## backups
 
-`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
+`scripts/backup.sh` backs up a docker deployment with [restic](https://restic.net) (0.17 or newer): a dump of the database (snapshot tagged `db`) and the `avatars` and `uploads` volumes, plus `dm-uploads` when the deployment has it (tagged `files`), then it drops old snapshots (7 daily, 4 weekly, 12 monthly by default) and reads back a small sample of the repository to catch damage early. The repository is created on the first run. Run it as root on the server, from the directory the app runs from:
 
 ```
 cp scripts/backup.env.example /etc/social-backup.env   # set RESTIC_REPOSITORY and the password file
@@ -44,6 +118,19 @@ Set `HEALTHCHECK_URL` to get an alert from a service like [healthchecks.io](http
 
 `scripts/restore.sh` puts a backup back, replacing the current database, avatars and uploads (it asks first, and stops the app while restoring). By default it takes the latest snapshots; pass the ids from `restic snapshots` to pick older ones: `scripts/restore.sh <db snapshot> <files snapshot>`. On a new server, clone the repository, copy `.env` and `/etc/social-backup.env`, run `docker compose up -d` once to create the volumes, then `scripts/restore.sh`. Pending migrations are applied when the app starts again.
 
+### backing up the bucket
+
+When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backup.env` too. The backup then copies the bucket into a local mirror (`MIRROR_DIR`, `/var/lib/social-backup/assets` by default, readable by root only) with [rclone](https://rclone.org), and backs up the mirror instead of the volumes, still tagged `files`. restic keeps the versions, encrypts them and applies the retention, so deleted and overwritten objects can be restored for as long as their snapshots are kept. If the copy fails, the backup stops and reports the failure without taking a snapshot of a half-copied mirror.
+
+1. Install rclone on the server (`apt install rclone`, or see [its install page](https://rclone.org/install/)).
+2. In the Cloudflare dashboard, R2 → _Manage API tokens_ → _Create API token_: permission **Object Read only**, applied to that one bucket. Read only means that someone who gets into the backup host can't change or delete the assets.
+3. Put the token in `/etc/social-backup.env` as an rclone remote, through environment variables (no `rclone.conf` needed; the commented example in `scripts/backup.env.example` has all of them): `S3_BUCKET`, `RCLONE_CONFIG_R2_TYPE=s3`, `RCLONE_CONFIG_R2_PROVIDER=Cloudflare`, `RCLONE_CONFIG_R2_ENDPOINT`, `RCLONE_CONFIG_R2_ACCESS_KEY_ID` and `RCLONE_CONFIG_R2_SECRET_ACCESS_KEY`.
+4. Run `scripts/backup.sh` and check that `restic ls latest --tag files` lists the bucket's `uploads/`, `avatars/` and `dm/` objects.
+
+`scripts/restore.sh` then puts the files snapshot back into the bucket with `rclone sync`, which also deletes the objects that aren't in the snapshot. The read-only token can't do that, so it asks for the key pair of a token with **Object Read & Write** on the bucket (the app's token works), or takes it from `RESTORE_ACCESS_KEY_ID` / `RESTORE_SECRET_ACCESS_KEY`. Don't keep that token in the backup config. Pass a files snapshot taken in bucket mode: older snapshots of the volumes go back into the volumes, with `S3_BUCKET` unset.
+
+**Privacy:** message images that were deleted (with their message, or with a deleted profile) stay in the backups until the retention drops every snapshot that holds them: up to 12 months with the default `KEEP_MONTHLY=12`. Lower `KEEP_MONTHLY` (and `KEEP_WEEKLY` / `KEEP_DAILY`) to keep them for less time. The same goes for the volumes, and for deleted posts in the database dumps.
+
 ## regiorgios
 
 The arrows button under a post opens a menu with two ways to reshare it:
@@ -59,7 +146,7 @@ The bars button in the composer adds a poll to a post (or a reply, or a quote): 
 
 ## group chats
 
-_New group_ on the messages page starts a group chat with a name and the people you pick, up to 32 members. Groups show up in the conversation list next to direct messages, with the same unread badges, live updates and push notifications. Messages can have text and up to 5 images, and only their sender can delete them.
+_New group_ on the messages page starts a group chat with a name and the people you pick, up to 32 members. Groups show up in the conversation list next to direct messages, with the same unread badges, live updates and push notifications. Messages can have text and up to 5 images, and only their sender can delete them. Message images, in groups and direct messages, are only shown to the people in the conversation: someone who leaves or is removed from a group can't load its images any more (see [message images](#message-images)).
 
 The group's info page (the group name at the top of the chat) lists its members. Anyone in the group can rename it and add people (newcomers see the history, but none of it is unread for them), and anyone can leave. Only the owner, its creator, can remove others; when the owner leaves, the longest standing member takes over, and when the last member leaves the group is deleted with its messages. You can't add someone you blocked or who blocked you. Bots can be added like anyone else: they read and write in the group through the bot API, and can leave it, but can't create groups or add, remove or rename. Muted users can't create, rename or write in groups.
 
@@ -67,7 +154,7 @@ Changes to a group show up in its chat as a line of their own ("Alice added Bob"
 
 ## replies, reactions and mentions in chats
 
-In direct and group chats, swipe a message to the right to reply to it (like WhatsApp), or use the reply button that shows next to it on hover. The reply quotes the message it answers; tapping the quote jumps to it. Long press a message (or the smiley button on hover) for its menu: six quick reactions, reply, copy and delete. A double tap adds a ❤️. Everyone has one reaction per message, picking another replaces it and picking the same one again takes it back (or tap your own in the reactions list). Tapping the reactions under a message lists who reacted with what. Reactions update live and send no push.
+In direct and group chats, swipe a message to the right to reply to it (like WhatsApp), or use the reply button that shows next to it on hover. The reply quotes the message it answers; tapping the quote jumps to it. Long press a message (or the smiley button on hover) for its menu: six quick reactions, reply, copy and delete. A double tap adds a ❤️. Everyone has one reaction per message, picking another replaces it and picking the same one again takes it back (or tap your own in the reactions list). Tapping the reactions under a message lists who reacted with what. Reactions update live and send no push. A reaction to your message marks the chat unread (it counts in the messages badge, and the chat shows the emoji, or a dot, instead of a number) until you open it, but the chat still opens where your unread messages begin, not at the message that got the reaction. The latest reaction you made, or one to your message, also moves the chat to the top of the list with a line like "Alice reacted ❤️ to …".
 
 Typing `@` in a chat suggests people (the group's members in a group), and mentions link to the profile like in posts. In a group, a message that mentions you sends you a push even when you muted the group.
 
@@ -79,15 +166,16 @@ _Mute_, at the top of a chat, silences that conversation for you only: no push n
 
 ## accounts and identities
 
+- **Settings:** `/settings` (avatar menu → _Settings_) has one tab per section, each with its own address: _Profile_ (`/settings/profile`: picture, name, username, bio, website of the profile in use), _Accounts_ (`/settings/accounts`: identities and the other signed in accounts), _Notifications_ (`/settings/notifications`: push for this browser), _Security_ (`/settings/security`: email, password, passkeys, sessions and personal access tokens) and _Developers_ (`/settings/developers`: bots). _Edit profile_ on your own profile opens the first one.
 - **Switching accounts:** up to 5 accounts can be signed in on one browser. Use the avatar menu in the header to switch, and _Sign in to another account_ to add one.
-- **Identities:** extra profiles that belong to an account and have no email or password (up to 10 per account). Create and delete them at `/accounts`. They post, like and get notifications on their own, and the owning account is never shown publicly. Deleting an identity also deletes its posts. An identity can be shared with up to 10 other accounts (_Share_ at `/accounts`): they can switch to it and use it like you do, and get its notifications on their devices, but only the owner can delete it or change who it is shared with. They can give it back with _Leave_.
-- **Passkeys:** optional. Add them at `/settings` (avatar menu → _Settings_) to sign in with a fingerprint, face, screen lock or security key instead of the password, which keeps working either way. Passkeys belong to the account, not its identities, and are bound to the hostname of `PUBLIC_URL`, so changing the domain invalidates them.
+- **Identities:** extra profiles that belong to an account and have no email or password (up to 10 per account). Create and delete them at `/settings/accounts` (avatar menu → _+ New identity / manage_; the old `/accounts` address redirects there). They post, like and get notifications on their own, and the owning account is never shown publicly. Deleting an identity also deletes its posts. An identity can be shared with up to 10 other accounts (_Share_ at `/settings/accounts`): they can switch to it and use it like you do, and get its notifications on their devices, but only the owner can delete it or change who it is shared with. They can give it back with _Leave_.
+- **Passkeys:** optional. Add them at `/settings/security` (avatar menu → _Settings_ → _Security_) to sign in with a fingerprint, face, screen lock or security key instead of the password, which keeps working either way. Passkeys belong to the account, not its identities, and are bound to the hostname of `PUBLIC_URL`, so changing the domain invalidates them.
 
 ## bots
 
-Create bots at `/settings` → _OAuth_ (up to 5 per account), or with `POST /api/v1/me/bots`. A bot is a profile with a "bot" badge, driven only through the bot API (or the v1 API with its token): you can't switch to it, and it sends no push notifications to its owner. Its token is shown once when the bot is created. _New token_ replaces it and the old one stops working right away. Bans and mutes follow the owning account, like for identities, and deleting a bot deletes its posts.
+Create bots at `/settings/developers` (up to 5 per account), or with `POST /api/v1/me/bots`. A bot is a profile with a "bot" badge, driven only through the bot API (or the v1 API with its token): you can't switch to it, and it sends no push notifications to its owner. Its token is shown once when the bot is created. _New token_ replaces it and the old one stops working right away. Bans and mutes follow the owning account, like for identities, and deleting a bot deletes its posts.
 
-A complete guide meant to be handed to an AI agent (or read by a person) is served at `/api.txt`, and the same API is documented for developers at `/developers`. Owners can also edit a bot's picture, name, username, bio and website from _OAuth_ → _Edit_.
+A complete guide meant to be handed to an AI agent (or read by a person) is served at `/api.txt`, and the same API is documented for developers at `/developers`. Owners can also edit a bot's picture, name, username, bio and website from _Settings_ → _Developers_ → _Edit_.
 
 Every request sends `Authorization: Bearer <token>` and gets JSON back. Errors come back as `{ "error": "…" }`. A bot can make 120 requests a minute, with lower limits on writes: 20 posts, 70 messages (direct and group), 60 message reactions, 60 likes, 30 poll votes, 30 regiorgios and 30 follows a minute, and 10 profile edits an hour.
 
@@ -134,9 +222,10 @@ curl -N -H "Authorization: Bearer $TOKEN" https://example.com/api/bot/stream
 
 Everything the web UI does is a documented JSON API under `/api/v1`, and the web UI is itself a client of it, so you can build a mobile app, a CLI or another front end on it. The full reference (bodies, responses, limits, errors, server-sent events and curl examples) is Part 1 of `/api.txt`; `/developers` lists the endpoints too.
 
-- **Auth:** `POST /api/v1/auth/login` with `{ "username", "password" }` answers a bearer token (`sgu_…`, valid 90 days). Personal access tokens can be created in `/settings` → _Sessions and API tokens_ or with `POST /api/v1/auth/tokens`. Bot tokens (`sgc_…`) work too. Send `Authorization: Bearer <token>`; the web UI uses its session cookie instead, which is ignored on requests from other origins. Only hashes of tokens are stored, and every session and token can be listed and revoked.
+- **Auth:** `POST /api/v1/auth/login` with `{ "username", "password" }` answers a bearer token (`sgu_…`, valid 90 days). Personal access tokens can be created in `/settings/security` → _Sessions and API tokens_ or with `POST /api/v1/auth/tokens`. Bot tokens (`sgc_…`) work too. Send `Authorization: Bearer <token>`; the web UI uses its session cookie instead, which is ignored on requests from other origins. Only hashes of tokens are stored, and every session and token can be listed and revoked.
 - **Identities:** a token acts as one profile at a time; `POST /api/v1/auth/switch` with `{ "username" }` moves it to the account or one of its identities.
 - **Conventions:** JSON in and out, errors are `{ "error": "…" }`, lists are `{ "items": [...], "next_cursor": "…" | null }` with `?limit=` and `?cursor=`. Send `Content-Type: application/json` on every write, even without a body, and upload images as the raw request body: SvelteKit refuses body-less and form writes that don't come from the site. CORS is open (`*`, no credentials).
+- **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else (401 when the token is invalid). Post images ignore the token, even an invalid one. See [message images](#message-images).
 - **Compatibility:** v1 only changes additively; the original bot API under `/api/bot` (below) keeps working unchanged.
 
 **Instance and signing in**
@@ -188,6 +277,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, reply_to?, quote_of?, poll? }`        |
 | `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                 |
 | `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                |
+| `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)   |
 | `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                |
 | `GET`                      | `/api/v1/posts/:id/regiorgs`           | public                            | who regiorged it                                            |
 | `GET`                      | `/api/v1/posts/:id/quotes`             | public                            | quotes of it                                                |
@@ -218,7 +308,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/hashtags/:tag`                            | public    | a hashtag and its post count                          |
 | `GET`            | `/api/v1/hashtags/:tag/posts`                      | public    | posts with it                                         |
 | `GET`            | `/api/v1/notifications`                            | signed in | your notifications                                    |
-| `GET`            | `/api/v1/notifications/unread`                     | signed in | unread notifications and messages                     |
+| `GET`            | `/api/v1/notifications/unread`                     | signed in | unread notifications, messages and reactions          |
 | `POST`           | `/api/v1/notifications/read`                       | signed in | mark all read                                         |
 | `POST`           | `/api/v1/notifications/:id/read`                   | signed in | mark one read                                         |
 
@@ -226,13 +316,13 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 | method             | path                                                    | who                   |                                                                                       |
 | ------------------ | ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------- |
-| `GET`              | `/api/v1/conversations`                                 | signed in             | direct conversations and groups                                                       |
+| `GET`              | `/api/v1/conversations`                                 | signed in             | direct conversations and groups, with unread messages and reactions                   |
 | `GET`              | `/api/v1/share-targets`                                 | signed in             | where a post can be shared                                                            |
 | `GET`              | `/api/v1/conversations/:username`                       | signed in             | peer, blocks, mute state and first unread message                                     |
 | `GET` / `POST`     | `/api/v1/conversations/:username/messages`              | signed in / not muted | messages, oldest first (`cursor` for older) / send `{ content, uploads?, reply_to? }` |
 | `PATCH` / `DELETE` | `/api/v1/conversations/:username/messages/:id`          | sender                | edit your message `{ content }` (within an hour) / delete it                          |
 | `PUT` / `DELETE`   | `/api/v1/conversations/:username/messages/:id/reaction` | signed in             | react `{ emoji }` / remove it                                                         |
-| `POST`             | `/api/v1/conversations/:username/read`                  | signed in             | mark read                                                                             |
+| `POST`             | `/api/v1/conversations/:username/read`                  | signed in             | mark messages and reactions to yours read                                             |
 | `PUT` / `DELETE`   | `/api/v1/conversations/:username/mute`                  | signed in             | mute / unmute                                                                         |
 | `POST`             | `/api/v1/conversations/:username/typing`                | signed in             | typing indicator                                                                      |
 | `GET` / `POST`     | `/api/v1/groups`                                        | signed in / not muted | your groups / create `{ name, members }`                                              |
@@ -240,12 +330,13 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET` / `POST`     | `/api/v1/groups/:id/messages`                           | member                | messages and events / send                                                            |
 | `PATCH` / `DELETE` | `/api/v1/groups/:id/messages/:messageId`                | sender                | edit your message `{ content }` (within an hour) / delete it                          |
 | `PUT` / `DELETE`   | `/api/v1/groups/:id/messages/:messageId/reaction`       | member                | react / remove it                                                                     |
-| `POST`             | `/api/v1/groups/:id/read`                               | member                | mark read                                                                             |
+| `POST`             | `/api/v1/groups/:id/read`                               | member                | mark messages and reactions to yours read                                             |
 | `PUT` / `DELETE`   | `/api/v1/groups/:id/mute`                               | member                | mute / unmute                                                                         |
 | `POST`             | `/api/v1/groups/:id/members`                            | member                | add `{ usernames }`                                                                   |
 | `DELETE`           | `/api/v1/groups/:id/members/:username`                  | owner (or yourself)   | remove someone, or leave                                                              |
 | `POST`             | `/api/v1/groups/:id/leave`                              | member                | leave                                                                                 |
 | `POST`             | `/api/v1/groups/:id/typing`                             | member                | typing indicator                                                                      |
+| `GET`              | `/dm-uploads/:file`                                     | in the conversation   | a message image (private caching); 404 missing or not yours, 401 invalid token        |
 
 **Moderation and realtime**
 
@@ -259,6 +350,16 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET` / `PUT`    | `/api/v1/admin/motd`                     | admin              | message of the day / set `{ motd }`                                |
 | `GET`            | `/api/v1/stream`                         | public / signed in | server-sent events: posts, counts, notifications, messages, typing |
 | `GET`            | `/api/v1/stream/bot`                     | bot                | the bot stream (same as /api/bot/stream)                           |
+
+## message images
+
+Images attached to direct and group messages are stored apart from post images (the `dm-uploads` volume, or `dm/` in a bucket) and served from `/dm-uploads/<uuid>.webp`, only to the people in the conversation: the sender and recipient of a direct message, or the current members of a group. Any profile you are signed in as counts (every account on the browser, the identities they can act as, or a bot through its token), so images in an open chat keep loading after switching profiles. Anyone else, signed in or not, gets the same 404 as for a missing file. The responses are `Cache-Control: private, max-age=3600`, so browsers keep them for an hour and shared caches (Cloudflare) not at all. Apps and bots fetch them with their `Authorization: Bearer` token. An invalid (revoked, expired or unknown) token gets a 401 for a message image, like the API; post images under `/uploads/` ignore the header and load whatever token is sent.
+
+Images of messages sent before this keep their `/uploads/…` paths and get the same check. They used to be served publicly and cached as immutable, so purge those URLs from a cache in front of the app (such as Cloudflare) once after upgrading: `scripts/migrate-assets.ts --purge-only` lists and purges them (see [moving existing assets to the bucket](#moving-existing-assets-to-the-bucket)).
+
+This keeps out people who were never in the conversation, or no longer are. Anyone who could see an image can still keep a copy.
+
+The `dm-uploads` volume isn't in `scripts/backup.sh` yet.
 
 ## moderation
 

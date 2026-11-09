@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BellOff from '@lucide/svelte/icons/bell-off';
 	import { invalidate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import Avatar from '#lib/components/Avatar.svelte';
@@ -88,6 +89,9 @@
 			onRealtime('message_deleted', refresh),
 			onRealtime('group_message', refresh),
 			onRealtime('group_message_deleted', refresh),
+			// a reaction moves its conversation up and becomes its preview
+			onRealtime('message_reactions', refresh),
+			onRealtime('group_message_reactions', refresh),
 			onRealtime('group_updated', refresh),
 			onRealtime('open', refresh)
 		];
@@ -126,7 +130,7 @@
 	<div class="-mx-2.5 mt-2.5 flex flex-col">
 		{#each results as result (result.username)}
 			<a
-				class="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-inherit hover:bg-black hover:no-underline"
+				class="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-inherit hover:bg-white/5 hover:no-underline"
 				href={`/messages/${result.username}`}
 			>
 				<Avatar user={result} size={40} clickable={false} />
@@ -148,9 +152,9 @@
 				? `/messages/${entry.peer.username}`
 				: `/messages/groups/${entry.group.id}`}
 		<a
-			class="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-inherit hover:bg-black hover:no-underline {href ===
+			class="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 text-inherit hover:bg-white/5 hover:no-underline {href ===
 			page.url.pathname
-				? 'bg-black'
+				? 'bg-white/5'
 				: ''}"
 			{href}
 			aria-current={href === page.url.pathname ? 'page' : undefined}
@@ -200,7 +204,8 @@
 					{:else}
 						<p class="truncate text-[0.9em] text-muted">
 							{#if entry.kind === 'dm'}
-								{entry.mine ? 'You: ' : ''}{entry.preview}
+								<!-- a reaction's preview is its whole line -->
+								{entry.mine && !entry.reaction ? 'You: ' : ''}{entry.preview}
 							{:else if entry.sender === null}
 								No messages yet
 							{:else if entry.event}
@@ -211,24 +216,8 @@
 						</p>
 					{/if}
 					{#if entry.muted}
-						<svg
-							class="shrink-0 text-muted"
-							xmlns="http://www.w3.org/2000/svg"
-							width="1em"
-							height="1em"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							role="img"
-							aria-label="Muted"
-							><title>Muted</title><path d="M13.7 21a2 2 0 0 1-3.4 0" /><path
-								d="M18.6 13A17.9 17.9 0 0 1 18 8"
-							/><path d="M6.3 6.3A5.9 5.9 0 0 0 6 8c0 7-3 9-3 9h14" /><path
-								d="M18 8a6 6 0 0 0-9.3-5"
-							/><path d="M2 2l20 20" /></svg
+						<span class="flex shrink-0 text-muted" role="img" aria-label="Muted" title="Muted"
+							><BellOff size="1em" /></span
 						>
 					{/if}
 					{#if entry.unread > 0}
@@ -238,6 +227,23 @@
 								? 'bg-muted'
 								: 'bg-accent'}">{entry.unread}</span
 						>
+					{:else if (entry.unread_reactions ?? 0) > 0}
+						<!-- only reactions are unread: the chat is marked, without a message count. The
+						     emoji shows when the preview is that reaction, a dot otherwise -->
+						{#if entry.reaction && !entry.mine}
+							<span
+								class="shrink-0 rounded-full px-[5px] text-[0.75em] {entry.muted
+									? 'bg-muted'
+									: 'bg-accent'}"
+								title="New reactions to your messages">{entry.reaction}</span
+							>
+						{:else}
+							<span
+								class="size-2.5 shrink-0 rounded-full {entry.muted ? 'bg-muted' : 'bg-accent'}"
+								title="New reactions to your messages"
+								><span class="sr-only">New reactions to your messages</span></span
+							>
+						{/if}
 					{/if}
 				</div>
 			</div>

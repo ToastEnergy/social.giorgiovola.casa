@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
 	import Button from '#lib/components/Button.svelte';
 	import type { PageData } from './$types';
 	import { notisCount, user } from '#lib/store.js';
@@ -6,7 +7,7 @@
 	import Avatar from '#lib/components/Avatar.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { disablePush, enablePush, getPushState, PushError, type PushState } from '#lib/push.js';
+	import { getPushState, type PushState } from '#lib/push.js';
 	import { api, withCursor, type Page } from '#lib/api.js';
 	let { data }: { data: PageData } = $props();
 
@@ -31,21 +32,6 @@
 		}
 	}
 	let push: PushState | null = $state(null);
-	let pushBusy = $state(false);
-	let pushError: 'unavailable' | 'failed' | null = $state(null);
-
-	const togglePush = async () => {
-		pushBusy = true;
-		pushError = null;
-		try {
-			push = push === 'on' ? await disablePush() : await enablePush();
-		} catch (e) {
-			console.error(e);
-			pushError = e instanceof PushError && e.reason === 'unavailable' ? 'unavailable' : 'failed';
-		}
-		pushBusy = false;
-	};
-
 	// the unread count is pushed by the layout; reload the list when it grows
 	onMount(() => {
 		getPushState().then((state) => (push = state));
@@ -100,29 +86,11 @@
 		<Button onclick={readAll}>Mark all as read</Button>
 	{/if}
 </div>
-{#if push === 'on' || push === 'off'}
-	<div class="mt-2.5 flex items-center justify-between gap-2.5 rounded-[10px] bg-black/70 p-2.5">
-		<p>
-			{push === 'on'
-				? 'Push notifications are on for this browser.'
-				: 'Get a notification on this device when someone likes, regiorgios, quotes, replies, mentions, follows or messages you.'}
-		</p>
-		<Button disabled={pushBusy} onclick={togglePush}>
-			{push === 'on' ? 'Turn off' : 'Turn on'}
-		</Button>
-	</div>
-	{#if pushError === 'unavailable'}
-		<p class="mt-2.5 text-muted">
-			This browser has no push service, so it can't receive push notifications. Browsers without
-			Google services (like Helium or ungoogled-chromium) don't support them; in Brave, turn on "Use
-			Google services for push messaging". Chrome, Edge, Firefox and Safari work.
-		</p>
-	{:else if pushError === 'failed'}
-		<p class="mt-2.5 text-muted">Something went wrong, try again.</p>
-	{/if}
-{:else if push === 'denied'}
-	<p class="mt-2.5 text-muted">
-		Notifications are blocked for this site: allow them in your browser settings to turn them on.
+{#if push === 'off'}
+	<!-- turning push on lives in the settings; this only points there while it is off -->
+	<p class="mt-2.5 text-[0.85em] text-muted">
+		Get notified on this device too: turn on
+		<a href="/settings/notifications">push notifications</a>.
 	</p>
 {/if}
 <div class="mt-2.5 flex flex-col gap-3.75">
@@ -222,12 +190,7 @@
 						e.stopPropagation();
 						e.preventDefault();
 						await readNotification(notification, false);
-					}}
-					><svg fill="#d9d9d9" xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 448 512"
-						><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-							d="M438.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0L160 338.7 393.4 105.4c12.5-12.5 32.8-12.5 45.3 0z"
-						/></svg
-					></Button
+					}}><Check size="1em" /></Button
 				>
 			{/if}
 		</div>

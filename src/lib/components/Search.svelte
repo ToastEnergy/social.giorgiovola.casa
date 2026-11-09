@@ -1,9 +1,18 @@
 <script lang="ts">
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import X from '@lucide/svelte/icons/x';
 	import { afterNavigate, goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { tick } from 'svelte';
+	import { PUBLIC_SEARCH_PLACEHOLDER } from '$app/env/public';
 	import { hashtagHref } from '#lib/hashtags.js';
 	import type { HashtagResult, UserResult } from '#lib/types.js';
 	import Avatar from './Avatar.svelte';
+
+	// the box in the rail beside the content panel: full width, on a rounded black field
+	// bar: the same field on top of the content panel (narrow windows), in the panel's black
+	let { rail = false, bar = false }: { rail?: boolean; bar?: boolean } = $props();
+	const full = $derived(rail || bar);
 
 	type Item =
 		| { kind: 'user'; href: string; user: UserResult }
@@ -60,6 +69,17 @@
 		timer = setTimeout(fetchResults, 150);
 	}
 
+	function clear() {
+		clearTimeout(timer);
+		request++;
+		query = '';
+		users = [];
+		hashtags = [];
+		resultsFor = null;
+		active = -1;
+		input.focus();
+	}
+
 	function onFocus() {
 		focused = true;
 		if (resultsFor !== trimmed) fetchResults();
@@ -86,7 +106,8 @@
 
 	afterNavigate(() => {
 		collapse();
-		query = '';
+		// on the search page the bar shows what was searched (it is that page's field on touch)
+		query = page.url.pathname === '/search' ? page.url.searchParams.get('q') ?? '' : '';
 		resultsFor = null;
 	});
 
@@ -114,19 +135,10 @@
 </script>
 
 {#snippet searchIcon(className: string)}
-	<svg
-		class={className}
-		xmlns="http://www.w3.org/2000/svg"
-		height="1.2em"
-		viewBox="0 0 512 512"
-		aria-hidden="true"
-		><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-			d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 368a160 160 0 1 0 0-320 160 160 0 1 0 0 320z"
-		/></svg
-	>
+	<SearchIcon size={20} class={className} />
 {/snippet}
 
-{#if !expanded}
+{#if !expanded && !bar}
 	<button
 		type="button"
 		class="group flex h-8.75 cursor-pointer items-center outline-none sm:hidden"
@@ -134,7 +146,7 @@
 		title="Search"
 		onclick={expand}
 	>
-		{@render searchIcon('fill-white group-hover:fill-accent')}
+		{@render searchIcon('text-foreground group-hover:text-accent')}
 	</button>
 {/if}
 
@@ -142,27 +154,37 @@
 <form
 	action="/search"
 	role="search"
-	class={expanded
+	class={bar
+		? 'flex items-center'
+		: expanded
 		? 'absolute inset-0 z-10 flex items-center gap-2.5 bg-background px-5 sm:static sm:bg-transparent sm:px-0'
 		: 'hidden sm:flex sm:items-center'}
 >
 	<div
-		class="relative w-full sm:w-56 md:w-72"
+		class="relative w-full {full ? '' : 'sm:w-56 md:w-72'}"
 		onfocusout={(e) => {
 			// focus moving into the list (or nowhere, on a click inside it) keeps it open
 			const next = e.relatedTarget as Node | null;
 			if (!next || !e.currentTarget.contains(next)) close();
 		}}
 	>
-		<div class="flex items-center gap-2.5 border-b border-foreground px-[5px]">
-			{@render searchIcon('shrink-0 fill-muted')}
-			<input
+		<div
+			class="flex items-center gap-2.5 {rail
+				? 'rounded-[15px] bg-black px-2.5 py-[5px]'
+				: bar
+				? 'h-11.25 rounded-[15px] bg-black px-2.5'
+				: 'border-b border-foreground px-[5px]'}"
+		>
+			<!-- a label, so a click on the icon focuses the field too -->
+			<label class="flex min-w-0 flex-1 cursor-text items-center gap-2.5">
+				{@render searchIcon('shrink-0 text-muted')}
+				<input
 				bind:this={input}
 				bind:value={query}
-				class="w-full bg-transparent py-[5px] outline-none"
+				class="w-full bg-transparent py-[5px] outline-none [&::-webkit-search-cancel-button]:appearance-none"
 				type="search"
 				name="q"
-				placeholder="Search people and #hashtags"
+				placeholder={PUBLIC_SEARCH_PLACEHOLDER}
 				maxlength="64"
 				autocomplete="off"
 				role="combobox"
@@ -175,6 +197,19 @@
 				onfocus={onFocus}
 				onkeydown={onKeydown}
 			/>
+			</label>
+			{#if query}
+				<!-- replaces the browser's own clear button; the small-screen bar has its close button -->
+				<button
+					type="button"
+					class="group flex shrink-0 cursor-pointer outline-none {full ? '' : 'max-sm:hidden'}"
+					aria-label="Clear search"
+					title="Clear search"
+					onclick={clear}
+				>
+					<X size={20} class="text-muted group-hover:text-foreground" />
+				</button>
+			{/if}
 		</div>
 		{#if open}
 			<!-- mousedown is cancelled so the input keeps focus until the link's click navigates -->
@@ -222,7 +257,7 @@
 			</div>
 		{/if}
 	</div>
-	{#if expanded}
+	{#if expanded && !bar}
 		<button
 			type="button"
 			class="group flex shrink-0 cursor-pointer outline-none sm:hidden"
@@ -230,16 +265,7 @@
 			title="Close search"
 			onclick={collapse}
 		>
-			<svg
-				class="fill-white group-hover:fill-accent"
-				xmlns="http://www.w3.org/2000/svg"
-				height="1.2em"
-				viewBox="0 0 384 512"
-				aria-hidden="true"
-				><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-					d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z"
-				/></svg
-			>
+			<X size={20} class="text-foreground group-hover:text-accent" />
 		</button>
 	{/if}
 </form>

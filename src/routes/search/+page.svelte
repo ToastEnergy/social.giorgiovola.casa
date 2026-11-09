@@ -7,10 +7,12 @@
 	let { data }: PageProps = $props();
 
 	const nf = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+
 	const nothing = $derived(data.users.length === 0 && data.hashtags.length === 0);
 </script>
 
-<form class="mb-5 flex" action="/search" role="search">
+<!-- touch devices have the search bar in the top row (MobileHeader) instead -->
+<form class="mb-5 flex pointer-coarse:hidden" action="/search" role="search">
 	<input
 		class="input"
 		type="search"
@@ -40,7 +42,7 @@
 				{#each data.users as user (user.username)}
 					<li>
 						<a
-							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+							class="flex items-center gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 							href="/@{user.username}"
 							use:profileHover={user.username}
 						>
@@ -68,7 +70,7 @@
 		{#each data.hashtags as hashtag (hashtag.tag)}
 			<li>
 				<a
-					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-black hover:no-underline"
+					class="flex items-center justify-between gap-2.5 rounded-md p-2.5 text-foreground hover:bg-white/5 hover:no-underline"
 					href={hashtagHref(hashtag.tag)}
 				>
 					<span class="min-w-0 truncate font-bold">#{hashtag.tag}</span>

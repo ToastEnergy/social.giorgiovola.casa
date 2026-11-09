@@ -7,9 +7,31 @@ const optional = (input: string | undefined) => input ?? '';
 
 export const variables = defineEnvVars({
 	PUBLIC_URL: { public: true, schema: optional },
+	// the search box's placeholder, shown in the browser too
+	PUBLIC_SEARCH_PLACEHOLDER: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Giorgiocerca qualcosa'
+	},
+	// the placeholder of the reply bar on an open post (touch devices)
+	PUBLIC_REPLY_PLACEHOLDER: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Giorgia un commento'
+	},
+	// shown under an open post that has no replies yet
+	PUBLIC_NO_REPLIES_MESSAGE: {
+		public: true,
+		schema: (input: string | undefined) => input || 'Nessuno ha ancora giorgiato qui'
+	},
 	SIGNUP_PASSWORD: { schema: optional },
 	DISCORD_WEBHOOK_URL: { schema: optional },
 	ADDRESS_HEADER: { schema: optional },
+	// the bucket for avatars and images, the local disk when empty. The schemas can't see each
+	// other, so checkStorageConfig (src/lib/server/storage.ts) refuses an incomplete set at startup
+	S3_BUCKET: { schema: optional },
+	S3_ENDPOINT: { schema: optional },
+	S3_REGION: { schema: (input: string | undefined) => input || 'auto' },
+	S3_ACCESS_KEY_ID: { schema: optional },
+	S3_SECRET_ACCESS_KEY: { schema: optional },
 	DATABASE_URL: {
 		// server modules are imported during `vite build`, when no database is configured
 		schema: (input: string | undefined) => {

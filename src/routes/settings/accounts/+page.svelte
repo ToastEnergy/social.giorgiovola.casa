@@ -8,11 +8,10 @@
 	import { page } from '$app/state';
 	import { api, messageOf } from '#lib/api.js';
 	import { switchTo } from '#lib/accounts.js';
+	import { hintClass, sectionClass } from '#lib/settings.js';
 
 	let { data }: PageProps = $props();
 
-	const sectionClass = 'mb-10 flex flex-col gap-3';
-	const hintClass = 'text-[0.85em] text-muted';
 	const rowClass = 'flex flex-col gap-2.5 rounded-md border p-2';
 
 	let accounts = $derived(data.accounts as SwitcherAccount[]);
@@ -144,7 +143,10 @@
 								{/if}
 							</span>
 						</div>
-						<UnreadBadges notifications={profile.unread} messages={profile.unreadMessages} />
+						<UnreadBadges
+							notifications={profile.unread}
+							messages={profile.unreadMessages + profile.unreadReactions}
+						/>
 						<div class="flex flex-wrap items-center justify-end gap-1.5">
 							{#if profile.active}
 								<span class="text-[0.8em] text-accent">in use</span>
@@ -233,7 +235,7 @@
 		</ul>
 
 		{#if canCreate}
-			<form method="POST" class="mt-2.5 flex flex-col gap-3" onsubmit={create}>
+			<form class="mt-2.5 flex flex-col gap-3" onsubmit={create}>
 				<h3>New identity</h3>
 				<input
 					class="input"
@@ -268,7 +270,9 @@
 				{@const notifications =
 					account.unread + account.identities.reduce((n, i) => n + i.unread, 0)}
 				{@const messages =
-					account.unreadMessages + account.identities.reduce((n, i) => n + i.unreadMessages, 0)}
+					account.unreadMessages +
+					account.unreadReactions +
+					account.identities.reduce((n, i) => n + i.unreadMessages + i.unreadReactions, 0)}
 				<li class="{rowClass} border-line">
 					<div class="flex items-center gap-2.5">
 						<Avatar user={account} size={40} />
@@ -288,7 +292,7 @@
 						<Button
 							size="sm"
 							disabled={busy}
-							onclick={() => switchProfile(account.username, '/accounts')}>Switch</Button
+							onclick={() => switchProfile(account.username, '/settings/accounts')}>Switch</Button
 						>
 					</div>
 				</li>

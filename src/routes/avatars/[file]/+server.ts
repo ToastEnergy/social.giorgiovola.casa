@@ -1,9 +1,8 @@
 import type { RequestHandler } from './$types';
-import fs from 'fs';
-import path from 'path';
+import * as storage from '#lib/server/storage.js';
 
-// adapter-node only serves files that existed at build time, so avatars uploaded
-// at runtime (stored in static/avatars) have to be served by a route.
+// adapter-node only serves files that existed at build time, so avatars uploaded at runtime
+// (in the storage module, static/avatars on local disk) have to be served by a route.
 const types: Record<string, string> = {
 	png: 'image/png',
 	jpg: 'image/jpeg',
@@ -13,18 +12,17 @@ const types: Record<string, string> = {
 	avif: 'image/avif'
 };
 
+const FILE_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+
 export const GET: RequestHandler = async ({ params }) => {
-	const file = path.basename(params.file);
+	const file = params.file;
 	const ext = file.split('.').pop()?.toLowerCase() ?? '';
 	const type = types[ext];
-	if (!type || file !== params.file) return new Response('Not found', { status: 404 });
+	if (!type || !FILE_RE.test(file)) return new Response('Not found', { status: 404 });
 
-	try {
-		const data = await fs.promises.readFile(path.join('static', 'avatars', file));
-		return new Response(data, {
-			headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000' }
-		});
-	} catch {
-		return new Response('Not found', { status: 404 });
-	}
+	const object = await storage.get(`avatars/${file}`);
+	if (!object) return new Response('Not found', { status: 404 });
+	return new Response(object.body, {
+		headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000' }
+	});
 };

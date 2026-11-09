@@ -186,6 +186,35 @@ async function withLinkedPosts(found: Post[]): Promise<Post[]> {
 	}));
 }
 
+export const MAX_ANCESTORS = 50;
+
+/**
+ * The posts a reply answers, up its thread: the root first, its own parent last. At most `limit`
+ * of the nearest ones; when the chain is longer the first one still has a `reply_to`. Null when
+ * the post doesn't exist. Deleting a post deletes its replies, so the chain has no holes.
+ */
+export async function getAncestors(
+	postId: number,
+	loggedUser: Pick<User, 'id'> | null,
+	limit: number
+): Promise<Post[] | null> {
+	// one walk up the reply_to links, bounded by the depth so it always ends
+	const chain = await db.execute<{ id: number; depth: number }>(sql`
+		WITH RECURSIVE chain(id, reply_to, depth) AS (
+			SELECT p.id, p.reply_to, 0 FROM posts p WHERE p.id = ${postId}
+			UNION ALL
+			SELECT p.id, p.reply_to, c.depth + 1
+			FROM posts p INNER JOIN chain c ON p.id = c.reply_to
+			WHERE c.depth < ${limit}
+		)
+		SELECT id, depth FROM chain`);
+	if (!chain.some((row) => row.depth === 0)) return null;
+	const depths = new Map(chain.filter((row) => row.depth > 0).map((row) => [row.id, row.depth]));
+	if (!depths.size) return [];
+	const found = await getPosts({ loggedUser, where: inArray(posts.id, [...depths.keys()]) });
+	return found.sort((a, b) => (depths.get(b.id) ?? 0) - (depths.get(a.id) ?? 0));
+}
+
 export type TimelineOptions = {
 	loggedUser?: Pick<User, 'id'> | null;
 	/** whose posts and regiorgs: a condition on a user id column */

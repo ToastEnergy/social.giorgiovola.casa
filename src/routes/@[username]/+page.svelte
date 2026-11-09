@@ -4,9 +4,7 @@
 	import Posts from '#lib/components/Posts.svelte';
 	import Post from '#lib/components/Post.svelte';
 	import { user } from '#lib/store.js';
-	import { goto, invalidateAll } from '$app/navigation';
 	import { api, messageOf } from '#lib/api.js';
-	import { userOf, type Me } from '#lib/me.js';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import ModerationControls from '#lib/components/ModerationControls.svelte';
 	import { getAvatar, websiteLabel } from '#lib/utils.js';
@@ -14,7 +12,6 @@
 
 	let { data }: PageProps = $props();
 
-	let editing = $state(false);
 	let error: string | null = $state(null);
 	let profile = $derived(data.user);
 	// writable derived: reset on navigation, updated by the follow button
@@ -42,9 +39,6 @@
 		return names[0] ?? '';
 	});
 
-	// identities have no email or password of their own
-	let identity = $derived(!!$user && $user.owner_id !== null);
-
 	async function toggleFollow() {
 		followBusy = true;
 		try {
@@ -68,65 +62,6 @@
 		// the realtime stream and the whole page belong to the account that was signed in
 		location.href = '/';
 	}
-
-	async function updateUser(e: SubmitEvent) {
-		e.preventDefault();
-		const form = new FormData(e.target as HTMLFormElement);
-		const field = (name: string) => String(form.get(name) ?? '');
-		const avatar = form.get('avatar') as File;
-
-		if (avatar.size > 1024 * 1024 * 10) {
-			error = 'Avatar too big, max size is 10mb';
-			return;
-		}
-		if (!field('fullName') || !field('username') || (!identity && !field('email'))) return;
-		const emailChanged = !identity && field('email').trim() !== $user?.email;
-		if (emailChanged && !field('currentPassword')) {
-			error = 'Enter your current password to change your email';
-			return;
-		}
-		if (field('password')) {
-			if (field('password') !== field('confirmPassword')) {
-				error = 'Passwords do not match';
-				return;
-			}
-			if (!field('currentPassword')) {
-				error = 'Enter your current password to change it';
-				return;
-			}
-		}
-
-		try {
-			if (avatar.size > 0) {
-				const upload = new FormData();
-				upload.set('avatar', avatar);
-				await api('me/avatar', { method: 'PUT', body: upload });
-			}
-			const me = await api<Me>('me', {
-				method: 'PATCH',
-				json: {
-					name: field('fullName'),
-					username: field('username'),
-					bio: field('bio'),
-					website: field('website'),
-					...(identity ? {} : { email: field('email') }),
-					...(emailChanged ? { current_password: field('currentPassword') } : {})
-				}
-			});
-			if (field('password'))
-				await api('me/password', {
-					method: 'PUT',
-					json: { current_password: field('currentPassword'), password: field('password') }
-				});
-			$user = userOf(me);
-			editing = false;
-			error = null;
-			if (me.user.username !== profile.username) await goto(`/@${me.user.username}`);
-			else await invalidateAll();
-		} catch (e) {
-			error = messageOf(e, 'Could not save your profile');
-		}
-	}
 </script>
 
 {#if error}
@@ -146,195 +81,69 @@
 		<Avatar size={60} user={profile} clickable={false} />
 	</button>
 
-	{#if !editing}
-		<div class="min-w-0 [grid-area:info]">
-			<h2 class="break-words">{profile.name}</h2>
-			<p>
-				@{profile.username}
-				{#if data.bot}
-					<span
-						class="ml-1 rounded-full border border-accent px-2 align-middle text-[0.75em] text-accent"
-						>bot</span
-					>
-				{/if}
-			</p>
-			{#if bio}
-				<p class="mt-2 break-words whitespace-pre-line">{bio}</p>
-			{/if}
-			{#if website}
-				<a
-					class="mt-1 block break-all"
-					href={website}
-					target="_blank"
-					rel="noopener noreferrer nofollow ugc">{websiteLabel(website)}</a
+	<div class="min-w-0 [grid-area:info]">
+		<h2 class="break-words">{profile.name}</h2>
+		<p>
+			@{profile.username}
+			{#if data.bot}
+				<span
+					class="ml-1 rounded-full border border-accent px-2 align-middle text-[0.75em] text-accent"
+					>bot</span
 				>
 			{/if}
-			<p class="mt-1 flex gap-3 text-[0.9em] text-muted">
-				<a class="text-inherit" href="/@{profile.username}/following"
-					><b class="text-foreground">{nf.format(follow.following)}</b> following</a
-				>
-				<a class="text-inherit" href="/@{profile.username}/followers"
-					><b class="text-foreground">{nf.format(follow.followers)}</b>
-					{follow.followers === 1 ? 'follower' : 'followers'}</a
-				>
-			</p>
-			{#if data.followedBy.total > 0}
-				<a
-					class="mt-2 flex items-center gap-2.5 text-[0.85em] text-muted"
-					href="/@{profile.username}/followers/known"
-				>
-					<span class="flex shrink-0">
-						{#each data.followedBy.users as u, i (u.username)}
-							<span class="rounded-full ring-2 ring-background {i > 0 ? '-ml-2' : ''}">
-								<Avatar size={24} user={u} clickable={false} />
-							</span>
-						{/each}
-					</span>
-					<span>Followed by {followedByText}</span>
-				</a>
-			{/if}
-		</div>
-		{#if $user && data.self}
-			<div class="flex gap-2.5 self-center justify-self-end [grid-area:actions] sm:self-start">
-				<Button
-					size="sm"
-					onclick={() => {
-						editing = true;
-					}}>Edit</Button
-				>
-				<Button variant="danger" size="sm" onclick={logout}>Logout</Button>
-			</div>
-		{:else if $user}
-			<div class="flex gap-2.5 self-center justify-self-end [grid-area:actions] sm:self-start">
-				<Button
-					size="sm"
-					variant={follow.followed ? 'default' : 'primary'}
-					disabled={followBusy}
-					onclick={toggleFollow}>{follow.followed ? 'Unfollow' : 'Follow'}</Button
-				>
-				<Button size="sm" href={`/messages/${profile.username}`}>Message</Button>
-			</div>
+		</p>
+		{#if bio}
+			<p class="mt-2 break-words whitespace-pre-line">{bio}</p>
 		{/if}
-	{:else}
-		<form class="flex flex-col gap-3.75 [grid-area:info]" onsubmit={updateUser}>
-			<div class="flex flex-col">
-				<label class="text-[0.8em] opacity-80" for="avatar">Avatar</label>
-				<input
-					class="border-b border-[#ccc] outline-none file:mr-1 file:cursor-pointer file:rounded-sm file:border file:border-line file:px-1.5"
-					name="avatar"
-					id="avatar"
-					type="file"
-					accept="image/*"
-				/>
-			</div>
-			<div class="flex flex-col">
-				<label class="text-[0.8em] opacity-80" for="fullName">Name</label>
-				<input
-					class="border-b border-[#ccc] outline-none"
-					id="fullName"
-					placeholder="Giorgio"
-					name="fullName"
-					type="text"
-					value={profile.name}
-					required
-				/>
-			</div>
-			<div class="flex flex-col">
-				<label class="text-[0.8em] opacity-80" for="username">Username</label>
-				<input
-					class="border-b border-[#ccc] outline-none"
-					id="username"
-					placeholder="Infinit7Even"
-					name="username"
-					type="text"
-					value={profile.username}
-					required
-				/>
-			</div>
-			<div class="flex flex-col">
-				<label class="text-[0.8em] opacity-80" for="bio">Bio</label>
-				<!-- same limit as LIMITS.bio, enforced on the server; prettier 2 would self-close it -->
-				<!-- prettier-ignore -->
-				<textarea
-					class="resize-none border-b border-[#ccc] outline-none"
-					id="bio"
-					name="bio"
-					rows="3"
-					maxlength="160"
-					placeholder="A few words about you"
-					value={bio}
-				></textarea>
-			</div>
-			<div class="flex flex-col">
-				<label class="text-[0.8em] opacity-80" for="website">Website</label>
-				<input
-					class="border-b border-[#ccc] outline-none"
-					id="website"
-					name="website"
-					type="text"
-					inputmode="url"
-					maxlength="200"
-					placeholder="giorgiovola.casa"
-					value={website}
-				/>
-			</div>
-			{#if !identity}
-				<div class="flex flex-col">
-					<label class="text-[0.8em] opacity-80" for="email">Email</label>
-					<input
-						class="border-b border-[#ccc] outline-none"
-						id="email"
-						placeholder="social@giorgiovola.casa"
-						name="email"
-						type="email"
-						value={$user?.email}
-						required
-					/>
-				</div>
-				<div class="flex flex-col">
-					<label class="text-[0.8em] opacity-80" for="password">New password</label>
-					<input
-						class="border-b border-[#ccc] outline-none"
-						placeholder="G1*rg!07"
-						id="password"
-						name="password"
-						type="password"
-						autocomplete="new-password"
-					/>
-				</div>
-				<div class="flex flex-col">
-					<label class="text-[0.8em] opacity-80" for="currentPassword"
-						>Current password (to change your email or password)</label
-					>
-					<input
-						class="border-b border-[#ccc] outline-none"
-						id="currentPassword"
-						name="currentPassword"
-						type="password"
-						autocomplete="current-password"
-					/>
-				</div>
-				<div class="flex flex-col">
-					<label class="text-[0.8em] opacity-80" for="password">Confirm new password</label>
-					<input
-						class="border-b border-[#ccc] outline-none"
-						placeholder="G1*rg!07"
-						name="confirmPassword"
-						type="password"
-					/>
-				</div>
-			{/if}
-			<div>
-				<Button type="submit">Save</Button>
-				<Button
-					variant="danger"
-					type="button"
-					onclick={() => {
-						editing = false;
-					}}>Cancel</Button
-				>
-			</div>
-		</form>
+		{#if website}
+			<a
+				class="mt-1 block break-all"
+				href={website}
+				target="_blank"
+				rel="noopener noreferrer nofollow ugc">{websiteLabel(website)}</a
+			>
+		{/if}
+		<p class="mt-1 flex gap-3 text-[0.9em] text-muted">
+			<a class="text-inherit" href="/@{profile.username}/following"
+				><b class="text-foreground">{nf.format(follow.following)}</b> following</a
+			>
+			<a class="text-inherit" href="/@{profile.username}/followers"
+				><b class="text-foreground">{nf.format(follow.followers)}</b>
+				{follow.followers === 1 ? 'follower' : 'followers'}</a
+			>
+		</p>
+		{#if data.followedBy.total > 0}
+			<a
+				class="mt-2 flex items-center gap-2.5 text-[0.85em] text-muted"
+				href="/@{profile.username}/followers/known"
+			>
+				<span class="flex shrink-0">
+					{#each data.followedBy.users as u, i (u.username)}
+						<span class="rounded-full ring-2 ring-background {i > 0 ? '-ml-2' : ''}">
+							<Avatar size={24} user={u} clickable={false} />
+						</span>
+					{/each}
+				</span>
+				<span>Followed by {followedByText}</span>
+			</a>
+		{/if}
+	</div>
+	{#if $user && data.self}
+		<div class="flex gap-2.5 self-center justify-self-end [grid-area:actions] sm:self-start">
+			<!-- editing lives in the settings; this is the shortcut people look for on their profile -->
+			<Button size="sm" href="/settings/profile">Edit profile</Button>
+			<Button variant="danger" size="sm" onclick={logout}>Logout</Button>
+		</div>
+	{:else if $user}
+		<div class="flex gap-2.5 self-center justify-self-end [grid-area:actions] sm:self-start">
+			<Button
+				size="sm"
+				variant={follow.followed ? 'default' : 'primary'}
+				disabled={followBusy}
+				onclick={toggleFollow}>{follow.followed ? 'Unfollow' : 'Follow'}</Button
+			>
+			<Button size="sm" href={`/messages/${profile.username}`}>Message</Button>
+		</div>
 	{/if}
 </div>
 

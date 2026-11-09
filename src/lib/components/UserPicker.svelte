@@ -1,4 +1,5 @@
 <script lang="ts">
+	import X from '@lucide/svelte/icons/x';
 	import { onDestroy } from 'svelte';
 	import Avatar from './Avatar.svelte';
 	import type { ChatPeer } from '#lib/types.js';
@@ -70,7 +71,7 @@
 				>
 					<Avatar user={peer} size={24} clickable={false} />
 					{peer.name}
-					<span aria-hidden="true" class="opacity-70">×</span>
+					<X size={14} class="opacity-70" />
 				</button>
 			{/each}
 		</div>

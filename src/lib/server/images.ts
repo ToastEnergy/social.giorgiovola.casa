@@ -1,12 +1,9 @@
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import sharp from 'sharp';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { db } from './db/index.js';
-
-export const UPLOAD_DIR = 'static/uploads';
+import * as storage from './storage.js';
 
 /**
  * Formats accepted on upload. Everything is re-encoded to WebP before it's stored; the other
@@ -134,27 +131,60 @@ export async function toWebp(
 export const POST_IMAGE_SIZE = 2048;
 export const AVATAR_SIZE = 512;
 
-/** Writes a WebP image under a random name; returns the URL path stored with the post. */
-export async function saveUpload(buf: Buffer): Promise<string> {
-	const file = `${crypto.randomUUID()}.webp`;
-	await fs.promises.mkdir(UPLOAD_DIR, { recursive: true });
-	await fs.promises.writeFile(path.join(UPLOAD_DIR, file), buf);
-	return `/uploads/${file}`;
+/**
+ * Kinds of uploaded images: the storage key prefix and the URL path they're served under. Every
+ * upload is a WebP file named by a random uuid.
+ */
+const UPLOAD_KINDS = {
+	// post images, public
+	uploads: { key: 'uploads/', path: '/uploads/' },
+	// message images, only served to the conversation (src/routes/dm-uploads)
+	dm: { key: 'dm/', path: '/dm-uploads/' }
+} as const;
+
+export type UploadKind = keyof typeof UPLOAD_KINDS;
+
+/**
+ * The storage key for an upload's URL path (as saveUpload returns it), null for paths that aren't
+ * ours.
+ */
+export function uploadKey(url: string): string | null {
+	for (const kind of Object.values(UPLOAD_KINDS)) {
+		if (!url.startsWith(kind.path)) continue;
+		const file = url.slice(kind.path.length);
+		return uploadType(file) ? kind.key + file : null;
+	}
+	return null;
 }
 
-/** Removes uploaded files by their URL path. Paths that aren't ours are ignored. */
+/** Stores a WebP image of `kind` under a random name; returns its URL path. */
+export async function storeUpload(kind: UploadKind, data: Uint8Array): Promise<string> {
+	const file = `${crypto.randomUUID()}.webp`;
+	await storage.put(UPLOAD_KINDS[kind].key + file, data, 'image/webp');
+	return UPLOAD_KINDS[kind].path + file;
+}
+
+/** Writes a post image; returns the URL path stored with it. */
+export const saveUpload = (buf: Buffer) => storeUpload('uploads', buf);
+
+/** Writes a message image; returns the URL path stored with it. */
+export const saveMessageUpload = (buf: Buffer) => storeUpload('dm', buf);
+
+/**
+ * Removes uploaded files by their URL path. Paths that aren't ours are ignored. A message image
+ * is served from `uploads/` until its file is moved to `dm/`, so both are removed.
+ */
 export async function removeUploads(urls: string[]) {
-	await Promise.all(
-		urls.map(async (url) => {
-			const file = path.basename(url);
-			if (url !== `/uploads/${file}` || !uploadType(file)) return;
-			try {
-				await fs.promises.rm(path.join(UPLOAD_DIR, file), { force: true });
-			} catch (e) {
-				console.error('failed to remove upload', file, e);
-			}
-		})
-	);
+	const keys = urls.flatMap((url) => {
+		const key = uploadKey(url);
+		if (!key) return [];
+		return key.startsWith('dm/') ? [key, 'uploads/' + key.slice('dm/'.length)] : [key];
+	});
+	try {
+		await storage.remove(keys);
+	} catch (e) {
+		console.error('failed to remove uploads', keys, e);
+	}
 }
 
 /**
@@ -169,6 +199,21 @@ export async function imagesOfPostTrees(where: ReturnType<typeof sql>): Promise<
 			SELECT p.id, p.images FROM posts p INNER JOIN tree ON p.reply_to = tree.id
 		)
 		SELECT unnest(images) AS image FROM tree
+	`);
+	return rows.map((r) => r.image);
+}
+
+/**
+ * Images of the direct messages the profile sent or received and of the group messages it sent:
+ * they go away with it (ON DELETE CASCADE). Call before deleting, then pass the result to
+ * removeUploads once the delete succeeded.
+ */
+export async function imagesOfMessagesOf(userId: number): Promise<string[]> {
+	const rows = await db.execute<{ image: string }>(sql`
+		SELECT unnest(images) AS image FROM messages
+		WHERE sender_id = ${userId} OR recipient_id = ${userId}
+		UNION ALL
+		SELECT unnest(images) AS image FROM group_messages WHERE sender_id = ${userId}
 	`);
 	return rows.map((r) => r.image);
 }

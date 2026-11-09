@@ -5,7 +5,7 @@ import { extractHashtags } from '#lib/hashtags.js';
 import { db, polls, post_hashtags, posts, users } from './db/index.js';
 import { ApiError, fail, readJson } from './api.js';
 import { checkPostRefs, createPost, deletePost, getPosts } from './posts.js';
-import { LIMITS, parseId, parsePoll } from './validation.js';
+import { LIMITS, normalizePostContent, parseId, parsePoll } from './validation.js';
 import {
 	ImageError,
 	POST_IMAGE_SIZE,
@@ -66,7 +66,7 @@ export async function submitPost(
 	const staged = unwrap(parseStagedIds(body.uploads));
 	if (body.content != null && typeof body.content !== 'string')
 		fail(400, 'content must be a string');
-	const content = typeof body.content === 'string' ? body.content.trim() : '';
+	const content = typeof body.content === 'string' ? normalizePostContent(body.content) : '';
 	if (!content && files.length === 0 && staged.length === 0) fail(400, 'Missing content');
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
@@ -137,7 +137,7 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 		.where(eq(posts.id, postId));
 	if (!post) fail(404, 'Post not found');
 	if (post.user_id !== user.id) fail(403, 'You can only edit your own posts');
-	const content = rawContent.trim();
+	const content = normalizePostContent(rawContent);
 	// the same rules as a new post: the text of a poll is its question
 	if (!content && post.poll !== null) fail(400, 'A poll needs a question');
 	if (!content && post.images.length === 0) fail(400, 'Missing content');

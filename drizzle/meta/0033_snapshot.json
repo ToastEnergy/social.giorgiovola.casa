@@ -1,5 +1,5 @@
 {
-  "id": "6755c1ac-d46d-4c28-8b1d-3233f3b20747",
+  "id": "fe16d554-d95c-45ef-8992-96eb22785cfa",
   "prevId": "09fe784a-dcdd-402a-a22d-cbe1f6446271",
   "version": "7",
   "dialect": "postgresql",
@@ -489,9 +489,32 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "group_message_reactions_unread": {
+          "name": "group_message_reactions_unread",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"group_message_reactions\".\"read_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "group_message_reactions_message_id_group_messages_id_fk": {
           "name": "group_message_reactions_message_id_group_messages_id_fk",
@@ -1002,56 +1025,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.link_previews": {
-      "name": "link_previews",
-      "schema": "",
-      "columns": {
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "image": {
-          "name": "image",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "site_name": {
-          "name": "site_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.message_reactions": {
       "name": "message_reactions",
       "schema": "",
@@ -1080,9 +1053,32 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "message_reactions_unread": {
+          "name": "message_reactions_unread",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"message_reactions\".\"read_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "message_reactions_message_id_messages_id_fk": {
           "name": "message_reactions_message_id_messages_id_fk",

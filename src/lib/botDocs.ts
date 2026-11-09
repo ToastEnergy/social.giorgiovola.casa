@@ -176,7 +176,7 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 		id: 'messages',
 		title: 'Direct messages',
 		intro:
-			'Anyone can message a bot from the web app, and a bot can message anyone who has not blocked it. Messages are text only for bots; people can attach images, which a bot sees as paths in "images".',
+			'Anyone can message a bot from the web app, and a bot can message anyone who has not blocked it. Messages are text only for bots; people can attach images, which a bot sees as paths in "images". Message images are private: fetch one by sending GET to the site origin plus the path, with the bot token as usual; anyone outside the conversation, or a bot no longer in the group, gets a 404, and an invalid token a 401. Post images are public and load whatever token is sent.',
 		endpoints: [
 			{
 				method: 'GET',
@@ -381,7 +381,7 @@ export const messageShape = `{
   "sender": "alice",       // usernames, not ids
   "recipient": "mybot",
   "content": "hi!",        // may be empty when the message only has images
-  "images": ["/uploads/…"],
+  "images": ["/dm-uploads/…"],   // private: fetch with the bot's token
   "created_at": "ISO date",
   "linked_post": {         // the first post on this site linked in "content", or null
     "id": 57, "user": { "name", "username", "avatar" },
@@ -404,7 +404,7 @@ export const groupMessageShape = `{
   "sender": { "username": "alice", "name": "Alice", "avatar": "/avatars/5.webp?hash=…" | null },
   "target": { "username", "name", "avatar" } | null,   // who was added or removed, else null
   "content": "hi all",     // for "created" and "renamed": the group name
-  "images": ["/uploads/…"],
+  "images": ["/dm-uploads/…"],   // private, like in Message
   "created_at": "ISO date",
   "linked_post": { … } | null,   // like in Message
   "reply_to": {            // the message this one replies to, or null
@@ -733,6 +733,13 @@ export const v1Groups: V1Group[] = [
 				auth: 'public',
 				summary: 'replies, ratioing ones first'
 			},
+			{
+				method: 'GET',
+				path: '/api/v1/posts/:id/ancestors',
+				auth: 'public',
+				summary:
+					'the thread above a reply, root first (`?limit=` 1–50, default 20); a first item that still has `reply_to` means the chain goes on'
+			},
 			{ method: 'GET', path: '/api/v1/posts/:id/likes', auth: 'public', summary: 'who liked it' },
 			{
 				method: 'GET',
@@ -788,6 +795,13 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/uploads/:id',
 				auth: 'signed in',
 				summary: 'drop an unused upload'
+			},
+			{
+				method: 'GET',
+				path: '/dm-uploads/:file',
+				auth: 'in the conversation',
+				summary:
+					'a message image (cookie or bearer token, private caching); 404 when missing or not yours, 401 for an invalid token. Older message images under `/uploads/` get the same check; post images there load whatever the token'
 			}
 		]
 	},
@@ -883,7 +897,7 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/notifications/unread',
 				auth: 'signed in',
-				summary: 'unread notifications and messages'
+				summary: 'unread notifications, messages and reactions to your messages'
 			},
 			{
 				method: 'POST',
@@ -907,7 +921,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/conversations',
 				auth: 'signed in',
-				summary: 'direct conversations and groups'
+				summary:
+					'direct conversations and groups, latest activity first (reactions included), with `unread` and `unread_reactions`'
 			},
 			{
 				method: 'GET',
@@ -944,7 +959,7 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/conversations/:username/read',
 				auth: 'signed in',
-				summary: 'mark read'
+				summary: 'mark their messages, and their reactions to yours, read'
 			},
 			{
 				method: 'PUT / DELETE',
@@ -988,7 +1003,12 @@ export const v1Groups: V1Group[] = [
 				auth: 'member',
 				summary: 'react / remove it'
 			},
-			{ method: 'POST', path: '/api/v1/groups/:id/read', auth: 'member', summary: 'mark read' },
+			{
+				method: 'POST',
+				path: '/api/v1/groups/:id/read',
+				auth: 'member',
+				summary: 'mark messages, and reactions to yours, read'
+			},
 			{
 				method: 'PUT / DELETE',
 				path: '/api/v1/groups/:id/mute',

@@ -1,4 +1,14 @@
 <script lang="ts">
+	import Reply from '@lucide/svelte/icons/reply';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Trash from '@lucide/svelte/icons/trash';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import X from '@lucide/svelte/icons/x';
 	import { onMount, tick } from 'svelte';
 	import Avatar from './Avatar.svelte';
 	import LoadingScreen from './LoadingScreen.svelte';
@@ -6,6 +16,8 @@
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
 	import QuoteCard from './QuoteCard.svelte';
 	import { onRealtime } from '#lib/realtime.js';
+	import BottomNav from './BottomNav.svelte';
+	import { keyboard as screenKeyboard, writingHandlers } from '#lib/keyboard.svelte.js';
 	import { isMobile, messagesCount, user } from '#lib/store.js';
 	import type {
 		ChatMessage,
@@ -105,6 +117,10 @@
 	const SEND_IN_MS = 380;
 	/** the visible height, which shrinks while the on-screen keyboard is open */
 	let viewportHeight = $state<number | null>(null);
+	// the on-screen keyboard is open: the bottom bar steps aside
+	let keyboard = $state(false);
+	// leaving the chat doesn't always blur the input first (it hides the bottom bar while focused)
+	$effect(() => () => screenKeyboard.setWriting(false));
 	// the header's three dots menu: mute, block or the group's info
 	let optionsOpen = $state(false);
 	let options: HTMLDivElement | undefined = $state();
@@ -278,6 +294,9 @@
 		messages = messages.map((m) => (m.id === id ? { ...m, reactions } : m));
 		await tick();
 		if (follow) glideToBottom();
+		// a reaction to your message is unread until you see the chat, like a message
+		const message = messages.find((m) => m.id === id);
+		if (message && isMine(message)) markRead();
 	}
 
 	/** Sets your reaction to a message; picking the one you already have takes it back. */
@@ -1060,6 +1079,13 @@
 		window.addEventListener('drop', onDrop);
 		listenTyping();
 		openAtUnread();
+		// with a mouse, start typing right away (the page is keyed, so this runs on every switch
+		// too). Not on touch, where it would pop the keyboard up, and not if focus is elsewhere.
+		// sveltekit blurs the clicked link before the update and skips its own focus reset when
+		// something is focused, so this sticks
+		const active = document.activeElement;
+		if (matchMedia('(pointer: fine)').matches && (!active || active === document.body))
+			textarea?.focus({ preventScroll: true });
 
 		// fit the chat to what's visible above the keyboard: iOS (and Android without
 		// interactive-widget) only shrink the visual viewport, leaving the input under the keyboard
@@ -1068,6 +1094,7 @@
 			// pinch zoom also shrinks it, and must stay free to pan
 			if (!vv || vv.scale > 1.01) return;
 			viewportHeight = vv.height;
+			keyboard = window.innerHeight - vv.height > 120;
 			// the browser scrolls the page to show the focused input; the chat now fits, undo that
 			if (window.scrollY !== 0) window.scrollTo(0, 0);
 		};
@@ -1198,33 +1225,13 @@
 							: ''}"
 						style:--i={i}
 						onclick={action.run}
-						><svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-							>{#if action.icon === 'reply'}<path d="M9 14 4 9l5-5" /><path
-									d="M4 9h11a5 5 0 0 1 5 5v6"
-								/>{:else if action.icon === 'edit'}<path d="M12 20h9" /><path
-									d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"
-								/>{:else if action.icon === 'copy'}<rect
-									x="9"
-									y="9"
-									width="13"
-									height="13"
-									rx="2"
-								/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />{:else}<path
-									d="M3 6h18"
-								/><path d="M8 6V4h8v2" /><path
-									d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-								/><path d="M10 11v6" /><path d="M14 11v6" />{/if}</svg
-						>{action.label}</button
+						>{#if action.icon === 'reply'}<Reply
+								size={16}
+							/>{:else if action.icon === 'edit'}<Pencil
+								size={16}
+							/>{:else if action.icon === 'copy'}<Copy size={16} />{:else}<Trash
+								size={16}
+							/>{/if}{action.label}</button
 					>
 				{/each}
 			</div>
@@ -1297,10 +1304,14 @@
 	</div>
 {/if}
 
-<!-- 120px: the fixed header's offset and the padding of the layout's main column; narrow screens
-	hide the header in a chat (+layout), leaving only the padding -->
+<!-- on touch devices the bottom bar ends the column, right under the input, and reaches over the
+	column's 20px bottom padding. in the flow rather than fixed: the chat's height follows the
+	visual viewport, which a fixed bar doesn't (Safari's toolbar)
+	120px: the fixed header's offset and the padding of the layout's main column; narrow screens
+	hide the header in a chat (+layout), leaving only the padding. on mouse devices the chat fills
+	its block (messages/+layout) -->
 <div
-	class="flex h-[calc(var(--vh,100dvh)-120px)] flex-col gap-2.5 max-lg:h-[calc(var(--vh,100dvh)-40px)]"
+	class="flex flex-col gap-2.5 not-pointer-coarse:h-full pointer-coarse:h-[calc(var(--vh,100dvh)-120px)] pointer-coarse:max-lg:h-[calc(var(--vh,100dvh)-40px-var(--bar))]"
 	style:--vh={viewportHeight ? `${viewportHeight}px` : undefined}
 >
 	<div class="flex items-center gap-2.5 border-b border-line pb-2.5">
@@ -1311,7 +1322,7 @@
 			title={$messagesCount > 0
 				? `Back to messages (${$messagesCount} unread)`
 				: 'Back to messages'}
-			><span class="text-[1.4em]">&larr;</span>
+			><ArrowLeft size={22} />
 			{#if $messagesCount > 0}
 				<span
 					class="rounded-full bg-accent px-1.5 text-[0.75em] leading-5 font-bold text-background"
@@ -1350,20 +1361,7 @@
 				aria-label="Chat options"
 				aria-haspopup="menu"
 				aria-expanded={optionsOpen}
-				onclick={() => (optionsOpen = !optionsOpen)}
-				><svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="1.2em"
-					height="1.2em"
-					viewBox="0 0 24 24"
-					fill="currentColor"
-					aria-hidden="true"
-					><circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle
-						cx="12"
-						cy="19"
-						r="2"
-					/></svg
-				></button
+				onclick={() => (optionsOpen = !optionsOpen)}><EllipsisVertical size="1.2em" /></button
 			>
 			{#if optionsOpen}
 				<div
@@ -1406,7 +1404,8 @@
 		</div>
 	</div>
 
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions (only keeps the keyboard open) -->
+	<!-- the mousedown handler only keeps the keyboard open -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<div
 		class="flex min-h-0 flex-1 flex-col gap-[5px] overflow-x-hidden overflow-y-auto overscroll-contain"
 		bind:this={list}
@@ -1477,20 +1476,11 @@
 				>
 					{#if swiped > 0}
 						<!-- the reply arrow uncovered by swiping, solid once letting go replies -->
-						<svg
-							class="absolute top-1/2 -translate-y-1/2"
+						<span
+							class="absolute top-1/2 flex -translate-y-1/2"
 							style:left={`${Math.min(swiped, SWIPE_REPLY) / 2 - 10}px`}
 							style:opacity={Math.min(1, swiped / SWIPE_REPLY)}
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 5 5v6" /></svg
+							aria-hidden="true"><Reply size={20} /></span
 						>
 					{/if}
 					<div
@@ -1644,20 +1634,7 @@
 								onclick={(e) => {
 									const bubble = e.currentTarget.parentElement?.previousElementSibling;
 									if (bubble instanceof HTMLElement) toggleMenu(message, bubble);
-								}}
-								><svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="18"
-									height="18"
-									viewBox="0 0 24 24"
-									fill="#d9d9d9"
-									aria-hidden="true"
-									><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle
-										cx="19"
-										cy="12"
-										r="1.8"
-									/></svg
-								></button
+								}}><Ellipsis size={18} class="text-foreground" /></button
 							>
 							{#if canWrite}
 								<button
@@ -1665,20 +1642,7 @@
 									class="flex size-8 cursor-pointer items-center justify-center rounded-full opacity-70 outline-none hover:bg-white/10 hover:opacity-100"
 									aria-label="Reply"
 									title="Reply"
-									onclick={() => startReply(message)}
-									><svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="18"
-										height="18"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										aria-hidden="true"
-										><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 5 5v6" /></svg
-									></button
+									onclick={() => startReply(message)}><Reply size={18} /></button
 								>
 							{/if}
 						</div>
@@ -1835,8 +1799,8 @@
 						aria-label="Remove image"
 						onmousedown={keepFocus}
 						onclick={() => removeAttachment(attachment)}
-						class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 text-[0.8rem] leading-none outline-none hover:bg-danger"
-						>×</button
+						class="absolute top-0.5 right-0.5 flex size-5 cursor-pointer items-center justify-center rounded-full bg-background/80 outline-none hover:bg-danger"
+						><X size={12} /></button
 					>
 				</div>
 			{/each}
@@ -1862,10 +1826,10 @@
 			</button>
 			<button
 				type="button"
-				class="cursor-pointer px-2.5 text-[1.2em] leading-none opacity-70 outline-none hover:opacity-100"
+				class="flex cursor-pointer items-center px-2.5 opacity-70 outline-none hover:opacity-100"
 				aria-label="Cancel editing"
 				title="Cancel editing"
-				onclick={stopEditing}>×</button
+				onclick={stopEditing}><X size={18} /></button
 			>
 		</div>
 	{/if}
@@ -1889,10 +1853,10 @@
 			</button>
 			<button
 				type="button"
-				class="cursor-pointer px-2.5 text-[1.2em] leading-none opacity-70 outline-none hover:opacity-100"
+				class="flex cursor-pointer items-center px-2.5 opacity-70 outline-none hover:opacity-100"
 				aria-label="Cancel reply"
 				title="Cancel reply"
-				onclick={() => (replyingTo = null)}>×</button
+				onclick={() => (replyingTo = null)}><X size={18} /></button
 			>
 		</div>
 	{/if}
@@ -1904,6 +1868,7 @@
 	{:else}
 		<form
 			class="flex items-end gap-2.5"
+			{...writingHandlers}
 			onsubmit={(e) => {
 				e.preventDefault();
 				send();
@@ -1925,21 +1890,7 @@
 				disabled={attachments.length >= MAX_IMAGES || !!editing}
 				onclick={() => fileInput?.click()}
 				class="flex size-[46px] shrink-0 cursor-pointer items-center justify-center rounded-[10px] border border-line bg-black/70 outline-none backdrop-blur-[2px] hover:border-accent focus-visible:border-accent disabled:cursor-default disabled:opacity-40 disabled:hover:border-line"
-				><svg
-					xmlns="http://www.w3.org/2000/svg"
-					height="20px"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="1.8"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					><rect x="3" y="3" width="18" height="18" rx="3" /><circle
-						cx="8.5"
-						cy="8.5"
-						r="1.5"
-					/><path d="M21 15l-5-5L5 21" /></svg
-				></button
+				><ImageIcon size={20} strokeWidth={1.8} /></button
 			>
 			<div
 				class="flex min-h-[46px] min-w-0 flex-1 items-center rounded-[10px] border border-line bg-black/70 backdrop-blur-[2px] focus-within:border-accent"
@@ -1964,18 +1915,16 @@
 				aria-label={editing ? 'Save' : 'Send'}
 				class="flex size-[46px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[10px] bg-accent text-background outline-none hover:brightness-110 focus-visible:brightness-110"
 				onmousedown={keepFocus}
-				>{#key sends}<svg
-						class={sends > 0 ? 'send-fly' : ''}
-						fill="currentColor"
-						xmlns="http://www.w3.org/2000/svg"
-						height="18px"
-						viewBox="0 0 512 512"
-						><!--! Font Awesome Free 6.4.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><path
-							d="M16.1 260.2c-22.6 12.9-20.5 47.3 3.6 57.3L160 376V479.3c0 18.1 14.6 32.7 32.7 32.7c9.7 0 18.9-4.3 25.1-11.8l62-74.3 123.9 51.6c18.9 7.9 40.8-4.5 43.9-24.7l64-416c1.9-12.1-3.4-24.3-13.5-31.2s-23.3-7.5-34-1.4l-448 256zm52.1 25.5L409.7 90.6 190.1 336l1.2 1L68.2 285.7zM403.3 425.4L236.7 355.9 450.8 116.6 403.3 425.4z"
-						/></svg
+				>{#key sends}<span class="flex {sends > 0 ? 'send-fly' : ''}"
+						><SendHorizontal size={18} /></span
 					>{/key}</button
 			>
 		</form>
+	{/if}
+	<!-- out of the way while a message is written, also where the page shrinks for the keyboard
+		instead (Android) -->
+	{#if !keyboard && !screenKeyboard.hideBar}
+		<BottomNav joined />
 	{/if}
 </div>
 

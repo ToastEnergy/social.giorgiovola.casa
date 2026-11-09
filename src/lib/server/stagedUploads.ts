@@ -1,26 +1,32 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
 	ImageError,
 	POST_IMAGE_SIZE,
-	UPLOAD_DIR,
+	type UploadKind,
 	removeUploads,
 	sniffImage,
+	storeUpload,
 	toWebp
 } from './images.js';
 import { LIMITS } from './validation.js';
 
 /**
- * Images uploaded as soon as they're picked in the composer, so posting only has to move them in
- * place. They're processed like any upload but kept out of the served directory and owned by
- * their uploader until a post or message claims them; unclaimed ones are deleted after a while.
+ * Images uploaded as soon as they're picked in the composer, so posting only has to store them.
+ * They're processed like any upload but kept in a local temporary directory and owned by their
+ * uploader until a post or message claims them; unclaimed ones are deleted after a while.
  * Kept in memory: the app runs as a single process (like the rate limits).
  */
 
-// inside UPLOAD_DIR so claiming is a rename on the same filesystem. The uploads route only serves
-// files directly in UPLOAD_DIR, so these can't be fetched
-const STAGING_DIR = path.join(UPLOAD_DIR, 'staged');
+// on local disk whatever the storage driver, so a staged image costs nothing in the bucket until
+// it's claimed. Named after the app's directory so two instances on one machine don't wipe each
+// other's on boot
+const STAGING_DIR = path.join(
+	os.tmpdir(),
+	`social-staged-${crypto.createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12)}`
+);
 const TTL_MS = 24 * 60 * 60 * 1000;
 
 type Staged = { userId: number; expires: number };
@@ -101,11 +107,15 @@ export function checkStaged(userId: number, ids: string[]): Response | null {
 }
 
 /**
- * Moves staged images in with the other uploads, in order, and returns their URL paths (as
+ * Stores staged images as uploads of `kind`, in order, and returns their URL paths (as
  * saveUpload does), or the 410 when one is gone. Delete them with removeUploads if the post or
  * message they're for then fails.
  */
-export async function claimStaged(userId: number, ids: string[]): Promise<string[] | Response> {
+export async function claimStaged(
+	userId: number,
+	ids: string[],
+	kind: UploadKind = 'uploads'
+): Promise<string[] | Response> {
 	const missing = checkStaged(userId, ids);
 	if (missing) return missing;
 	// taken off the map first, so two concurrent requests can't both claim one
@@ -113,9 +123,8 @@ export async function claimStaged(userId: number, ids: string[]): Promise<string
 	const urls: string[] = [];
 	try {
 		for (const id of ids) {
-			const file = `${crypto.randomUUID()}.webp`;
-			await fs.promises.rename(fileOf(id), path.join(UPLOAD_DIR, file));
-			urls.push(`/uploads/${file}`);
+			urls.push(await storeUpload(kind, await fs.promises.readFile(fileOf(id))));
+			await drop(id);
 		}
 	} catch (e) {
 		await removeUploads(urls);

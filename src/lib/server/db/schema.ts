@@ -38,7 +38,7 @@ export const users = pgTable(
 		website: text('website').notNull().default(''),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		// identities: extra profiles owned by an account, usable only by switching to them
-		// from the owning account (see src/routes/accounts)
+		// from the owning account (see src/routes/settings/accounts)
 		owner_id: integer('owner_id').references((): AnyPgColumn => users.id, { onDelete: 'cascade' }),
 		// bots are owned like identities but driven by the bot API (see bots below), never by
 		// switching to them
@@ -280,6 +280,8 @@ export const messages = pgTable(
 		index('messages_unread')
 			.on(t.recipient_id, t.sender_id)
 			.where(sql`${t.read_at} IS NULL`),
+		// finds the message an image belongs to, to check who may see it (src/routes/dm-uploads)
+		index('messages_images').using('gin', t.images),
 		check('messages_not_self', sql`${t.sender_id} != ${t.recipient_id}`)
 	]
 );
@@ -353,6 +355,8 @@ export const group_messages = pgTable(
 	},
 	(t) => [
 		index('group_messages_group_id').on(t.group_id, t.id),
+		// finds the message an image belongs to, like messages_images
+		index('group_messages_images').using('gin', t.images),
 		index('group_messages_reply_to_id')
 			.on(t.reply_to_id)
 			.where(sql`${t.reply_to_id} IS NOT NULL`),
@@ -364,6 +368,8 @@ export const group_messages = pgTable(
 );
 
 // Emoji reactions to messages: one per profile and message, changing it replaces the old one.
+// read_at: when the message's sender saw it. Unread reactions mark the chat unread without
+// touching where the chat reads from (messages.read_at / group_members.last_read_id).
 export const message_reactions = pgTable(
 	'message_reactions',
 	{
@@ -374,9 +380,15 @@ export const message_reactions = pgTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		emoji: text('emoji').notNull(),
-		created_at: timestamptz('created_at').notNull().defaultNow()
+		created_at: timestamptz('created_at').notNull().defaultNow(),
+		read_at: timestamptz('read_at')
 	},
-	(t) => [primaryKey({ columns: [t.message_id, t.user_id] })]
+	(t) => [
+		primaryKey({ columns: [t.message_id, t.user_id] }),
+		index('message_reactions_unread')
+			.on(t.message_id)
+			.where(sql`${t.read_at} IS NULL`)
+	]
 );
 
 export const group_message_reactions = pgTable(
@@ -389,9 +401,15 @@ export const group_message_reactions = pgTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		emoji: text('emoji').notNull(),
-		created_at: timestamptz('created_at').notNull().defaultNow()
+		created_at: timestamptz('created_at').notNull().defaultNow(),
+		read_at: timestamptz('read_at')
 	},
-	(t) => [primaryKey({ columns: [t.message_id, t.user_id] })]
+	(t) => [
+		primaryKey({ columns: [t.message_id, t.user_id] }),
+		index('group_message_reactions_unread')
+			.on(t.message_id)
+			.where(sql`${t.read_at} IS NULL`)
+	]
 );
 
 // Direct conversations a profile muted: no push for what peer_id sends, and its unread messages

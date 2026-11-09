@@ -40,9 +40,11 @@
 	"type": "module",
 	"dependencies": {
 		"@fontsource-variable/manrope": "^5.0.5",
+		"@lucide/svelte": "^1.70.0",
 		"@napi-rs/canvas": "^1.0.13",
 		"@simplewebauthn/browser": "^14.0.0",
 		"@simplewebauthn/server": "^14.0.3",
+		"aws4fetch": "^1.0.20",
 		"dotenv": "^16.3.1",
 		"drizzle-orm": "0.45.4",
 		"postgres": "^3.3.5",

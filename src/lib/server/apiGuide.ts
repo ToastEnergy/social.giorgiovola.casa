@@ -126,7 +126,7 @@ Post:
   {
     "id": 123,
     "user": { "id", "username", "name", "avatar", "bot": false, "created_at" },
-    "content": "text, may contain @mentions, #hashtags and links",
+    "content": "text, may contain @mentions, #hashtags, links and line breaks (\\n)",
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
@@ -186,12 +186,12 @@ Me (GET /me):
               identities and bots), "bot", "identity", "created_at" },
     "account": { "id", "username" } | null,   // null for bots
     "role": "user" | "mod" | "admin", "muted", "mute_reason",
-    "unread": { "notifications": 2, "messages": 5 },
+    "unread": { "notifications": 2, "messages": 5, "reactions": 1 },
     "auth": "token" | "bot" | "cookie" }
 
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
-    "content", "images": ["/uploads/…"], "created_at",
+    "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
                   "images": 2 } | null,
@@ -200,8 +200,8 @@ Message (direct message):
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
-    "renamed" | "owner", "sender": User, "target": User | null, "content", "images",
-    "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    "renamed" | "owner", "sender": User, "target": User | null, "content", "images" (like
+    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.
@@ -215,10 +215,17 @@ Group: { "id", "name", "owner": "alice" | null, "members": [User], "muted": fals
 
 Conversation (in GET /conversations):
   direct: { "peer": User, "preview", "mine" (you sent the last message), "created_at",
-            "unread": 2, "muted": false }
+            "unread": 2, "unread_reactions": 1, "reaction": "❤️" | null, "muted": false }
   group:  { "group": { "id", "name", "members": [first 3 others], "size" }, "preview",
             "event", "sender" (display name) | null, "mine", "created_at", "unread",
-            "muted" }
+            "unread_reactions", "reaction", "muted" }
+  Sorted by "created_at", newest first. A reaction counts as activity: when the latest one is
+  newer than the last message, "reaction" is its emoji, "created_at" its time, "mine" whether
+  you made it and "preview" its whole line ("Alice reacted ❤️ to “hi”"; groups also get
+  "event": true and "sender": who reacted). In groups only reactions you made or that are to
+  your messages count, not others reacting among themselves. Otherwise "reaction" is null.
+  "unread_reactions": reactions others made to your messages since you last read the chat.
+  They mark the chat unread but never move first_unread_id: open the chat as usual.
 
 ## Endpoints
 
@@ -287,7 +294,7 @@ POST /auth/tokens                                              account
 GET /auth/accounts                                             account
   The account (website: every account signed in on the browser; a token: its own account)
   with its identities:
-  { "items": [ { "id", "username", "name", "avatar", "unread", "unreadMessages",
+  { "items": [ { "id", "username", "name", "avatar", "unread", "unreadMessages", "unreadReactions",
   "active", "sharedBy": null, "identities": [ same fields, "sharedBy": "owner" | null ] } ] }
 POST /auth/switch                                              account
   { "username": "the account, or one of its identities, or one shared with it" }
@@ -380,15 +387,26 @@ POST /posts                                                    signed in, not mu
     "quote_of": 118 | null,                     (a quote regiorg; can't also reply)
     "poll": { "options": ["a", "b"] (${LIMITS.pollOptionsMin}-${LIMITS.pollOptionsMax}, distinct, max ${LIMITS.pollOption} chars),
               "duration_minutes": ${LIMITS.pollMinutesMin}-${LIMITS.pollMinutesMax} (default ${LIMITS.pollMinutesDefault}) } | null }
-  Content may be empty when there are images; a poll needs text. 201: <Post>.
+  Content may be empty when there are images; a poll needs text. Line breaks (\\n; \\r\\n is
+  turned into \\n) are kept and shown; the ends are trimmed and more than one blank line in a
+  row becomes one. 201: <Post>.
   410 when an upload expired: upload it again. 30 posts a minute.
 GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
-  Edits the text (images and poll stay). Sets "edited_at", re-reads hashtags. 200: <Post>.
+  Edits the text (images and poll stay), with the same line break rules as POST /posts.
+  Sets "edited_at", re-reads hashtags. 200: <Post>.
   400 when the text would be empty on a post without images, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204.
 GET /posts/:id/replies          replies, ratioing ones first then oldest first; limit up to 200 (default 50)
+GET /posts/:id/ancestors        public. The thread above a reply: the post it replies to, the one
+  that one replies to, and so on, as <Post>s ordered ROOT FIRST (the direct parent is the last
+  item). { "items": [<Post>…], "next_cursor": null }: always one page, there is no cursor.
+  ?limit= how many of the nearest ancestors, 1-50 (default 20). The chain is cut from the top when
+  longer: if the FIRST item still has a non-null "reply_to", there are more posts above it (ask
+  again for that item's id to keep going up). A post that is not a reply gives "items": [].
+  Deleting a post deletes its replies, so the chain has no gaps. "liked"/"regiorged" are filled
+  for the caller like everywhere else. 404 when the post doesn't exist; 400 for a bad limit.
 GET /posts/:id/likes            Users who liked, latest first; limit up to 200 (default 50)
 GET /posts/:id/regiorgs         Users who regiorged, latest first; same limits
 GET /posts/:id/quotes           { "id", "content", "username", "name", "avatar" } quotes; same limits
@@ -432,8 +450,10 @@ GET /hashtags/:tag/posts              public, paginated Posts (replies included)
 ### Notifications
 
 GET /notifications                    signed in, paginated (default 50, at most 200)
-GET /notifications/unread             signed in → { "notifications": 2, "messages": 5 }
-  (messages: unread direct and group messages, muted chats left out)
+GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,
+  "reactions": 1 }
+  (messages: unread direct and group messages; reactions: unread reactions others made to
+  your messages; muted chats left out of both. The website's messages badge shows the sum.)
 POST /notifications/read              marks all read → 204
 POST /notifications/:id/read          marks one read → 204
 
@@ -464,8 +484,12 @@ DELETE /conversations/:username/messages/:id   your own message → 204 (for bot
   isn't yours or isn't in the conversation with :username
 PUT /conversations/:username/messages/:id/reaction   { "emoji": "👍" } → { "reactions" }
 DELETE /conversations/:username/messages/:id/reaction → { "reactions" }
-  One reaction per profile per message; a new one replaces it. 60 a minute.
-POST /conversations/:username/read    marks what they sent you read → 204
+  One reaction per profile per message; a new one replaces it (choosing the same emoji again
+  changes nothing). 60 a minute. A reaction to their message is unread for them until they
+  read the conversation (see Conversation); reacting to your own message never is. No push
+  notification is sent for reactions.
+POST /conversations/:username/read    marks what they sent you, and their reactions to your
+  messages, read → 204
 PUT /conversations/:username/mute / DELETE   → { "muted" }: no push, not in the badge
 POST /conversations/:username/typing  → 204: shows "typing…" to them for a few seconds;
   send every 3-4 seconds while the user types. 40 a minute.
@@ -485,7 +509,7 @@ PATCH /groups/:id/messages/:messageId            your own message, not muted: li
   other than "message") can't be edited (404). Members get group_message_edited.
 DELETE /groups/:id/messages/:messageId           your own message → 204
 PUT /groups/:id/messages/:messageId/reaction / DELETE   like direct messages
-POST /groups/:id/read                 → 204
+POST /groups/:id/read                 → 204 (messages, and reactions to your messages)
 PUT /groups/:id/mute / DELETE         → { "muted" }
 POST /groups/:id/members   { "usernames": ["carla"] }   member → <Group>
 DELETE /groups/:id/members/:username  the owner removes someone, or anyone removes
@@ -493,6 +517,32 @@ DELETE /groups/:id/members/:username  the owner removes someone, or anyone remov
 POST /groups/:id/leave                → 204
 POST /groups/:id/typing               → 204
   Managing groups (create, rename, add, remove): limited per minute.
+
+### Message images
+
+Images of direct and group messages are private to their conversation. "images" is still a
+list of paths on ${origin}; new message images are /dm-uploads/<uuid>.webp, messages sent
+before images became private keep /uploads/<uuid>.webp paths (the same files, protected the
+same way). Post images (/uploads/ paths in a Post) stay public.
+
+GET /dm-uploads/<uuid>.webp            (not under /api/v1: prefix the path with ${origin})
+  Needs the same sign-in as reading the conversation: the website's cookie, or
+  \`Authorization: Bearer sgu_…\` / \`Bearer sgc_…\` (a bot token). Answers the image when a
+  profile you are signed in as (the account or any identity it can act as, or the bot) is the
+  sender or recipient of the direct message, or a current member of the group of the group
+  message. Leaving or being removed from a group ends access to its images.
+  200: the image (Content-Type image/webp), \`Cache-Control: private, max-age=3600\`: don't
+  share a cache of these between users.
+  404: missing, deleted, OR not yours / not signed in: the same answer, so a path doesn't
+  tell whether it exists.
+  401 (\`{ "error": … }\`, \`Cache-Control: private, no-store\`) when the file is a message
+  image and the bearer token is invalid, revoked or expired, as the API answers (a banned or
+  rate limited bot gets the API's 403 / 429). Sign in again.
+GET /uploads/<uuid>.webp               the same rules for a message image sent before; a post
+  image is public: 200 with \`Cache-Control: public, max-age=31536000, immutable\`, whatever
+  the Authorization header says (an invalid token is ignored there, never a 401).
+  Limitation: anyone who could see an image can keep a copy. Privacy keeps out people who
+  were never in the conversation, or no longer are.
 
 ### Uploads
 
@@ -540,7 +590,8 @@ GET /stream                           public or signed in
     poll            { "id": post id, "votes": [..] }
   Signed in, also (for the profile in use):
     notifications   { "count" }   unread notifications, sent on connect and on change
-    messages_unread { "count" }   unread messages, sent on connect and on change
+    messages_unread { "count", "reactions" }   unread messages, and unread reactions to your
+                    messages, sent on connect and on change
     message         <Message> sent or received
     message_deleted { "id" }
     message_edited  <Message> with its new text

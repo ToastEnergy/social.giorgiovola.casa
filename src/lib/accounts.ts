@@ -7,7 +7,7 @@ import { dropDrafts, saveDrafts } from './composerDraft.js';
  * written in a post composer is saved first and put back after the reload.
  */
 export async function switchTo(username: string, redirectTo = location.pathname) {
-	const drafts = await saveDrafts();
+	const drafts = await saveDrafts(username);
 	try {
 		await api('auth/switch', { method: 'POST', json: { username } });
 	} catch (e) {

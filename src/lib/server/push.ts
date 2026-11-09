@@ -205,9 +205,8 @@ export async function sendMessagePush(
 			title: senderName,
 			body,
 			url: `/messages/${message.sender}`,
-			tag: `message:${message.sender}:${message.recipient}`,
-			// shown as a large picture where the platform supports it
-			image: message.images[0]
+			// no image: message images are private, push services and lock screens shouldn't see them
+			tag: `message:${message.sender}:${message.recipient}`
 		});
 	} catch (e) {
 		console.error('push: sendMessagePush failed', e);
@@ -251,8 +250,7 @@ export async function sendGroupMessagePush(
 				title: groupName,
 				body,
 				url: `/messages/groups/${message.group_id}`,
-				tag: `group:${message.group_id}:${recipient.username}`,
-				image: message.images[0]
+				tag: `group:${message.group_id}:${recipient.username}`
 			});
 		}
 	} catch (e) {

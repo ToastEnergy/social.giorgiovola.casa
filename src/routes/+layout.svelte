@@ -31,6 +31,10 @@
 		id === '/messages/[username]' || id === '/messages/groups/[id]';
 	// the messages index is wide too: conversation list beside an empty chat
 	const isWide = (id: string | null) => isChat(id) || id === '/messages';
+	// no panel on mouse devices: the page is made of black blocks of its own (home: composer and
+	// timeline; an open post: the post, the reply composer and the replies), stacked in a column
+	// as tall as the panel would be so the last block can fill the rest
+	const isSplit = (id: string | null) => id === '/' || id === '/@[username]/[post]';
 	// sizes of the centred group on mouse devices (app.css)
 	const frame = (id: string | null) => `frame frame-sidebar ${isWide(id) ? 'frame-wide' : ''}`;
 	$user = data.user;
@@ -267,9 +271,11 @@
 			page.route.id
 		)
 			? ''
-			: 'not-pointer-coarse:min-h-[calc(100dvh-40px-var(--bar))] not-pointer-coarse:rounded-[15px] not-pointer-coarse:bg-black max-nav:not-pointer-coarse:mb-0 max-nav:not-pointer-coarse:w-auto max-nav:not-pointer-coarse:min-h-[calc(100dvh-20px-var(--bar))] max-nav:not-pointer-coarse:rounded-r-none max-nav:not-pointer-coarse:rounded-bl-none'} {isChat(
+			: 'not-pointer-coarse:min-h-[calc(100dvh-40px-var(--bar))] not-pointer-coarse:rounded-[15px] max-nav:not-pointer-coarse:mb-0 max-nav:not-pointer-coarse:w-auto max-nav:not-pointer-coarse:min-h-[calc(100dvh-20px-var(--bar))] max-nav:not-pointer-coarse:rounded-r-none max-nav:not-pointer-coarse:rounded-bl-none'} {isWide(
 			page.route.id
-		)
+		) || isSplit(page.route.id)
+			? ''
+			: 'not-pointer-coarse:bg-black'} {isChat(page.route.id)
 			? 'max-lg:mt-0 max-lg:not-pointer-coarse:mt-[calc(20px+var(--bar))]'
 			: 'pointer-coarse:pb-[calc(56px+env(safe-area-inset-bottom))]'}"
 	>
@@ -278,7 +284,9 @@
 		<div
 			class="w-full {isWide(page.route.id)
 				? 'pointer-coarse:p-5 pointer-coarse:lg:max-w-260'
-				: 'max-w-160 p-5 max-nav:max-w-none'}"
+				: 'max-w-160 p-5 max-nav:max-w-none'} {isSplit(page.route.id)
+				? 'not-pointer-coarse:flex not-pointer-coarse:flex-col not-pointer-coarse:p-0'
+				: ''}"
 		>
 			<!-- touch devices: profile, logo and settings on top. messages have their own (the
 				list's search, the chat's back arrow) -->

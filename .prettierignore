@@ -20,3 +20,4 @@ src/routes/search/+page.svelte
 src/lib/components/Loading.svelte
 src/routes/messages/+layout.svelte
 src/lib/components/BottomNav.svelte
+src/lib/components/MobileHeader.svelte

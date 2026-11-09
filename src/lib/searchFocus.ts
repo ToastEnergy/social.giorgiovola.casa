@@ -1,4 +1,6 @@
-// tapping search in the bottom bar focuses the search page's field. iOS only opens the keyboard
+import { goto } from '$app/navigation';
+
+// tapping search in the top row focuses the search page's field. iOS only opens the keyboard
 // for a focus made during the tap, before the page is there: a stand-in field takes the focus in
 // the tap and hands it to the real one once the page mounts (moving focus keeps the keyboard up)
 let standIn: HTMLInputElement | null = null;
@@ -31,4 +33,15 @@ export function takeSearchFocus(field: HTMLInputElement) {
 	window.scrollTo(0, 0);
 	field.focus({ preventScroll: true });
 	drop();
+}
+
+/** the search tap of the touch top row: the search page with the keyboard already up */
+export function tapSearch(e: MouseEvent, active: boolean) {
+	e.preventDefault();
+	// already there: no navigation (which would drop the query), just the field
+	const field = document.querySelector<HTMLInputElement>('[data-search-field]');
+	if (active && field) return field.focus();
+	focusSearch();
+	// reset would blur the stand-in, closing the keyboard (the page scrolls up itself)
+	goto('/search', { reset: false });
 }

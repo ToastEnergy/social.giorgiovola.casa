@@ -395,6 +395,14 @@ PATCH /posts/:id   { "content" }                                author, not mute
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204.
 GET /posts/:id/replies          replies, ratioing ones first then oldest first; limit up to 200 (default 50)
+GET /posts/:id/ancestors        public. The thread above a reply: the post it replies to, the one
+  that one replies to, and so on, as <Post>s ordered ROOT FIRST (the direct parent is the last
+  item). { "items": [<Post>…], "next_cursor": null }: always one page, there is no cursor.
+  ?limit= how many of the nearest ancestors, 1-50 (default 20). The chain is cut from the top when
+  longer: if the FIRST item still has a non-null "reply_to", there are more posts above it (ask
+  again for that item's id to keep going up). A post that is not a reply gives "items": [].
+  Deleting a post deletes its replies, so the chain has no gaps. "liked"/"regiorged" are filled
+  for the caller like everywhere else. 404 when the post doesn't exist; 400 for a bad limit.
 GET /posts/:id/likes            Users who liked, latest first; limit up to 200 (default 50)
 GET /posts/:id/regiorgs         Users who regiorged, latest first; same limits
 GET /posts/:id/quotes           { "id", "content", "username", "name", "avatar" } quotes; same limits

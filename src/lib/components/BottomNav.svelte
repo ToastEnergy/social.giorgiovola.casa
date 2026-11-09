@@ -44,13 +44,14 @@
 </script>
 
 <!-- touch devices: home, chat, new post, notifications and the profile in a bar along the bottom
-	edge. positioned in a chat too, so the profile menu opens above the bar -->
+	edge. positioned in a chat too, so the profile menu opens above the bar. one level over the
+	reply bar (ReplyDock, z-998, later in the page), which the profile menu opens across -->
 <nav
 	bind:offsetHeight={height}
 	aria-label="Main"
 	class="{hidden ? 'hidden' : 'flex'} bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? 'relative z-10 -mx-5 -mb-5 shrink-0'
-		: `fixed right-0 bottom-0 left-0 z-998 pt-1 ${docked ? '' : 'border-t border-line'}`}"
+		: `fixed right-0 bottom-0 left-0 z-999 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >
 	{#snippet link(item: NavItem)}
 		{@const active = isActive(page.url.pathname, item.href)}

@@ -35,6 +35,11 @@ export default ts.config(
 		}
 	},
 	{
+		// metro loads static assets with require()
+		files: ['mobile/**/*.{ts,tsx}'],
+		rules: { '@typescript-eslint/no-require-imports': 'off' }
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {

@@ -92,8 +92,11 @@ answers 401. The website uses a session cookie instead; cookies only work on the
 own origin and never from other sites.
 
 Only a hash of each token is stored. Tokens are shown once: keep them secret, like a
-password. A login token lasts ${TOKEN_DAYS} days, then requests answer 401 and you sign in
-again. Personal access tokens last what was chosen (or never expire). Any token stops
+password. A login token expires after ${TOKEN_DAYS} days without use: each request made with
+it pushes "expires_at" back to ${TOKEN_DAYS} days from then (updated every few minutes at
+most), so a client in regular use stays signed in. Once it expires, requests answer 401 and
+you sign in again. Personal access tokens expire on the date chosen when they were created
+(or never) however much they are used. Bot tokens (sgc_) never expire. Any token stops
 working when it is revoked (POST /auth/logout, DELETE /auth/sessions/:id), when the
 account's password changes (every session but the one that changed it), when an admin
 resets the password, or when the account is banned. An event stream (GET /stream) opened
@@ -740,5 +743,5 @@ curl -H "$A" "$ORIGIN/api/v1/search?q=tea"
 curl -N -H "$A" $ORIGIN/api/v1/stream
 curl -X POST -H "$A" -H 'Content-Type: application/json' $ORIGIN/api/v1/auth/logout
 
-Browser sessions last ${SESSION_DAYS} days; tokens as described in Authentication.
+Browser sessions last until ${SESSION_DAYS} days without use; tokens as described in Authentication.
 `;

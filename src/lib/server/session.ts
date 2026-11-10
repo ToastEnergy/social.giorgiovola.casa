@@ -8,8 +8,9 @@ import { closeSessionStreams } from './realtime.js';
 export const SESSION_COOKIE = 'social.giorgiovola.casa-token';
 /** Tokens of every account signed in on this browser, active one included, most recent first. */
 export const ACCOUNTS_COOKIE = 'social.giorgiovola.casa-accounts';
+/** How long a browser session lasts without being used (each use pushes the expiry back). */
 export const SESSION_DAYS = 30;
-/** How long a token from POST /api/v1/auth/login lasts. */
+/** How long a token from POST /api/v1/auth/login lasts without being used (likewise). */
 export const TOKEN_DAYS = 90;
 /** How many different accounts can be signed in at once on one browser. */
 export const MAX_SESSIONS = 5;

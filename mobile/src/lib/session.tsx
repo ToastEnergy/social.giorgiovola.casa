@@ -1,5 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useRef,
+	useState
+} from 'react';
 import { AppState } from 'react-native';
 import { api, auth, setUnauthorizedHandler } from './api';
 import { emit, useBus } from './bus';

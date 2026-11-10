@@ -45,7 +45,11 @@ export default function FollowList() {
 				onEndReached={list.loadMore}
 				onEndReachedThreshold={0.6}
 				refreshControl={
-					<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} {...refreshColors} />
+					<RefreshControl
+						refreshing={list.refreshing}
+						onRefresh={list.refresh}
+						{...refreshColors}
+					/>
 				}
 				ListEmptyComponent={
 					<ListState loading={list.loading} error={list.error} empty={config.empty} />

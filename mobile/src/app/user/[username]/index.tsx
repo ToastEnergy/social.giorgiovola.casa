@@ -8,7 +8,16 @@ import { ask, showMenu, toast, viewImages } from '@/components/overlays';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
 import { openLink, RichText } from '@/components/RichText';
-import { Avatar, Button, ErrorBanner, IconButton, Loading, Notice, TabRow, Txt } from '@/components/ui';
+import {
+	Avatar,
+	Button,
+	ErrorBanner,
+	IconButton,
+	Loading,
+	Notice,
+	TabRow,
+	Txt
+} from '@/components/ui';
 import { api, auth, avatarUrl, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
 import { count, shortDate, websiteLabel } from '@/lib/format';
@@ -216,7 +225,9 @@ export default function UserScreen() {
 					<Notice>
 						{profile.moderation.banned
 							? `Banned${profile.moderation.ban_reason ? `: ${profile.moderation.ban_reason}` : ''}`
-							: `Muted${profile.moderation.mute_reason ? `: ${profile.moderation.mute_reason}` : ''}`}
+							: `Muted${
+									profile.moderation.mute_reason ? `: ${profile.moderation.mute_reason}` : ''
+							  }`}
 					</Notice>
 				) : null}
 				{profile.blocks_you ? <Notice>This profile blocked you.</Notice> : null}

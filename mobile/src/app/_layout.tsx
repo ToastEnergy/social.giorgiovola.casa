@@ -55,10 +55,7 @@ function Navigation() {
 				<Stack.Screen name="login" options={{ headerShown: false }} />
 				<Stack.Screen name="register" options={{ title: 'Create account' }} />
 				<Stack.Screen name="compose" options={{ presentation: 'modal', title: 'New post' }} />
-				<Stack.Screen
-					name="share"
-					options={{ presentation: 'modal', title: 'Send via message' }}
-				/>
+				<Stack.Screen name="share" options={{ presentation: 'modal', title: 'Send via message' }} />
 			</Stack>
 			{!ready || (signedIn && !me && !inAuth) ? (
 				<View

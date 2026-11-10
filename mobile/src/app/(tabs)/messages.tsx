@@ -98,16 +98,16 @@ export default function Messages() {
 				const prefix = item.reaction
 					? ''
 					: group
-						? group.event
-							? ''
-							: item.mine
-								? 'You: '
-								: group.sender
-									? `${group.sender}: `
-									: ''
+					? group.event
+						? ''
 						: item.mine
-							? 'You: '
-							: '';
+						? 'You: '
+						: group.sender
+						? `${group.sender}: `
+						: ''
+					: item.mine
+					? 'You: '
+					: '';
 				return (
 					<Pressable
 						onPress={() =>
@@ -136,9 +136,7 @@ export default function Messages() {
 										<Avatar user={member} size={30} />
 									</View>
 								))}
-								{group.group.members.length === 0 ? (
-									<Users size={30} color={colors.muted} />
-								) : null}
+								{group.group.members.length === 0 ? <Users size={30} color={colors.muted} /> : null}
 							</View>
 						) : (
 							<Avatar user={(item as DirectConversation).peer} size={45} />

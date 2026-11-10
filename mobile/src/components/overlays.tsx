@@ -1,15 +1,7 @@
 import { Image, type ImageSource } from 'expo-image';
 import { X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import {
-	Alert,
-	Dimensions,
-	FlatList,
-	Modal,
-	Pressable,
-	ScrollView,
-	View
-} from 'react-native';
+import { Alert, Dimensions, FlatList, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/lib/theme';
 import { Button, Input, Txt } from './ui';
@@ -53,14 +45,17 @@ const set = (patch: Partial<State>) => {
 	listener?.(state);
 };
 
-export const showMenu = (items: (MenuItem | false | null | undefined)[], emojis?: MenuState['emojis']) =>
-	set({ menu: { items: items.filter((i): i is MenuItem => !!i), emojis } });
+export const showMenu = (
+	items: (MenuItem | false | null | undefined)[],
+	emojis?: MenuState['emojis']
+) => set({ menu: { items: items.filter((i): i is MenuItem => !!i), emojis } });
 
 /** Asks for a line of text; null when cancelled. */
 export const ask = (options: PromptOptions) =>
 	new Promise<string | null>((resolve) => set({ prompt: { ...options, resolve } }));
 
-export const viewImages = (sources: ImageSource[], index = 0) => set({ images: { sources, index } });
+export const viewImages = (sources: ImageSource[], index = 0) =>
+	set({ images: { sources, index } });
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function toast(text: string) {
@@ -141,9 +136,7 @@ export function Overlays() {
 											justifyContent: 'center',
 											borderRadius: 5,
 											backgroundColor:
-												menu.emojis?.selected === emoji
-													? 'rgba(255,255,255,0.15)'
-													: 'transparent'
+												menu.emojis?.selected === emoji ? 'rgba(255,255,255,0.15)' : 'transparent'
 										}}
 									>
 										<Txt size={24}>{emoji}</Txt>
@@ -170,9 +163,7 @@ export function Overlays() {
 									})}
 								>
 									{item.icon}
-									<Txt style={item.danger ? { color: colors.danger } : undefined}>
-										{item.label}
-									</Txt>
+									<Txt style={item.danger ? { color: colors.danger } : undefined}>{item.label}</Txt>
 								</Pressable>
 							))}
 						</ScrollView>
@@ -310,11 +301,7 @@ function Prompt({
 					/>
 					<View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
 						<Button label="Cancel" onPress={() => done(null)} />
-						<Button
-							variant="primary"
-							label={confirmLabel ?? 'OK'}
-							onPress={() => done(value)}
-						/>
+						<Button variant="primary" label={confirmLabel ?? 'OK'} onPress={() => done(value)} />
 					</View>
 				</Pressable>
 			</Pressable>

@@ -59,7 +59,12 @@ export default function AccountSettings() {
 		}
 	}
 
-	const row = (user: User, detail: string, actions: React.ReactNode, children?: React.ReactNode) => (
+	const row = (
+		user: User,
+		detail: string,
+		actions: React.ReactNode,
+		children?: React.ReactNode
+	) => (
 		<View
 			key={user.username}
 			style={{ borderWidth: 1, borderColor: colors.line, borderRadius: 6, padding: 10, gap: 10 }}
@@ -89,8 +94,8 @@ export default function AccountSettings() {
 				<>
 					<Section title="Your identities">
 						<Hint>
-							An identity is another profile of your account, with its own name, posts, follows
-							and messages. You can have {data.max_identities}, and share each with up to{' '}
+							An identity is another profile of your account, with its own name, posts, follows and
+							messages. You can have {data.max_identities}, and share each with up to{' '}
 							{data.max_members} accounts.
 						</Hint>
 						{data.owned.map((identity) =>
@@ -153,7 +158,10 @@ export default function AccountSettings() {
 											>
 												<Avatar user={member} size={24} />
 												<Txt size={14} style={{ flex: 1 }} numberOfLines={1}>
-													{member.name} <Txt size={13} muted>@{member.username}</Txt>
+													{member.name}{' '}
+													<Txt size={13} muted>
+														@{member.username}
+													</Txt>
 												</Txt>
 												<Button
 													size="sm"

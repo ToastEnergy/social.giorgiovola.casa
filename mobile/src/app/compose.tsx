@@ -63,7 +63,13 @@ export default function Compose() {
 	}, [targetId, params.edit]);
 
 	const editing = !!params.edit;
-	const title = editing ? 'Edit post' : params.reply ? 'Reply' : params.quote ? 'Quote' : 'New post';
+	const title = editing
+		? 'Edit post'
+		: params.reply
+		? 'Reply'
+		: params.quote
+		? 'Quote'
+		: 'New post';
 	const hasMedia = images.length > 0 || !!gif;
 	const canSend =
 		!busy &&
@@ -96,7 +102,7 @@ export default function Compose() {
 							? {
 									options: poll.options.map((o) => o.trim()).filter(Boolean),
 									duration_minutes: poll.minutes
-								}
+							  }
 							: null
 					}
 				});
@@ -138,7 +144,10 @@ export default function Compose() {
 				{targetId && !target && !error ? <Loading /> : null}
 				{params.reply && target ? (
 					<Txt size={14} muted>
-						Replying to <Txt size={14} accent>@{target.user.username}</Txt>
+						Replying to{' '}
+						<Txt size={14} accent>
+							@{target.user.username}
+						</Txt>
 						{target.content ? `: ${target.content.slice(0, 140)}` : ''}
 					</Txt>
 				) : null}
@@ -231,7 +240,9 @@ export default function Compose() {
 						</View>
 					</View>
 				) : null}
-				{params.quote && target ? <QuoteCard quote={{ ...target, is_quote: !!target.quote }} /> : null}
+				{params.quote && target ? (
+					<QuoteCard quote={{ ...target, is_quote: !!target.quote }} />
+				) : null}
 			</ScrollView>
 			{editing ? null : (
 				<View
@@ -276,7 +287,11 @@ export default function Compose() {
 						<ChartNoAxesColumn size={22} color={iconColor} />
 					</IconButton>
 					<View style={{ flex: 1 }} />
-					<Txt size={13} muted style={text.length > maxLength ? { color: colors.danger } : undefined}>
+					<Txt
+						size={13}
+						muted
+						style={text.length > maxLength ? { color: colors.danger } : undefined}
+					>
 						{text.length}/{maxLength}
 					</Txt>
 				</View>

@@ -258,7 +258,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				{post.regiorged_by.others
 					? ` and ${count(post.regiorged_by.others)} ${
 							post.regiorged_by.others === 1 ? 'other' : 'others'
-						}`
+					  }`
 					: ''}{' '}
 				regiorged
 			</Txt>
@@ -286,10 +286,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				{banner}
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
 					<Avatar user={post.user} size={50} link />
-					<Pressable
-						style={{ flex: 1 }}
-						onPress={() => router.push(`/user/${post.user.username}`)}
-					>
+					<Pressable style={{ flex: 1 }} onPress={() => router.push(`/user/${post.user.username}`)}>
 						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
 							<Txt bold numberOfLines={1} style={{ flexShrink: 1 }}>
 								{post.user.name}

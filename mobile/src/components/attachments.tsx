@@ -66,7 +66,11 @@ export function AttachmentStrip({
 		</Pressable>
 	);
 	return (
-		<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 5 }}>
+		<ScrollView
+			horizontal
+			showsHorizontalScrollIndicator={false}
+			contentContainerStyle={{ gap: 5 }}
+		>
 			{images.map((image, index) => (
 				<View key={image.uri}>
 					<Image

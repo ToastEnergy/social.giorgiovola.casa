@@ -46,8 +46,8 @@ export default function NewGroup() {
 						now.includes(user.username)
 							? now.filter((u) => u !== user.username)
 							: now.length < max
-								? [...now, user.username]
-								: now
+							? [...now, user.username]
+							: now
 					)
 				}
 				header={

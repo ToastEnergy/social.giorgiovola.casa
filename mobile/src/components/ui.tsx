@@ -136,7 +136,11 @@ export function Input({ style, ...props }: React.ComponentProps<typeof TextInput
 }
 
 /** A labelled form field. */
-export function Field({ label, hint, ...props }: TextInputProps & { label: string; hint?: string }) {
+export function Field({
+	label,
+	hint,
+	...props
+}: TextInputProps & { label: string; hint?: string }) {
 	return (
 		<View>
 			<Txt size={13} dim={0.8}>

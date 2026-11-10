@@ -6,7 +6,6 @@ import { refreshColors } from '@/components/PostList';
 import { Avatar, Button, ErrorBanner, Hint, Input, ListState, Txt } from '@/components/ui';
 import { api, errorMessage, withQuery } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { colors } from '@/lib/theme';
 import type { AdminUser } from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
 
@@ -134,10 +133,20 @@ export default function Admin() {
 						<View style={{ gap: 8 }}>
 							<Txt bold>Message of the day</Txt>
 							<Txt muted>{motd.motd}</Txt>
-							<Button size="sm" label="Edit" style={{ alignSelf: 'flex-start' }} onPress={editMotd} />
+							<Button
+								size="sm"
+								label="Edit"
+								style={{ alignSelf: 'flex-start' }}
+								onPress={editMotd}
+							/>
 						</View>
 					) : null}
-					<Input value={query} onChangeText={setQuery} placeholder="Search accounts" autoCorrect={false} />
+					<Input
+						value={query}
+						onChangeText={setQuery}
+						placeholder="Search accounts"
+						autoCorrect={false}
+					/>
 					<View style={{ flexDirection: 'row', gap: 5 }}>
 						{filters.map((value) => (
 							<Button
@@ -149,7 +158,9 @@ export default function Admin() {
 							/>
 						))}
 					</View>
-					<Hint>Actions target the account behind a profile; you can act on accounts ranked below you.</Hint>
+					<Hint>
+						Actions target the account behind a profile; you can act on accounts ranked below you.
+					</Hint>
 				</View>
 			}
 			ListEmptyComponent={

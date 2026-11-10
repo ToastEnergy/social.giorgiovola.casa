@@ -50,8 +50,8 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
 			body: options.raw
 				? options.raw.data
 				: method === 'GET'
-					? undefined
-					: JSON.stringify(options.body ?? {}),
+				? undefined
+				: JSON.stringify(options.body ?? {}),
 			signal: controller.signal
 		});
 	} catch (e) {
@@ -72,15 +72,17 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
 	if (!res.ok) {
 		if (res.status === 401 && token && token === auth.token) onUnauthorized?.(token);
 		const body = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-		const message =
-			typeof body.error === 'string' ? body.error : `Request failed (${res.status}).`;
+		const message = typeof body.error === 'string' ? body.error : `Request failed (${res.status}).`;
 		throw new ApiError(res.status, message, body);
 	}
 	return data as T;
 }
 
 /** Adds query parameters to a path, skipping empty ones. */
-export function withQuery(path: string, params: Record<string, string | number | null | undefined>) {
+export function withQuery(
+	path: string,
+	params: Record<string, string | number | null | undefined>
+) {
 	const query = Object.entries(params)
 		.filter(([, v]) => v !== null && v !== undefined && v !== '')
 		.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)

@@ -22,7 +22,8 @@ export default function ProfileSettings() {
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [avatarBusy, setAvatarBusy] = useState(false);
-	const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
+	const set = (key: keyof typeof form) => (value: string) =>
+		setForm((f) => ({ ...f, [key]: value }));
 
 	if (!me) return null;
 	// identities and bots have no email

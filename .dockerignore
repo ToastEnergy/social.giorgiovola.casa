@@ -18,3 +18,5 @@ data
 workers
 .deploy.lock
 predeploy-dumps
+# the Expo mobile app is built separately, not part of the image
+mobile

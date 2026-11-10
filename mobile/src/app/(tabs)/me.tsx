@@ -63,7 +63,6 @@ export default function MeTab() {
 			return () => {
 				stale = true;
 			};
-			// eslint-disable-next-line react-hooks/exhaustive-deps
 		}, [tokens, me?.user.username])
 	);
 
@@ -200,7 +199,9 @@ export default function MeTab() {
 				label={`Log out @${me.account?.username ?? me.user.username}`}
 				danger
 				onPress={async () => {
-					if (await confirm('Log out?', 'This account is signed out on this device.', 'Log out', true))
+					if (
+						await confirm('Log out?', 'This account is signed out on this device.', 'Log out', true)
+					)
 						session.signOut();
 				}}
 			/>

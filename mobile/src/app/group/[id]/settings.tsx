@@ -54,7 +54,14 @@ export default function GroupSettings() {
 
 	const owner = group.owner === me?.user.username;
 	const leave = async () => {
-		if (!(await confirm('Leave group?', `You stop getting messages from “${group.name}”.`, 'Leave', true)))
+		if (
+			!(await confirm(
+				'Leave group?',
+				`You stop getting messages from “${group.name}”.`,
+				'Leave',
+				true
+			))
+		)
 			return;
 		try {
 			await api(`groups/${id}/leave`, { method: 'POST' });
@@ -135,7 +142,14 @@ export default function GroupSettings() {
 								variant="danger"
 								label="Remove"
 								onPress={async () => {
-									if (!(await confirm('Remove member?', `Remove ${member.name} from the group?`, 'Remove', true)))
+									if (
+										!(await confirm(
+											'Remove member?',
+											`Remove ${member.name} from the group?`,
+											'Remove',
+											true
+										))
+									)
 										return;
 									run(async () => {
 										await api(`groups/${id}/members/${member.username}`, { method: 'DELETE' });

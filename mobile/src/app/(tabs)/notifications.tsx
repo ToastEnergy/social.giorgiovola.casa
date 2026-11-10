@@ -1,5 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
-import { AtSign, Heart, MessageCircle, Quote, Repeat2, TrendingUp, UserPlus } from 'lucide-react-native';
+import {
+	AtSign,
+	Heart,
+	MessageCircle,
+	Quote,
+	Repeat2,
+	TrendingUp,
+	UserPlus
+} from 'lucide-react-native';
 import { useCallback, useEffect, useRef } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { refreshColors } from '@/components/PostList';
@@ -46,7 +54,8 @@ function TypeIcon({ type }: { type: NotificationType }) {
 function people(group: NotificationGroup) {
 	const shown = group.senders.slice(0, group.count <= 3 ? 3 : 2).map((u) => u.name);
 	const others = group.count - shown.length;
-	if (others > 0) return `${shown.join(', ')} and ${count(others)} ${others === 1 ? 'other' : 'others'}`;
+	if (others > 0)
+		return `${shown.join(', ')} and ${count(others)} ${others === 1 ? 'other' : 'others'}`;
 	if (shown.length <= 1) return shown[0] ?? 'Someone';
 	return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
 }

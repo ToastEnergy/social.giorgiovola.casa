@@ -2,7 +2,17 @@ import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router/stack';
-import { BellOff, Ellipsis, ImagePlus, Pencil, Reply, SendHorizontal, Trash2, X, Copy } from 'lucide-react-native';
+import {
+	BellOff,
+	Ellipsis,
+	ImagePlus,
+	Pencil,
+	Reply,
+	SendHorizontal,
+	Trash2,
+	X,
+	Copy
+} from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +21,15 @@ import { emit, useBus } from '@/lib/bus';
 import { clock, dayLabel, groupEventText, sameDay } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
-import type { Gif, Group, GroupMessage, GroupMessageKind, Message, Reaction, User } from '@/lib/types';
+import type {
+	Gif,
+	Group,
+	GroupMessage,
+	GroupMessageKind,
+	Message,
+	Reaction,
+	User
+} from '@/lib/types';
 import { AttachmentStrip, pickImages, type Picked } from './attachments';
 import { GifPicker } from './GifPicker';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
@@ -77,7 +95,7 @@ export function ChatView(props: Props) {
 			const sender: User =
 				m.sender === myName && me
 					? me.user
-					: (peer ?? { username: m.sender, name: m.sender, avatar: null });
+					: peer ?? { username: m.sender, name: m.sender, avatar: null };
 			return { ...m, kind: 'message', sender, target: null };
 		},
 		[me, myName, peer]
@@ -115,13 +133,17 @@ export function ChatView(props: Props) {
 							sender:
 								m.sender === self?.username && self
 									? self
-									: (other ?? { username: m.sender, name: m.sender, avatar: null })
-						}
+									: other ?? { username: m.sender, name: m.sender, avatar: null }
+					  }
 					: (m as GroupMessage);
 			let page = await getPage<Message | GroupMessage>(`${base}/messages`);
 			let all = page.items;
 			// the first unread message may be further back than one page: load up to it
-			for (let i = 0; i < 10 && first && page.next_cursor && !all.some((m) => m.id === first); i++) {
+			for (
+				let i = 0;
+				i < 10 && first && page.next_cursor && !all.some((m) => m.id === first);
+				i++
+			) {
 				page = await getPage<Message | GroupMessage>(`${base}/messages`, page.next_cursor);
 				all = [...page.items, ...all];
 			}
@@ -145,7 +167,6 @@ export function ChatView(props: Props) {
 		} finally {
 			setLoading(false);
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [base, direct, markRead, myName]);
 
 	useEffect(() => {
@@ -208,7 +229,10 @@ export function ChatView(props: Props) {
 	);
 	useBus('group_message', (m: GroupMessage) => thisGroup(m) && add(m));
 	useBus('group_message_edited', (m: GroupMessage) => thisGroup(m) && replace(m));
-	useBus('group_message_deleted', (e: { group_id: number; id: number }) => thisGroup(e) && remove(e.id));
+	useBus(
+		'group_message_deleted',
+		(e: { group_id: number; id: number }) => thisGroup(e) && remove(e.id)
+	);
 	useBus(
 		'group_message_reactions',
 		(e: { group_id: number; id: number; reactions: Reaction[] }) =>
@@ -390,7 +414,7 @@ export function ChatView(props: Props) {
 
 	// the list is inverted: newest first
 	const data = useMemo(() => [...messages].reverse(), [messages]);
-	const title = direct ? (peer?.name ?? `@${props.username}`) : (group?.name ?? 'Group');
+	const title = direct ? peer?.name ?? `@${props.username}` : group?.name ?? 'Group';
 	const blocked = direct && info ? info.block.me || info.block.peer : false;
 	const maxImages = instance?.limits.messageImages ?? 5;
 	const banner = editing ?? replyTo;
@@ -401,7 +425,9 @@ export function ChatView(props: Props) {
 		const mine = item.sender.username === myName;
 		const grouped = groupReactions(item.reactions);
 		const showSender =
-			!direct && !mine && (newDay || previous?.sender.username !== item.sender.username || previous.kind !== 'message');
+			!direct &&
+			!mine &&
+			(newDay || previous?.sender.username !== item.sender.username || previous.kind !== 'message');
 		return (
 			<View>
 				{newDay ? (
@@ -469,8 +495,10 @@ export function ChatView(props: Props) {
 												(item.reply_to.gif
 													? 'GIF'
 													: item.reply_to.images
-														? `${item.reply_to.images} ${item.reply_to.images === 1 ? 'image' : 'images'}`
-														: '')}
+													? `${item.reply_to.images} ${
+															item.reply_to.images === 1 ? 'image' : 'images'
+													  }`
+													: '')}
 										</Txt>
 									</View>
 								) : null}

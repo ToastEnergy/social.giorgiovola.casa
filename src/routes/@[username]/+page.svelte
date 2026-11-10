@@ -9,6 +9,8 @@
 	import ModerationControls from '#lib/components/ModerationControls.svelte';
 	import { getAvatar, websiteLabel } from '#lib/utils.js';
 	import { openImage } from '#lib/imageViewer.svelte.js';
+	import { openReport } from '#lib/report.svelte.js';
+	import Flag from '@lucide/svelte/icons/flag';
 
 	let { data }: PageProps = $props();
 
@@ -143,6 +145,14 @@
 				onclick={toggleFollow}>{follow.followed ? 'Unfollow' : 'Follow'}</Button
 			>
 			<Button size="sm" href={`/messages/${profile.username}`}>Message</Button>
+			<Button
+				size="sm"
+				class="size-8"
+				title="Report @{profile.username}"
+				aria-label="Report @{profile.username}"
+				onclick={() => openReport({ kind: 'profile', username: profile.username })}
+				><Flag size={16} /></Button
+			>
 		</div>
 	{/if}
 </div>
@@ -154,6 +164,8 @@
 		muted={data.moderation.muted}
 		banReason={data.moderation.ban_reason}
 		muteReason={data.moderation.mute_reason}
+		bannedUntil={data.moderation.banned_until}
+		mutedUntil={data.moderation.muted_until}
 		identity={data.moderation.identity}
 	/>
 {/if}

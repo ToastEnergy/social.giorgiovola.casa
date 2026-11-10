@@ -1,14 +1,16 @@
 import type { RequestHandler } from './$types';
 import { readJson, requireStaff, stringField, usernameParam, v1 } from '#lib/server/api.js';
-import { mute, unmute } from '#lib/server/admin.js';
+import { durationField, mute, unmute } from '#lib/server/admin.js';
 
-/** Staff: mutes the account behind a profile (`{ reason? }`): it can't post or send messages. */
+/** Staff: mutes the account behind a profile (`{ reason?, duration? }`, duration in seconds, null for good): it can't post or send messages. */
 export const PUT: RequestHandler = v1(async ({ locals, params, request }) => {
 	requireStaff(locals);
+	const body = await readJson(request);
 	return mute(
 		locals,
 		usernameParam(params.username),
-		stringField(await readJson(request), 'reason')
+		stringField(body, 'reason'),
+		durationField(body)
 	);
 });
 

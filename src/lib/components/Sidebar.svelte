@@ -17,7 +17,11 @@
 			? [homeItem, ...navItems.slice(0, -1), moderationItem, ...navItems.slice(-1)]
 			: [homeItem, ...navItems]
 	);
-	const counts = $derived({ notifications: $notisCount, messages: $messagesCount });
+	const counts = $derived({
+		notifications: $notisCount,
+		messages: $messagesCount,
+		reports: (page.data.reportsCount as number | undefined) ?? 0
+	});
 	// the rows are as wide as the longest one; the layout reads that width (plus the 10px gap
 	// before the panel) as --side, so the panel sits right next to the labels. the labelled width is
 	// measured on an invisible copy (sizer), so it is known on the wide pages too: they keep the

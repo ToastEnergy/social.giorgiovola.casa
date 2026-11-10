@@ -20,6 +20,8 @@ export type Me = {
 	mute_reason: string | null;
 	unread: { notifications: number; messages: number; reactions: number };
 	auth: 'cookie' | 'token' | 'bot';
+	/** staff only: reports waiting for them */
+	open_reports: number | null;
 };
 
 /** The `user` the components know (the profile in use), from GET /api/v1/me. */

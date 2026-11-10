@@ -7,6 +7,8 @@ import { findSessionFor } from './accounts.js';
 import { unreadCounts } from './notifications.js';
 import { activateSession, setActing } from './session.js';
 import { closeSessionStreams } from './realtime.js';
+import { isStaff } from './moderation.js';
+import { openReportCount } from './reports.js';
 
 /**
  * The signed in profile as GET /api/v1/me shows it: the profile in use (`user`), the account
@@ -58,7 +60,14 @@ export async function meOf(locals: App.Locals) {
 	if (!locals.user) fail(401, 'Sign in first: send a bearer token or a session cookie');
 	const me = await getMe(locals.accountId, locals.user.id);
 	// a shared identity is muted when its owner is, bots follow their owner (see auth.ts)
-	return { ...me, muted: locals.muted, mute_reason: locals.muteReason, auth: locals.auth };
+	return {
+		...me,
+		muted: locals.muted,
+		mute_reason: locals.muteReason,
+		auth: locals.auth,
+		// staff see the reports waiting for them (null for everyone else)
+		open_reports: isStaff(me.role) && locals.auth !== 'bot' ? await openReportCount() : null
+	};
 }
 
 /**

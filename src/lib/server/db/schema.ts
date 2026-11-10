@@ -57,10 +57,20 @@ export const users = pgTable(
 		banned_at: timestamptz('banned_at'),
 		ban_reason: text('ban_reason'),
 		muted_at: timestamptz('muted_at'),
-		mute_reason: text('mute_reason')
+		mute_reason: text('mute_reason'),
+		// when a temporary ban or mute is lifted (src/lib/server/moderation.ts); null is for good
+		banned_until: timestamptz('banned_until'),
+		muted_until: timestamptz('muted_until')
 	},
 	(t) => [
 		index('users_owner_id').on(t.owner_id),
+		// the sweep that lifts temporary bans and mutes
+		index('users_banned_until')
+			.on(t.banned_until)
+			.where(sql`${t.banned_until} IS NOT NULL`),
+		index('users_muted_until')
+			.on(t.muted_until)
+			.where(sql`${t.muted_until} IS NOT NULL`),
 		check('users_role_check', sql`${t.role} IN ('user', 'mod', 'admin')`),
 		check(
 			'users_identity_check',
@@ -581,5 +591,68 @@ export const link_previews = pgTable(
 	(t) => [
 		index('link_previews_image').on(t.image),
 		index('link_previews_fetched_at').on(t.fetched_at)
+	]
+);
+
+// Posts and profiles people reported to the staff. The post's text is copied when it is reported,
+// so the report still shows what was said once the post is deleted (post_id becomes null).
+export const reports = pgTable(
+	'reports',
+	{
+		id: serial('id').primaryKey(),
+		// the profile that reported, and the account behind it (rate limits, dedup)
+		reporter_id: integer('reporter_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// the reported profile: the post's author, or the profile itself
+		target_id: integer('target_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		kind: text('kind', { enum: ['post', 'profile'] }).notNull(),
+		post_id: integer('post_id').references(() => posts.id, { onDelete: 'set null' }),
+		post_content: text('post_content'),
+		category: text('category').notNull(),
+		details: text('details').notNull().default(''),
+		status: text('status', { enum: ['open', 'resolved', 'dismissed'] })
+			.notNull()
+			.default('open'),
+		created_at: timestamptz('created_at').notNull().defaultNow(),
+		resolved_at: timestamptz('resolved_at'),
+		resolved_by: integer('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+		resolution_note: text('resolution_note')
+	},
+	(t) => [
+		index('reports_status_id').on(t.status, t.id),
+		index('reports_target_id').on(t.target_id),
+		index('reports_post_id').on(t.post_id),
+		check('reports_kind_check', sql`${t.kind} IN ('post', 'profile')`),
+		check('reports_status_check', sql`${t.status} IN ('open', 'resolved', 'dismissed')`)
+	]
+);
+
+// Everything staff did (and the bans and mutes that ran out), newest last: the moderation log. Notes
+// staff leave on an account are entries too. The usernames are copied so the log still reads right
+// once a profile is renamed or deleted.
+export const moderation_log = pgTable(
+	'moderation_log',
+	{
+		id: serial('id').primaryKey(),
+		// null when the system did it (an expired ban) or the staff member was deleted
+		actor_id: integer('actor_id').references(() => users.id, { onDelete: 'set null' }),
+		actor_username: text('actor_username'),
+		// the account acted on (moderation targets accounts, see moderation.ts)
+		target_id: integer('target_id').references(() => users.id, { onDelete: 'set null' }),
+		target_username: text('target_username'),
+		action: text('action').notNull(),
+		reason: text('reason'),
+		// when a temporary ban or mute runs out
+		expires_at: timestamptz('expires_at'),
+		// what else the action is about: the deleted post's text, the new role, the report…
+		details: jsonb('details').$type<Record<string, unknown>>(),
+		created_at: timestamptz('created_at').notNull().defaultNow()
+	},
+	(t) => [
+		index('moderation_log_target_id').on(t.target_id, t.id),
+		index('moderation_log_actor_id').on(t.actor_id, t.id)
 	]
 );

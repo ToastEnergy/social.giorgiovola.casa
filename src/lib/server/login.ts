@@ -8,6 +8,7 @@ import { dummyVerify, hashPassword, secretsEqual, verifyPassword } from './passw
 import { clear, clientIp, hit, isLimited } from './ratelimit.js';
 import { TOKEN_DAYS, createSession, createToken, revokeOtherSessions } from './session.js';
 import { profileColumns, updateProfile } from './profile.js';
+import { bannedMessage, stillBanned } from './moderation.js';
 import {
 	isUniqueViolation,
 	validateEmail,
@@ -78,10 +79,7 @@ export async function passwordLogin(
 	clear(accountKey);
 
 	// only said after the password checked out, so it can't be used to probe for accounts
-	if (res[0].banned_at) {
-		const reason = res[0].ban_reason ? ` Reason: ${res[0].ban_reason}` : '';
-		fail(403, `This account has been banned.${reason}`);
-	}
+	if (await stillBanned(res[0])) fail(403, bannedMessage(res[0].ban_reason, res[0].banned_until));
 	return res[0].id;
 }
 

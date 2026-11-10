@@ -1057,22 +1057,60 @@ export const v1Groups: V1Group[] = [
 		title: 'Moderation and realtime',
 		endpoints: [
 			{
+				method: 'POST',
+				path: '/api/v1/reports',
+				auth: 'signed in',
+				summary:
+					'report a post `{ post_id, category, details? }` or a profile `{ username, category, details? }` to the staff; 10 an hour'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/admin/overview',
+				auth: 'staff',
+				summary: 'counts: open reports, banned, muted, new accounts…'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/admin/reports?status=&username=',
+				auth: 'staff',
+				summary: 'reports (open by default) with the post, reporter and account'
+			},
+			{
+				method: 'PATCH',
+				path: '/api/v1/admin/reports/:id',
+				auth: 'staff',
+				summary: 'resolve / dismiss / reopen `{ status, note?, related? }`'
+			},
+			{
 				method: 'GET',
 				path: '/api/v1/admin/users?q=&filter=',
 				auth: 'staff',
-				summary: 'accounts with their identities and what you may do'
+				summary:
+					'accounts (filter: reported, banned, muted, staff) with their identities and what you may do'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/admin/users/:username',
+				auth: 'staff',
+				summary: 'one account: state, identities, counts'
 			},
 			{
 				method: 'PUT / DELETE',
 				path: '/api/v1/admin/users/:username/ban',
 				auth: 'staff',
-				summary: 'ban `{ reason? }` / unban'
+				summary: 'ban `{ reason?, duration? }` (seconds, null for good) / unban'
 			},
 			{
 				method: 'PUT / DELETE',
 				path: '/api/v1/admin/users/:username/mute',
 				auth: 'staff',
-				summary: 'mute `{ reason? }` / unmute'
+				summary: 'mute `{ reason?, duration? }` / unmute'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/admin/users/:username/notes',
+				auth: 'staff',
+				summary: 'leave a note for the staff `{ note }`'
 			},
 			{
 				method: 'PUT',
@@ -1085,6 +1123,12 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/admin/users/:username/password',
 				auth: 'admin',
 				summary: '`{ password }`, signs them out'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/admin/log?username=&actor=&action=',
+				auth: 'staff',
+				summary: 'the moderation log, newest first'
 			},
 			{
 				method: 'GET / PUT',

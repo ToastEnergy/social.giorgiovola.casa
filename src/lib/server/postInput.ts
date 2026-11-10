@@ -14,7 +14,8 @@ import {
 	sniffImage,
 	toWebp
 } from './images.js';
-import { actionsLimited, canDeletePostOf } from './moderation.js';
+import { actionsLimited, canDeletePostOf, logAction } from './moderation.js';
+import { resolveReportsOfPost } from './reports.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
 import { broadcast } from './realtime.js';
 import { warmLinkPreview } from './linkPreviews.js';
@@ -181,16 +182,50 @@ export async function deletePostAs(locals: App.Locals, postId: number) {
 	// the author's account decides whether a moderator may delete it
 	const account = alias(users, 'account');
 	const [target] = await db
-		.select({ user_id: posts.user_id, role: account.role })
+		.select({
+			user_id: posts.user_id,
+			content: posts.content,
+			images: posts.images,
+			reply_to: posts.reply_to,
+			author: users.username,
+			account_id: account.id,
+			account_username: account.username,
+			role: account.role
+		})
 		.from(posts)
 		.innerJoin(users, eq(posts.user_id, users.id))
 		.innerJoin(account, eq(account.id, sql`COALESCE(${users.owner_id}, ${users.id})`))
 		.where(eq(posts.id, postId));
 	if (!target) fail(404, 'Post not found');
-	if (target.user_id !== user.id) {
+	const asStaff = target.user_id !== user.id;
+	if (asStaff) {
 		if (locals.auth === 'bot' || !canDeletePostOf(locals, target.role))
 			fail(403, 'You can only delete your own posts');
 		if (actionsLimited(locals.accountId ?? user.id)) throw new ApiError(429, 'Slow down');
 	}
+	// staff deleting a reported post settles its reports (they keep a copy of the text)
+	const settled =
+		asStaff && locals.accountId !== null
+			? await resolveReportsOfPost(postId, locals.accountId)
+			: [];
 	if (!(await deletePost(postId))) fail(404, 'Post not found');
+	if (asStaff && locals.accountId !== null) {
+		const [actor] = await db
+			.select({ id: users.id, username: users.username })
+			.from(users)
+			.where(eq(users.id, locals.accountId));
+		await logAction({
+			actor: actor ?? null,
+			target: { id: target.account_id, username: target.account_username },
+			action: 'delete_post',
+			details: {
+				post_id: postId,
+				author: target.author,
+				content: target.content.slice(0, 2000),
+				images: target.images.length,
+				reply: target.reply_to !== null,
+				reports: settled.map((r) => r.id)
+			}
+		});
+	}
 }

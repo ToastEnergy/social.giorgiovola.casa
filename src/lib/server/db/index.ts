@@ -32,5 +32,7 @@ export const {
 	push_subscriptions,
 	passkeys,
 	bots,
-	link_previews
+	link_previews,
+	reports,
+	moderation_log
 } = schema;

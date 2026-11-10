@@ -24,3 +24,4 @@ src/lib/components/BottomNav.svelte
 src/lib/components/MobileHeader.svelte
 src/routes/settings/+layout.svelte
 .wrangler
+src/routes/admin/+layout.svelte

@@ -1,8 +1,10 @@
 <script lang="ts">
+	import Shield from '@lucide/svelte/icons/shield';
 	import Button from '#lib/components/Button.svelte';
+	import ActionDialog from '#lib/components/moderation/ActionDialog.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { messageOf } from '#lib/api.js';
-	import { moderate, type ModerationAction } from '#lib/moderation.js';
+	import { moderate, relative } from '#lib/moderation.js';
 
 	type Props = {
 		username: string;
@@ -10,92 +12,101 @@
 		muted: boolean;
 		banReason: string | null;
 		muteReason: string | null;
+		bannedUntil: string | null;
+		mutedUntil: string | null;
 		identity: boolean;
 	};
 
-	let { username, banned, muted, banReason, muteReason, identity }: Props = $props();
+	let { username, banned, muted, banReason, muteReason, bannedUntil, mutedUntil, identity }: Props =
+		$props();
 
 	let message = $state<string | null>(null);
 	let failed = $state(false);
 	let busy = $state(false);
+	let dialog = $state<'ban' | 'mute' | null>(null);
 
-	// shows the outcome of the last action, the profile reloads with the new state
-	const act = (action: ModerationAction, ask?: string) => async (e: SubmitEvent) => {
-		e.preventDefault();
-		if (ask && !confirm(ask)) return;
-		const reason = String(new FormData(e.currentTarget as HTMLFormElement).get('reason') ?? '');
+	async function done(text: string) {
+		dialog = null;
+		message = text;
+		failed = false;
+		await invalidateAll();
+	}
+
+	async function lift(action: 'unban' | 'unmute') {
 		busy = true;
 		try {
-			message = (await moderate(username, action, { reason })).message;
-			failed = false;
-			await invalidateAll();
+			await done((await moderate(username, action)).message);
 		} catch (err) {
 			message = messageOf(err);
 			failed = true;
 		} finally {
 			busy = false;
 		}
-	};
+	}
+
+	const states = $derived(
+		[
+			banned && { label: 'Banned', reason: banReason, until: bannedUntil },
+			muted && { label: 'Muted', reason: muteReason, until: mutedUntil }
+		].filter((s) => !!s)
+	);
 </script>
 
-<div class="mb-5 flex flex-col gap-2 rounded-md border border-line p-2.5">
-	<div class="flex items-center justify-between gap-2.5">
-		<b class="text-[0.9em]">Moderation</b>
-		<a class="text-[0.85em]" href="/admin">Panel</a>
+<section
+	class="mb-5 flex flex-col gap-2.5 rounded-md border p-2.5 {banned || muted
+		? 'border-danger'
+		: 'border-line'}"
+	aria-label="Moderation"
+>
+	<div class="flex items-center gap-2.5">
+		<Shield size={18} class="shrink-0 text-muted" />
+		<b class="flex-1 text-[0.9em]">Moderation</b>
+		<a class="text-[0.85em]" href="/admin/users/{username}">Open case</a>
 	</div>
 	{#if identity}
-		<p class="text-[0.8em] text-muted">
+		<p class="text-[0.85em] text-muted">
 			This profile is an identity: actions apply to the whole account behind it.
 		</p>
 	{/if}
-	{#if banned}
-		<p class="text-[0.85em] text-danger">Banned{banReason ? `: ${banReason}` : ''}</p>
-	{/if}
-	{#if muted}
-		<p class="text-[0.85em] text-danger">Muted{muteReason ? `: ${muteReason}` : ''}</p>
-	{/if}
+	{#each states as s (s.label)}
+		<p class="text-[0.9em]">
+			<b class="text-danger">{s.label}</b>
+			<span class="text-muted">
+				{s.until ? `· ends ${relative(s.until)}` : '· permanent'}
+			</span>
+			{#if s.reason}<br /><span class="text-[0.9em] opacity-80">“{s.reason}”</span>{/if}
+		</p>
+	{/each}
 	{#if message}
 		<p class="rounded-[5px] p-[5px] {failed ? 'bg-danger' : 'bg-accent text-background'}">
 			{message}
 		</p>
 	{/if}
 
-	<div class="flex flex-wrap items-center gap-2">
+	<div class="flex flex-wrap gap-2.5">
 		{#if banned}
-			<form method="POST" onsubmit={act('unban')}>
-				<Button type="submit" disabled={busy}>Unban</Button>
-			</form>
+			<Button size="sm" disabled={busy} onclick={() => lift('unban')}>Unban</Button>
+			<Button size="sm" onclick={() => (dialog = 'ban')}>Change ban</Button>
 		{:else}
-			<form
-				class="flex flex-wrap items-center gap-2"
-				method="POST"
-				onsubmit={act('ban', `Ban @${username}? They will be signed out everywhere.`)}
-			>
-				<input
-					class="input w-auto! min-w-0 flex-1 p-[5px]!"
-					type="text"
-					name="reason"
-					placeholder="Ban reason (optional)"
-					maxlength="200"
-				/>
-				<Button variant="danger" type="submit">Ban</Button>
-			</form>
+			<Button size="sm" variant="danger" onclick={() => (dialog = 'ban')}>Ban…</Button>
 		{/if}
 		{#if muted}
-			<form method="POST" onsubmit={act('unmute')}>
-				<Button type="submit" disabled={busy}>Unmute</Button>
-			</form>
+			<Button size="sm" disabled={busy} onclick={() => lift('unmute')}>Unmute</Button>
+			<Button size="sm" onclick={() => (dialog = 'mute')}>Change mute</Button>
 		{:else}
-			<form class="flex flex-wrap items-center gap-2" method="POST" onsubmit={act('mute')}>
-				<input
-					class="input w-auto! min-w-0 flex-1 p-[5px]!"
-					type="text"
-					name="reason"
-					placeholder="Mute reason (optional)"
-					maxlength="200"
-				/>
-				<Button type="submit">Mute</Button>
-			</form>
+			<Button size="sm" onclick={() => (dialog = 'mute')}>Mute…</Button>
 		{/if}
 	</div>
-</div>
+</section>
+
+<ActionDialog
+	action={dialog}
+	{username}
+	current={dialog === 'ban' && banned
+		? { reason: banReason, until: bannedUntil }
+		: dialog === 'mute' && muted
+		? { reason: muteReason, until: mutedUntil }
+		: null}
+	onclose={() => (dialog = null)}
+	ondone={done}
+/>

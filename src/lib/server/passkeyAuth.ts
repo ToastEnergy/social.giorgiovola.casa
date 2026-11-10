@@ -13,6 +13,7 @@ import { db, passkeys, users } from './db/index.js';
 import { ApiError, fail } from './api.js';
 import { clientIp, hit, isLimited } from './ratelimit.js';
 import { isUniqueViolation } from './validation.js';
+import { bannedMessage, stillBanned } from './moderation.js';
 import {
 	MAX_PASSKEYS,
 	PASSKEY_NAME_MAX,
@@ -207,7 +208,13 @@ export async function passkeyLogin(
 	if (!isCredentialId(response?.id)) failed(FAILED);
 
 	const [row] = await db
-		.select({ passkey: passkeys, banned_at: users.banned_at, ban_reason: users.ban_reason })
+		.select({
+			passkey: passkeys,
+			username: users.username,
+			banned_at: users.banned_at,
+			ban_reason: users.ban_reason,
+			banned_until: users.banned_until
+		})
 		.from(passkeys)
 		.innerJoin(users, eq(users.id, passkeys.user_id))
 		.where(eq(passkeys.id, response.id));
@@ -251,9 +258,7 @@ export async function passkeyLogin(
 		.where(eq(passkeys.id, passkey.id));
 
 	// only said once the passkey checked out, same as the password login
-	if (row.banned_at) {
-		const reason = row.ban_reason ? ` Reason: ${row.ban_reason}` : '';
-		fail(403, `This account has been banned.${reason}`);
-	}
+	if (await stillBanned({ ...row, id: passkey.user_id }))
+		fail(403, bannedMessage(row.ban_reason, row.banned_until));
 	return passkey.user_id;
 }

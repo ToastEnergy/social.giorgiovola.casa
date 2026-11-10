@@ -1137,6 +1137,13 @@ export const v1Groups: V1Group[] = [
 				summary: 'message of the day / set `{ motd }`'
 			},
 			{
+				method: 'GET / DELETE',
+				path: '/api/v1/admin/groups/:id',
+				auth: 'admin',
+				summary:
+					'any group chat (name, owner, members, message count) / delete it with all its messages for everyone `{ reason? }`'
+			},
+			{
 				method: 'GET',
 				path: '/api/v1/stream',
 				auth: 'public / signed in',

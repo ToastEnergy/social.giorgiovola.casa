@@ -650,3 +650,52 @@ export async function getGroupConversations(userId: number): Promise<GroupConver
 		})
 		.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
+
+/** Any group by id, for staff: its name, owner, members and how many messages it has. */
+export async function groupSummary(groupId: number) {
+	const [group] = await db
+		.select({
+			id: group_chats.id,
+			name: group_chats.name,
+			owner_id: group_chats.owner_id,
+			created_at: group_chats.created_at
+		})
+		.from(group_chats)
+		.where(eq(group_chats.id, groupId));
+	if (!group) return null;
+	const members = await loadMembers(groupId);
+	const messages = await db.$count(
+		group_messages,
+		and(eq(group_messages.group_id, groupId), eq(group_messages.kind, 'message'))
+	);
+	const owner = members.find((m) => m.id === group.owner_id) ?? members[0] ?? null;
+	return { ...group, owner, members, messages };
+}
+
+/**
+ * Deletes the group with all its messages for every member. Returns who was in it and its
+ * images, so they can be removed from disk, or null when there is no such group.
+ */
+export async function deleteGroup(groupId: number) {
+	return db.transaction(async (tx) => {
+		const [group] = await tx
+			.select({ id: group_chats.id })
+			.from(group_chats)
+			.where(eq(group_chats.id, groupId))
+			.for('update');
+		if (!group) return null;
+		const members = await tx
+			.select({ id: group_members.user_id })
+			.from(group_members)
+			.where(eq(group_members.group_id, groupId));
+		const withImages = await tx
+			.select({ images: group_messages.images })
+			.from(group_messages)
+			.where(
+				and(eq(group_messages.group_id, groupId), sql`CARDINALITY(${group_messages.images}) > 0`)
+			);
+		// members, messages and reactions go with it (on delete cascade)
+		await tx.delete(group_chats).where(eq(group_chats.id, groupId));
+		return { members: members.map((m) => m.id), images: withImages.flatMap((m) => m.images) };
+	});
+}

@@ -157,6 +157,7 @@ export const LOG_ACTIONS: Record<string, string> = {
 	role: 'Role change',
 	password: 'Password reset',
 	delete_post: 'Post deleted',
+	delete_group: 'Group deleted',
 	note: 'Note',
 	report_resolved: 'Report resolved',
 	report_dismissed: 'Report dismissed',

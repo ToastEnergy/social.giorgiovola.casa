@@ -1,0 +1,40 @@
+{
+	"expo": {
+		"name": "social",
+		"slug": "social-giorgiovola",
+		"version": "1.0.0",
+		"orientation": "portrait",
+		"icon": "./assets/icon.png",
+		"userInterfaceStyle": "dark",
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "casa.giorgiovola.social"
+		},
+		"android": {
+			"adaptiveIcon": {
+				"backgroundColor": "#0c0b0b",
+				"foregroundImage": "./assets/android-icon-foreground.png",
+				"backgroundImage": "./assets/android-icon-background.png",
+				"monochromeImage": "./assets/android-icon-monochrome.png"
+			},
+			"predictiveBackGestureEnabled": false,
+			"package": "casa.giorgiovola.social"
+		},
+		"plugins": [
+			"expo-router",
+			"expo-secure-store",
+			"expo-image",
+			"expo-video",
+			"expo-font",
+			"expo-web-browser",
+			[
+				"expo-image-picker",
+				{
+					"photosPermission": "Choose images for your posts, messages and profile picture."
+				}
+			]
+		],
+		"scheme": "social",
+		"backgroundColor": "#0c0b0b"
+	}
+}

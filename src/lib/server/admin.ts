@@ -34,6 +34,9 @@ import {
 import { validatePassword } from './validation.js';
 import { revokeAllSessions } from './session.js';
 import { MAX_MOTD, setMotd } from './motd.js';
+import { deleteGroup, groupSummary } from './groups.js';
+import { removeUploads } from './images.js';
+import { publishGroupUpdated } from './realtime.js';
 
 export const ADMIN_FILTERS = ['all', 'banned', 'muted', 'staff', 'reported'] as const;
 export type AdminFilter = (typeof ADMIN_FILTERS)[number];
@@ -51,6 +54,7 @@ export const LOG_ACTIONS: LogAction[] = [
 	'role',
 	'password',
 	'delete_post',
+	'delete_group',
 	'note',
 	'report_resolved',
 	'report_dismissed',
@@ -491,4 +495,55 @@ export async function updateMotd(locals: App.Locals, motd: string) {
 		motd: clean,
 		message: clean ? 'Message of the day updated.' : 'Message of the day reset.'
 	};
+}
+
+/** A group chat by id, for an admin about to delete it. */
+export async function lookupGroup(locals: App.Locals, id: number | null) {
+	if (locals.role !== 'admin' || locals.accountId === null) fail(403, 'Only admins can do this');
+	if (id === null) fail(404, 'Group not found.');
+	const group = await groupSummary(id);
+	if (!group) fail(404, 'Group not found.');
+	return {
+		id: group.id,
+		name: group.name,
+		owner: group.owner?.username ?? null,
+		members: group.members.map(({ username, name, avatar }) => ({ username, name, avatar })),
+		messages: group.messages,
+		created_at: group.created_at
+	};
+}
+
+/**
+ * Deletes a group chat, with all its messages and images, for all its members. Admin only;
+ * it goes in the moderation log with the group's name and members.
+ */
+export async function deleteGroupForEveryone(
+	locals: App.Locals,
+	id: number | null,
+	reason: string
+) {
+	if (locals.role !== 'admin' || locals.accountId === null) fail(403, 'Only admins can do this');
+	if (actionsLimited(locals.accountId)) fail(429, 'Too many actions, slow down.');
+	if (id === null) fail(404, 'Group not found.');
+	const group = await groupSummary(id);
+	if (!group) fail(404, 'Group not found.');
+	const deleted = await deleteGroup(id);
+	if (!deleted) fail(404, 'Group not found.');
+	await removeUploads(deleted.images);
+	// members reload the group, find it gone and drop it from their screens
+	void publishGroupUpdated(id, deleted.members);
+	await logAction({
+		actor: await actorOf(locals),
+		target: null,
+		action: 'delete_group',
+		reason: reasonOf(reason),
+		details: {
+			group_id: id,
+			name: group.name,
+			owner: group.owner?.username ?? null,
+			members: group.members.map((m) => m.username),
+			messages: group.messages
+		}
+	});
+	return { message: `Deleted the group “${group.name}” for its ${group.members.length} members.` };
 }

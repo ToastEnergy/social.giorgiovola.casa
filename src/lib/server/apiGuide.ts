@@ -718,8 +718,9 @@ POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" } 
 
 GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest first
   ?username= one account's entries (an identity finds its owner), ?actor= one staff
-  member's, ?action= one of: ban, unban, mute, unmute, role, password, delete_post, note,
-  report_resolved, report_dismissed, report_reopened (400 for another). Items:
+  member's, ?action= one of: ban, unban, mute, unmute, role, password, delete_post,
+  delete_group, note, report_resolved, report_dismissed, report_reopened (400 for another).
+  Items:
   { "id", "action", "actor": "username" | null, "target": "username" | null,
     "target_profile": User | null,   // null once the account is gone
     "reason",                         // ban/mute reason, the note, the report note
@@ -727,11 +728,25 @@ GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest 
     "details": null | {…},            // delete_post: { "post_id", "author", "content",
                                       //   "images", "reply", "reports" }; role: { "from",
                                       //   "to" }; report_*: { "reports": [ids], "kind",
-                                      //   "post_id" }; expired unban/unmute: { "expired": true }
+                                      //   "post_id" }; delete_group: { "group_id", "name",
+                                      //   "owner", "members": [usernames], "messages" }
+                                      //   (target null); expired unban/unmute: { "expired": true }
     "created_at", "system": false }   // system: no staff member (a ban that ran out)
 
 GET /admin/motd → { "motd", "custom", "default", "max" }                     admin
 PUT /admin/motd   { "motd": "one line" ("" resets) } → { "motd", "message" }   admin
+
+GET /admin/groups/:id   admin
+  Any group chat by its id (the number in /messages/groups/:id), whether you are in it or
+  not: { "id", "name", "owner": "username" | null, "members": [{ "username", "name",
+  "avatar" }] (oldest member first), "messages" (count of written messages, not events),
+  "created_at" }. 404 { "error" } for an unknown group, 403 for non-admins.
+DELETE /admin/groups/:id   admin
+  Body (optional): { "reason"? (max 200, kept in the moderation log) }. Deletes the group for
+  everyone: its members, messages, reactions and uploaded images. Members get a
+  "group_updated" { "id" } event; loading the group then answers 404, so drop it from view.
+  Logged as action "delete_group". 200 { "message" }. 404 unknown group, 403 non-admins,
+  429 too many moderation actions (slow down).
 
 ### Realtime (server-sent events)
 

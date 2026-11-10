@@ -32,13 +32,14 @@
 					role: Shield,
 					password: KeyRound,
 					delete_post: Trash,
+					delete_group: Trash,
 					note: NotebookPen,
 					report_resolved: Flag,
 					report_dismissed: Flag,
 					report_reopened: Flag
 			  }[entry.action] ?? Shield
 	);
-	const danger = $derived(['ban', 'mute', 'delete_post'].includes(entry.action));
+	const danger = $derived(['ban', 'mute', 'delete_post', 'delete_group'].includes(entry.action));
 	const reportCount = $derived(Array.isArray(d.reports) ? d.reports.length : 0);
 </script>
 
@@ -67,6 +68,9 @@
 			{#if entry.action === 'role'}
 				<span class="text-muted">· {d.from} → {d.to}</span>
 			{/if}
+			{#if entry.action === 'delete_group' && typeof d.name === 'string'}
+				<span class="text-muted">· “{d.name}”</span>
+			{/if}
 			{#if reportCount > 1}
 				<span class="text-muted">· {reportCount} reports</span>
 			{/if}
@@ -87,6 +91,14 @@
 				{#if d.author && d.author !== entry.target}<span class="text-muted"
 						>@{d.author}:
 					</span>{/if}{d.content || '(no text)'}
+			</p>
+		{/if}
+		{#if entry.action === 'delete_group' && Array.isArray(d.members)}
+			<p class="text-[0.9em] break-words text-muted">
+				{d.members.length}
+				{d.members.length === 1 ? 'member' : 'members'}{#if d.members.length > 0}:
+					{d.members.map((u) => `@${u}`).join(', ')}{/if}{#if typeof d.messages === 'number'}
+					· {d.messages} {d.messages === 1 ? 'message' : 'messages'}{/if}
 			</p>
 		{/if}
 		<p class="text-[0.8em] text-muted">

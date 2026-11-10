@@ -533,6 +533,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `PUT`            | `/api/v1/admin/users/:username/password`     | admin              | `{ password }`, signs them out                                                                                           |
 | `GET`            | `/api/v1/admin/log?username=&actor=&action=` | staff              | the moderation log, newest first                                                                                         |
 | `GET` / `PUT`    | `/api/v1/admin/motd`                         | admin              | message of the day / set `{ motd }`                                                                                      |
+| `GET` / `DELETE` | `/api/v1/admin/groups/:id`                   | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                              |
 | `GET`            | `/api/v1/stream`                             | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s; at most 30 open per account        |
 | `GET`            | `/api/v1/stream/bot`                         | bot                | the bot stream (same as /api/bot/stream)                                                                                 |
 

@@ -93,6 +93,7 @@ export type LogAction =
 	| 'role'
 	| 'password'
 	| 'delete_post'
+	| 'delete_group'
 	| 'note'
 	| 'report_resolved'
 	| 'report_dismissed'

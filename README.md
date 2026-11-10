@@ -19,6 +19,7 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `PUBLIC_NO_REPLIES_MESSAGE`          | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                                                |
 | `DISCORD_WEBHOOK_URL`                | empty                             | optional, new posts are announced to this webhook                                                                                                                               |
 | `SIGNUP_PASSWORD`                    | empty                             | password required to register; registration is closed if empty                                                                                                                  |
+| `MEMBERS_ONLY`                       | `false`                           | `true` gates the whole instance to signed-in users: posts, profiles, images and the API need a session or token; signed-out visitors only see the login and registration pages  |
 | `ADDRESS_HEADER`                     | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                                           |
 | `S3_BUCKET`                          | empty                             | bucket for avatars and images; empty keeps them on the local disk (see [storing assets in S3 / R2](#storing-assets-in-s3--r2))                                                  |
 | `S3_ENDPOINT`                        | empty                             | S3 API endpoint, required with `S3_BUCKET` (R2: `https://<account id>.r2.cloudflarestorage.com`)                                                                                |
@@ -405,19 +406,19 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Instance and signing in**
 
-| method   | path                            | who       |                                                                              |
-| -------- | ------------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `GET`    | `/api/v1/instance`              | public    | message of the day, whether registration is open, limits, GIF settings       |
-| `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`     |
-| `POST`   | `/api/v1/auth/register`         | public    | `{ signup_password, email, name, username, password }` → a token, like login |
-| `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`               |
-| `POST`   | `/api/v1/auth/passkeys/login`   | public    | `{ challenge_id, response }` → a token, like login                           |
-| `POST`   | `/api/v1/auth/logout`           | signed in | revoke the token in use                                                      |
-| `GET`    | `/api/v1/auth/sessions`         | account   | browser sessions, app tokens and personal access tokens                      |
-| `DELETE` | `/api/v1/auth/sessions/:id`     | account   | revoke one of them                                                           |
-| `POST`   | `/api/v1/auth/tokens`           | account   | `{ name, current_password, expires_in_days? }` → a personal access token     |
-| `GET`    | `/api/v1/auth/accounts`         | account   | the account with its identities and unread counts                            |
-| `POST`   | `/api/v1/auth/switch`           | account   | `{ username }`: act as the account or one of its identities                  |
+| method   | path                            | who       |                                                                                |
+| -------- | ------------------------------- | --------- | ------------------------------------------------------------------------------ |
+| `GET`    | `/api/v1/instance`              | public    | message of the day, whether registration is open or members only, limits, GIFs |
+| `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`       |
+| `POST`   | `/api/v1/auth/register`         | public    | `{ signup_password, email, name, username, password }` → a token, like login   |
+| `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`                 |
+| `POST`   | `/api/v1/auth/passkeys/login`   | public    | `{ challenge_id, response }` → a token, like login                             |
+| `POST`   | `/api/v1/auth/logout`           | signed in | revoke the token in use                                                        |
+| `GET`    | `/api/v1/auth/sessions`         | account   | browser sessions, app tokens and personal access tokens                        |
+| `DELETE` | `/api/v1/auth/sessions/:id`     | account   | revoke one of them                                                             |
+| `POST`   | `/api/v1/auth/tokens`           | account   | `{ name, current_password, expires_in_days? }` → a personal access token       |
+| `GET`    | `/api/v1/auth/accounts`         | account   | the account with its identities and unread counts                              |
+| `POST`   | `/api/v1/auth/switch`           | account   | `{ username }`: act as the account or one of its identities                    |
 
 **You**
 

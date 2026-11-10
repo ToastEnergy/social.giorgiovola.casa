@@ -88,7 +88,8 @@ Three kinds of token exist:
          added to it), and get 10 profile edits an hour (name, username, bio, website,
          picture); 429 beyond that.
 Without a token you are anonymous: public reads work (posts, profiles, timelines), the rest
-answers 401. The website uses a session cookie instead; cookies only work on the website's
+answers 401. On a members-only instance (GET /instance says "members_only": true) even the
+public reads answer 401: only /instance and signing in work anonymously. The website uses a session cookie instead; cookies only work on the website's
 own origin and never from other sites.
 
 Only a hash of each token is stored. Tokens are shown once: keep them secret, like a
@@ -265,7 +266,7 @@ a bot). Rate limits are per profile per minute unless stated.
 
 GET /instance                                                  public
   { "api_version": 1, "version": "<build>", "motd": "message of the day",
-    "registration_open": true, "limits": { "postContent": ${LIMITS.postContent},
+    "registration_open": true, "members_only": false, "limits": { "postContent": ${LIMITS.postContent},
     "messageContent": ${LIMITS.messageContent}, "name": ${LIMITS.name}, "bio": ${LIMITS.bio},
     "username": ${LIMITS.username}, "postImages": ${LIMITS.postImages}, "messageImages": ${LIMITS.messageImages}, "imageBytes": ${LIMITS.imageBytes},
     "pollOptionsMin": ${LIMITS.pollOptionsMin}, "pollOptionsMax": ${LIMITS.pollOptionsMax},
@@ -275,6 +276,12 @@ GET /instance                                                  public
     "gifs": { "provider": "klipy", "app_key": "…", "content_filter": "medium" } | null }
   "gifs" is null when GIFs are off on this instance; otherwise what you need to search KLIPY
   yourself (see GIFs).
+  "members_only": true when the instance is closed to signed-out readers. Then every
+  endpoint except GET /instance and the sign-in ones below (/auth/login, /auth/register,
+  /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
+  instance is members only: sign in first" } without a token or the session cookie, and so
+  do images, avatars and social cards outside the API. "motd" is "" for signed-out callers
+  there. Bot tokens count as signed in.
 
 ### Signing in
 

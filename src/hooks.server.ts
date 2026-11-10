@@ -4,6 +4,7 @@ import { authenticate, shareAuth } from '#lib/server/auth.js';
 import { PUBLIC_URL } from '$app/env/public';
 import { checkLinkPreviewConfig } from '#lib/server/linkPreviews.js';
 import { checkStorageConfig } from '#lib/server/storage.js';
+import { gate, keepPrivate } from '#lib/server/membersOnly.js';
 
 const securityHeaders: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
@@ -31,7 +32,8 @@ export const handle = (async ({ event, resolve }) => {
 	if (api && event.request.method === 'OPTIONS')
 		return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
 
-	let response = await authenticate(event);
+	// MEMBERS_ONLY: signed-out visitors only reach the login pages (src/lib/server/membersOnly.ts)
+	let response = (await authenticate(event)) ?? gate(event);
 	if (!response) {
 		response = await shareAuth(event.locals, () => resolve(event));
 		// unknown routes and methods under /api/v1 answer with the API's error shape too
@@ -45,6 +47,7 @@ export const handle = (async ({ event, resolve }) => {
 				response.status === 404 ? 'No such endpoint' : 'Method not allowed',
 				response.headers.get('allow') ? { Allow: response.headers.get('allow')! } : undefined
 			);
+		keepPrivate(event, response);
 	}
 
 	if (api) setHeaders(response, CORS_HEADERS);

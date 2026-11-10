@@ -18,6 +18,7 @@ x-web: &web
     PUBLIC_NO_REPLIES_MESSAGE: ${PUBLIC_NO_REPLIES_MESSAGE:-}
     DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     SIGNUP_PASSWORD: ${SIGNUP_PASSWORD:-}
+    MEMBERS_ONLY: ${MEMBERS_ONLY:-}
     ADDRESS_HEADER: ${ADDRESS_HEADER:-}
     # optional bucket for avatars and images (README: storing assets in S3 / R2)
     S3_BUCKET: ${S3_BUCKET:-}

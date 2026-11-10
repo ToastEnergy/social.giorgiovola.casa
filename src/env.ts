@@ -23,6 +23,15 @@ export const variables = defineEnvVars({
 		schema: (input: string | undefined) => input || 'Nessuno ha ancora giorgiato qui'
 	},
 	SIGNUP_PASSWORD: { schema: optional },
+	// true: nothing can be read without signing in (src/lib/server/membersOnly.ts)
+	MEMBERS_ONLY: {
+		schema: (input: string | undefined) => {
+			const value = (input ?? '').trim().toLowerCase();
+			if (value === '' || value === 'false' || value === '0') return false;
+			if (value === 'true' || value === '1') return true;
+			throw new Error('MEMBERS_ONLY must be true or false');
+		}
+	},
 	// who downloads the pages of links in posts (src/lib/server/linkPreviews.ts). remote needs the
 	// URL and the secret, which checkLinkPreviewConfig refuses at startup when missing
 	LINK_PREVIEWS: {

@@ -525,7 +525,8 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/auth/login',
 				auth: 'public',
-				summary: '`{ username, password, client_name? }` → a `sgu_…` bearer token and `me`'
+				summary:
+					'`{ username, password, client_name? }` → a `sgu_…` bearer token (expires after 90 days without use) and `me`'
 			},
 			{
 				method: 'POST',

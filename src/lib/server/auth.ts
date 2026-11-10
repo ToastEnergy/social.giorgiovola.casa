@@ -7,6 +7,8 @@ import { db, identity_members, sessions, users } from './db/index.js';
 import { authenticateBot } from './bots.js';
 import { apiError } from './api.js';
 import {
+	SESSION_DAYS,
+	TOKEN_DAYS,
 	USER_TOKEN_RE,
 	cookieKeys as keysOfCookie,
 	cookieTokens,
@@ -49,8 +51,17 @@ export function shareAuth<T>(locals: App.Locals, fn: () => T): T {
 	return key === undefined ? fn() : parentAuth.run({ key, locals }, fn);
 }
 
-/** Writes at most one last_used_at every few minutes per session. */
+/** Writes at most one last_used_at (and expiry) every few minutes per session. */
 const TOUCH_MS = 5 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * Browser sessions and login tokens expire after that many days without use, not after that
+ * many days since signing in: each use pushes the expiry back. Personal access tokens keep the
+ * expiry chosen for them.
+ */
+const slidingDays = (kind: string) =>
+	kind === 'cookie' ? SESSION_DAYS : kind === 'token' ? TOKEN_DAYS : null;
 
 /**
  * Looks up session rows by key (`sessions.token`) with the account, the identity in use and the
@@ -66,6 +77,8 @@ async function loadSessions(keys: string[], kind: 'cookie' | 'api') {
 	const rows = await db
 		.select({
 			token: sessions.token,
+			kind: sessions.kind,
+			expires_at: sessions.expires_at,
 			last_used_at: sessions.last_used_at,
 			account: {
 				id: account.id,
@@ -156,13 +169,31 @@ function fromSession(locals: App.Locals, row: SessionRow) {
 		created_at: a.created_at,
 		owner_id: null
 	};
+}
 
-	if (!row.last_used_at || Date.now() - row.last_used_at.getTime() > TOUCH_MS)
-		void db
-			.update(sessions)
-			.set({ last_used_at: sql`NOW()` })
-			.where(eq(sessions.token, row.token))
-			.catch((e) => console.error('auth: last_used_at failed', e));
+/**
+ * Records a use of a session row: `last_used_at` when it is the one in use (`used`), and a
+ * pushed back expiry for the kinds that slide, each at most every TOUCH_MS. Returns whether the
+ * expiry moved, so the cookies can be renewed with it.
+ */
+function touch(row: SessionRow, used: boolean) {
+	const now = Date.now();
+	const days = slidingDays(row.kind);
+	const renew =
+		days !== null &&
+		row.expires_at !== null &&
+		row.expires_at.getTime() < now + days * DAY_MS - TOUCH_MS;
+	const seen = used && (!row.last_used_at || now - row.last_used_at.getTime() > TOUCH_MS);
+	if (!renew && !seen) return false;
+	void db
+		.update(sessions)
+		.set({
+			...(seen ? { last_used_at: sql`NOW()` } : {}),
+			...(renew ? { expires_at: sql`NOW() + make_interval(days => ${days})` } : {})
+		})
+		.where(eq(sessions.token, row.token))
+		.catch((e) => console.error('auth: touching the session failed', e));
+	return renew;
 }
 
 const unauthorized = (message: string) => apiError(401, message, { 'WWW-Authenticate': 'Bearer' });
@@ -218,6 +249,7 @@ async function fromToken(locals: App.Locals, request: Request, header: string) {
 	const [row] = await loadSessions([hashToken(token)], 'api');
 	if (!row) return unauthorized('Invalid or expired token, sign in again');
 	fromSession(locals, row);
+	touch(row, true);
 	locals.auth = 'token';
 	return null;
 }
@@ -273,8 +305,16 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 	});
 	cookieKeys.set(locals, key);
 
-	// the active session expired (or a token went stale): fall back to the next signed in account
-	if (valid.length !== tokens.length)
+	// every account signed in on the browser stays signed in while the browser is used, though
+	// only the active one counts as used in the session list
+	let renewed = false;
+	valid.forEach((v, i) => {
+		if (touch(v.row, i === 0)) renewed = true;
+	});
+
+	// the active session expired (or a token went stale): fall back to the next signed in account.
+	// a renewed expiry is written to the cookies too, which would otherwise run out at the old one
+	if (valid.length !== tokens.length || renewed)
 		setSessionCookies(
 			cookies,
 			valid.map((v) => v.token)

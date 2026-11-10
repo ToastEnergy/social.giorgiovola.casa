@@ -23,6 +23,8 @@ type Profile = {
 		muted: boolean;
 		ban_reason: string | null;
 		mute_reason: string | null;
+		banned_until: string | null;
+		muted_until: string | null;
 		identity: boolean;
 	} | null;
 };

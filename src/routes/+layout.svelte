@@ -15,6 +15,7 @@
 	import PhotoEditor from '#lib/components/PhotoEditor.svelte';
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
+	import ReportDialog from '#lib/components/ReportDialog.svelte';
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
@@ -178,6 +179,7 @@
 	<ImageViewer />
 	<ProfileCard />
 	<ShareDialog />
+	<ReportDialog />
 	<ComposeSheet />
 	<ConnectionStatus />
 	<PhotoEditor />

@@ -19,6 +19,8 @@ export const load = (async ({ fetch, cookies, request }) => {
 		role: me?.role ?? 'user',
 		muted: me?.muted ?? false,
 		muteReason: me?.mute_reason ?? null,
+		// staff: the moderation item shows the reports waiting
+		reportsCount: me?.open_reports ?? 0,
 		notisCount: me?.unread.notifications ?? 0,
 		// reactions to your messages make a chat unread too
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),

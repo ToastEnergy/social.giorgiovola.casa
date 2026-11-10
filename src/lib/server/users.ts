@@ -27,6 +27,8 @@ export async function getProfile(username: string, locals: App.Locals) {
 		muted: boolean;
 		ban_reason: string | null;
 		mute_reason: string | null;
+		banned_until: Date | null;
+		muted_until: Date | null;
 		/** the profile is an identity (or bot): moderation acts on the account behind it */
 		identity: boolean;
 	} | null = null;
@@ -38,6 +40,8 @@ export async function getProfile(username: string, locals: App.Locals) {
 				muted: target.muted_at !== null,
 				ban_reason: target.ban_reason,
 				mute_reason: target.mute_reason,
+				banned_until: target.banned_until,
+				muted_until: target.muted_until,
 				identity: target.username !== card.username
 			};
 	}

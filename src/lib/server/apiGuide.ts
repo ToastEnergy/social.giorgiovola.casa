@@ -118,6 +118,8 @@ Moderation (bans, mutes, roles) belongs to the account, whatever profile is in u
 A muted account can still read everything, but can't post, reply, quote, regiorgio (repost),
 edit posts, upload images or send messages: those answer 403 with the reason. GET /me has
 \`muted\` and \`mute_reason\`. A banned account is signed out everywhere and can't sign in.
+Bans and mutes are either for good or temporary: a temporary one is lifted by itself within a
+minute of its end (signing in works as soon as the ban has ended).
 
 ## Objects
 
@@ -179,7 +181,8 @@ Profile (GET /users/:username):
     "pinned_post_id": 99 | null,
     "blocked": false,       // you blocked them (no direct messages either way)
     "blocks_you": false,    // they blocked you
-    "moderation": null | { "banned", "muted", "ban_reason", "mute_reason", "identity" }
+    "moderation": null | { "banned", "muted", "ban_reason", "mute_reason", "banned_until",
+                           "muted_until", "identity" }   // *_until: null when for good
                             // only for staff allowed to act on this account
   }
   Relationship fields are false/empty when anonymous.
@@ -211,7 +214,8 @@ Me (GET /me):
     "account": { "id", "username" } | null,   // null for bots
     "role": "user" | "mod" | "admin", "muted", "mute_reason",
     "unread": { "notifications": 2, "messages": 5, "reactions": 1 },
-    "auth": "token" | "bot" | "cookie" }
+    "auth": "token" | "bot" | "cookie",
+    "open_reports": 3 | null }   // staff only: reports waiting (null for everyone else)
 
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
@@ -427,7 +431,8 @@ PATCH /posts/:id   { "content" }                                author, not mute
   Sets "edited_at", re-reads hashtags. 200: <Post>.
   400 when the text would be empty on a post without images or GIF, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
-  Deletes it with its replies. 204.
+  Deletes it with its replies. 204. When staff delete someone else's post, its open reports
+  are resolved and the deletion (with a copy of the text) goes in the moderation log.
 GET /posts/:id/replies          replies, ratioing ones first then oldest first; limit up to 200 (default 50)
 GET /posts/:id/ancestors        public. The thread above a reply: the post it replies to, the one
   that one replies to, and so on, as <Post>s ordered ROOT FIRST (the direct parent is the last
@@ -637,22 +642,94 @@ Showing GIFs: play "video" muted and looped (\`<video autoplay muted loop playsi
 poster=…>\`), sized width × height. KLIPY may remove a GIF: then its URLs stop working, so
 show a placeholder when the video fails to load.
 
+### Reports
+
+POST /reports                                                  signed in, not bots
+  Reports a post or a profile to the staff. Only staff see reports; the reported person isn't
+  told who reported.
+  Body: { "post_id": 123 } OR { "username": "bob" } (exactly one), plus
+        "category": "spam" | "harassment" | "hate" | "violence" | "sexual" | "self_harm" |
+                    "impersonation" | "other",
+        "details": "what is wrong" (optional, max 1000)
+  201: { "id", "message" }. Reporting the same post (or profile) again while your first
+  report is still open answers that report's id instead of a new one.
+  Errors: 400 bad category, both or neither of post_id/username, details too long, or your
+  own post or profile (any of your account's profiles); 403 bots; 404 unknown post or user;
+  429 after 10 reports an hour per account.
+
 ### Moderation (staff)
 
-Mods can ban and mute users; admins can also manage mods, reset passwords and set the
-message of the day. Actions target the account behind a username (an identity or bot
-leads to its owner). You can only act on accounts ranked below you. 60 actions a minute.
+Mods handle reports, ban, mute and delete posts of regular users; admins can also manage
+mods, reset passwords and set the message of the day. Actions target the ACCOUNT behind a
+username (an identity or bot leads to its owner). You can only act on accounts ranked below
+you (and never yourself). 60 actions a minute per staff member (429 above that). Every action
+is written to the moderation log. All of these answer 403 for anyone who isn't staff, and
+for bots.
 
-GET /admin/users?q=&filter=all|banned|muted|staff   staff, paginated (default 25)
-  { "username", "name", "avatar", "role", "banned_at", "ban_reason", "muted_at",
-    "mute_reason", "created_at", "identities": [ { "username", "name", "avatar", "bot",
-    "members": ["usernames"] } ], "shared_with": [ { "username", "name", "avatar",
-    "owner_username" } ], "self", "can_moderate", "can_manage" }
-PUT /admin/users/:username/ban    { "reason"? (max 200) } → { "message" }   staff
+GET /admin/overview   staff
+  { "open_reports", "accounts", "new_accounts" (last 7 days), "banned", "muted", "staff",
+    "posts_today" (last 24 hours), "actions_week" (staff actions, last 7 days) }
+
+GET /admin/reports?status=open|resolved|dismissed|all&username=   staff, paginated (default 25)
+  Newest first; status defaults to open. ?username= keeps the reports against that account
+  and its identities. Items:
+  { "id", "kind": "post" | "profile", "category", "details", "status",
+    "created_at", "resolved_at", "resolved_by": "username" | null, "resolution_note",
+    "reporter": User, "target": User,          // target: the reported profile
+    "post": null | { "id": 123 | null, "content", "images": ["/uploads/…"],
+                     "deleted": false,          // true: content is the copy taken when reported
+                     "edited": false },         // changed since it was reported
+    "account": { "username", "role", "banned", "muted" },   // the account behind target
+    "related_open": 2,      // other open reports of the same post (or profile)
+    "can_moderate": true }  // you may act on that account
+PATCH /admin/reports/:id   staff
+  Body: { "status": "resolved" | "dismissed" | "open", "note"? (max 500, for the staff),
+          "related"?: true }   // also close the other open reports of the same post/profile
+  200: { "updated": 2, "message" }. 400 bad status, 404 unknown report.
+
+GET /admin/users?q=&filter=all|reported|banned|muted|staff   staff, paginated (default 25)
+  Accounts, newest first ("reported": accounts with open reports, most reported first). ?q=
+  searches usernames and names, also of identities (which find their owner). Items:
+  { "username", "name", "avatar", "role", "banned_at", "ban_reason", "banned_until",
+    "muted_at", "mute_reason", "muted_until", "created_at",
+    "open_reports",         // open reports against the account and its identities
+    "identities": [ { "username", "name", "avatar", "bot", "members": ["usernames"] } ],
+    "shared_with": [ { "username", "name", "avatar", "owner_username" } ],
+    "self", "can_moderate", "can_manage" }   // can_manage: admin actions allowed
+  *_until is null when the ban or mute is for good (or there is none).
+GET /admin/users/:username   staff
+  The account behind :username: the fields above (without open_reports), plus
+  "email" (admins only, null for mods), "via" (the identity you asked for, or null),
+  "stats": { "posts", "followers", "open_reports", "reports" (all reports against it),
+             "reports_made", "log_entries" }. 404 unknown user.
+PUT /admin/users/:username/ban   staff
+  Body: { "reason"? (max 200, shown to them), "duration"? }. duration: seconds, a whole
+  number from 60 to 31536000 (a year); null or missing bans for good. Signs the account out
+  everywhere and ends its bots' streams. On an account that is already banned it replaces the
+  reason and the end (counted from now). 200: { "message", "expires_at": "…" | null }.
 DELETE /admin/users/:username/ban → { "message" }                            staff
-PUT /admin/users/:username/mute   { "reason"? } / DELETE → { "message" }    staff
+PUT /admin/users/:username/mute   { "reason"?, "duration"? } like ban → { "message", "expires_at" }   staff
+DELETE /admin/users/:username/mute → { "message" }                           staff
 PUT /admin/users/:username/role   { "role": "mod" | "user" } → { "message" }   admin
 PUT /admin/users/:username/password   { "password" } → { "message" }  admin; signs them out
+POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" }   staff
+  A note for the other staff, kept in the moderation log of the account. Works on any
+  account, also ones you can't act on.
+
+GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest first
+  ?username= one account's entries (an identity finds its owner), ?actor= one staff
+  member's, ?action= one of: ban, unban, mute, unmute, role, password, delete_post, note,
+  report_resolved, report_dismissed, report_reopened (400 for another). Items:
+  { "id", "action", "actor": "username" | null, "target": "username" | null,
+    "target_profile": User | null,   // null once the account is gone
+    "reason",                         // ban/mute reason, the note, the report note
+    "expires_at",                     // end of a temporary ban or mute
+    "details": null | {…},            // delete_post: { "post_id", "author", "content",
+                                      //   "images", "reply", "reports" }; role: { "from",
+                                      //   "to" }; report_*: { "reports": [ids], "kind",
+                                      //   "post_id" }; expired unban/unmute: { "expired": true }
+    "created_at", "system": false }   // system: no staff member (a ban that ran out)
+
 GET /admin/motd → { "motd", "custom", "default", "max" }                     admin
 PUT /admin/motd   { "motd": "one line" ("" resets) } → { "motd", "message" }   admin
 

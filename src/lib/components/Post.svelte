@@ -8,6 +8,7 @@
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import Share from '@lucide/svelte/icons/share';
 	import Trash from '@lucide/svelte/icons/trash';
+	import Flag from '@lucide/svelte/icons/flag';
 	import Button from '#lib/components/Button.svelte';
 	import { user, isMobile } from '#lib/store.js';
 	import type { Post } from '#lib/types.js';
@@ -32,6 +33,7 @@
 	import { profileHover } from '#lib/profileCard.svelte.js';
 	import { modal } from '#lib/modal.js';
 	import { openShare, postUrl } from '#lib/share.svelte.js';
+	import { openReport } from '#lib/report.svelte.js';
 	import { visibleBottom } from '#lib/keyboard.svelte.js';
 
 	type Props = {
@@ -983,6 +985,17 @@
 											e.stopPropagation();
 											nativeShare();
 										}}><Share size={18} />Share via…</button
+									>
+								{/if}
+								{#if $user && $user.username !== post.user.username}
+									<button
+										role="menuitem"
+										class={shareItemClass}
+										onclick={(e) => {
+											e.stopPropagation();
+											shareOpen = false;
+											openReport({ kind: 'post', id: post.id, username: post.user.username });
+										}}><Flag size={18} />Report post</button
 									>
 								{/if}
 							</div>

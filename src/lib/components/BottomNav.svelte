@@ -14,7 +14,8 @@
 
 	// an open post has the reply bar right above (ReplyDock), which takes over the top border
 	const docked = $derived(!!$user && page.route.id === '/@[username]/[post]' && !page.error);
-	const counts = $derived({ notifications: $notisCount, messages: $messagesCount });
+	// moderation (and its reports count) is in the profile menu here, not the bar
+	const counts = $derived({ notifications: $notisCount, messages: $messagesCount, reports: 0 });
 	// home, chat, new post, notifications and the profile menu (switching, settings). search is
 	// in the top row (MobileHeader)
 	const [notifications, messages] = navItems;

@@ -9,7 +9,7 @@ export type NavItem = {
 	label: string;
 	icon: typeof Bell;
 	/** which unread count the item shows */
-	count?: 'notifications' | 'messages';
+	count?: 'notifications' | 'messages' | 'reports';
 };
 
 // the main sections, shared by the sidebar (wide screens) and the bottom bar (narrow ones)
@@ -20,7 +20,12 @@ export const navItems: NavItem[] = [
 ];
 
 // staff only, and only in the sidebar (touch devices reach it from the profile menu in the bottom bar)
-export const moderationItem: NavItem = { href: '/admin', label: 'Moderation', icon: Shield };
+export const moderationItem: NavItem = {
+	href: '/admin',
+	label: 'Moderation',
+	icon: Shield,
+	count: 'reports'
+};
 
 // home is its own item so the bottom bar can put it first
 export const homeItem: NavItem = { href: '/', label: 'Home', icon: House };

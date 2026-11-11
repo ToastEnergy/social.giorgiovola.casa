@@ -1,6 +1,6 @@
 {
 	"expo": {
-		"name": "social",
+		"name": "SocialGiorgiovolaCasa",
 		"slug": "social-giorgiovola",
 		"version": "1.0.0",
 		"orientation": "portrait",
@@ -8,7 +8,11 @@
 		"userInterfaceStyle": "dark",
 		"ios": {
 			"supportsTablet": true,
-			"bundleIdentifier": "casa.giorgiovola.social"
+			"bundleIdentifier": "casa.giorgiovola.social",
+			"infoPlist": {
+				"CFBundleDisplayName": "SGC"
+			},
+			"appleTeamId": "A7DPA4RJ43"
 		},
 		"android": {
 			"adaptiveIcon": {
@@ -32,7 +36,8 @@
 				{
 					"photosPermission": "Choose images for your posts, messages and profile picture."
 				}
-			]
+			],
+			"./plugins/disable-script-sandboxing"
 		],
 		"scheme": "social",
 		"backgroundColor": "#0c0b0b"

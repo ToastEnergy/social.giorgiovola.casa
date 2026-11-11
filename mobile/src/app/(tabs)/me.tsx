@@ -14,11 +14,14 @@ function MenuRow({
 	icon,
 	label,
 	danger,
+	badge,
 	onPress
 }: {
 	icon: React.ReactNode;
 	label: string;
 	danger?: boolean;
+	/** a red count on the right (reports waiting) */
+	badge?: number | null;
 	onPress: () => void;
 }) {
 	return (
@@ -35,7 +38,22 @@ function MenuRow({
 			})}
 		>
 			{icon}
-			<Txt style={danger ? { color: colors.danger } : undefined}>{label}</Txt>
+			<Txt style={[{ flex: 1 }, danger ? { color: colors.danger } : undefined]}>{label}</Txt>
+			{badge ? (
+				<View
+					style={{
+						backgroundColor: colors.danger,
+						borderRadius: 10,
+						minWidth: 20,
+						paddingHorizontal: 6,
+						alignItems: 'center'
+					}}
+				>
+					<Txt size={12} bold style={{ color: colors.background }}>
+						{badge > 99 ? '99+' : badge}
+					</Txt>
+				</View>
+			) : null}
 		</Pressable>
 	);
 }
@@ -60,6 +78,8 @@ export default function MeTab() {
 			).then((result) => {
 				if (!stale) setSwitcher(result);
 			});
+			// the reports waiting for staff aren't pushed live: fresh when the menu opens
+			if (me && me.role !== 'user') session.reloadMe().catch(() => {});
 			return () => {
 				stale = true;
 			};
@@ -167,6 +187,7 @@ export default function MeTab() {
 				<MenuRow
 					icon={<Shield {...icon} />}
 					label="Moderation"
+					badge={me.open_reports}
 					onPress={() => router.push('/admin')}
 				/>
 			) : null}

@@ -69,6 +69,9 @@ export type Moderation = {
 	muted: boolean;
 	ban_reason: string | null;
 	mute_reason: string | null;
+	/** null when for good (or not banned) */
+	banned_until?: string | null;
+	muted_until?: string | null;
 	identity: boolean;
 };
 
@@ -133,6 +136,8 @@ export type Me = {
 	mute_reason: string | null;
 	unread: { notifications: number; messages: number; reactions: number };
 	auth: 'token' | 'bot' | 'cookie';
+	/** staff only: reports waiting for them (null for everyone else, missing on older servers) */
+	open_reports?: number | null;
 };
 
 export type LoginResult = { token: string; expires_at: string; me: Me };
@@ -267,16 +272,102 @@ export type Identities = {
 	shared_with_me: (User & { created_at: string; owner: string })[];
 };
 
-export type AdminUser = User & {
-	role: 'user' | 'mod' | 'admin';
+export type Role = 'user' | 'mod' | 'admin';
+
+/** The state every account row and case page shows (GET /admin/users). */
+export type AccountState = User & {
+	role: Role;
 	banned_at: string | null;
 	ban_reason: string | null;
+	banned_until?: string | null;
 	muted_at: string | null;
 	mute_reason: string | null;
+	muted_until?: string | null;
 	created_at: string;
 	identities: (User & { bot: boolean; members: string[] })[];
 	shared_with: (User & { owner_username: string })[];
 	self: boolean;
 	can_moderate: boolean;
 	can_manage: boolean;
+};
+
+/** GET /admin/users */
+export type AdminUser = AccountState & { open_reports?: number };
+
+/** GET /admin/users/:username: a case page */
+export type AdminAccount = AccountState & {
+	email: string | null;
+	/** the identity that was asked for, when it isn't the account itself */
+	via: string | null;
+	stats: {
+		posts: number;
+		followers: number;
+		open_reports: number;
+		reports: number;
+		reports_made: number;
+		log_entries: number;
+	};
+};
+
+export type ReportStatus = 'open' | 'resolved' | 'dismissed';
+
+/** GET /admin/reports */
+export type Report = {
+	id: number;
+	kind: 'post' | 'profile';
+	category: string;
+	details: string;
+	status: ReportStatus;
+	created_at: string;
+	resolved_at: string | null;
+	resolution_note: string | null;
+	resolved_by: string | null;
+	reporter: User;
+	target: User;
+	post: {
+		id: number | null;
+		content: string;
+		images: string[];
+		deleted: boolean;
+		edited: boolean;
+	} | null;
+	account: { username: string; role: Role; banned: boolean; muted: boolean };
+	related_open: number;
+	can_moderate: boolean;
+};
+
+/** GET /admin/log */
+export type LogEntry = {
+	id: number;
+	action: string;
+	actor: string | null;
+	target: string | null;
+	target_profile: User | null;
+	reason: string | null;
+	expires_at: string | null;
+	details: Record<string, unknown> | null;
+	created_at: string;
+	system: boolean;
+};
+
+/** GET /admin/overview */
+export type Overview = {
+	open_reports: number;
+	accounts: number;
+	new_accounts: number;
+	banned: number;
+	muted: number;
+	staff: number;
+	posts_today: number;
+	actions_week: number;
+};
+
+/** GET /admin/groups/:id */
+export type AdminGroup = {
+	id: number;
+	name: string;
+	owner: string | null;
+	members: User[];
+	messages: number;
+	created_at: string;
 };

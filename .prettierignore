@@ -25,3 +25,10 @@ src/lib/components/MobileHeader.svelte
 src/routes/settings/+layout.svelte
 .wrangler
 src/routes/admin/+layout.svelte
+
+# gitignored in mobile/.gitignore (prettier 2 does not read .gitignore)
+/mobile/build
+/mobile/ios
+/mobile/android
+/mobile/.expo
+/mobile/dist

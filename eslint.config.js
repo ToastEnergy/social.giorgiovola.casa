@@ -6,7 +6,19 @@ import ts from 'typescript-eslint';
 
 export default ts.config(
 	{
-		ignores: ['build/', '.svelte-kit/', 'package/', 'workers/**/.wrangler/', '.wrangler/']
+		ignores: [
+			'build/',
+			'.svelte-kit/',
+			'package/',
+			'workers/**/.wrangler/',
+			'.wrangler/',
+			// gitignored in mobile/.gitignore
+			'mobile/build/',
+			'mobile/ios/',
+			'mobile/android/',
+			'mobile/.expo/',
+			'mobile/dist/'
+		]
 	},
 	js.configs.recommended,
 	...ts.configs.recommended,
@@ -35,8 +47,8 @@ export default ts.config(
 		}
 	},
 	{
-		// metro loads static assets with require()
-		files: ['mobile/**/*.{ts,tsx}'],
+		// metro loads static assets with require(), and expo config plugins are CommonJS
+		files: ['mobile/**/*.{ts,tsx,js}'],
 		rules: { '@typescript-eslint/no-require-imports': 'off' }
 	},
 	{

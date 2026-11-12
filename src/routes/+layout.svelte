@@ -18,6 +18,7 @@
 	import ReportDialog from '#lib/components/ReportDialog.svelte';
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
+	import Splash from '#lib/components/Splash.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -183,6 +184,7 @@
 	<ComposeSheet />
 	<ConnectionStatus />
 	<PhotoEditor />
+	<Splash />
 </div>
 <svelte:head>
 	{#if page.route.id === '/@[username]/[post]' && !page.error}

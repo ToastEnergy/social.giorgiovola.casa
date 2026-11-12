@@ -1,4 +1,4 @@
-import * as Passkeys from 'react-native-passkeys';
+import type * as PasskeysModule from 'react-native-passkeys';
 import { api, ApiError } from './api';
 import type { LoginResult } from './types';
 
@@ -7,12 +7,27 @@ import type { LoginResult } from './types';
 // mobile app), and on iOS for the domains in app.json's associatedDomains
 
 type Options<T> = T & { challenge_id: string };
-type RequestOptions = Parameters<typeof Passkeys.get>[0];
-type CreationOptions = Parameters<typeof Passkeys.create>[0];
+type RequestOptions = Parameters<typeof PasskeysModule.get>[0];
+type CreationOptions = Parameters<typeof PasskeysModule.create>[0];
+
+// loaded on first use, not imported: the package throws while loading in a build without the
+// native module (a dev client from before passkeys), which would take the whole app down with it
+let Passkeys: typeof PasskeysModule | null | undefined;
+function load() {
+	if (Passkeys === undefined) {
+		try {
+			Passkeys = require('react-native-passkeys') as typeof PasskeysModule;
+		} catch {
+			Passkeys = null;
+		}
+	}
+	if (!Passkeys) throw new Error('Passkeys aren’t available in this build of the app.');
+	return Passkeys;
+}
 
 export function passkeysSupported() {
 	try {
-		return Passkeys.isSupported();
+		return load().isSupported();
 	} catch {
 		// a build without the native module
 		return false;
@@ -43,7 +58,7 @@ export async function passkeyLogin(server: string, clientName: string) {
 	});
 	let response;
 	try {
-		response = await Passkeys.get(options);
+		response = await load().get(options);
 	} catch (e) {
 		platformError(e);
 	}
@@ -72,7 +87,7 @@ export async function addPasskey(currentPassword: string, name: string) {
 	});
 	let response;
 	try {
-		response = await Passkeys.create(options);
+		response = await load().create(options);
 	} catch (e) {
 		platformError(e);
 	}

@@ -124,13 +124,13 @@ export async function registerPasskey(
 	const name = parsePasskeyName(body.name);
 	if (!name) fail(400, `Name must be at most ${PASSKEY_NAME_MAX} characters.`);
 
-	const { origin, rpID } = relyingParty(url);
+	const { origins, rpID } = relyingParty(url);
 	let info;
 	try {
 		const result = await verifyRegistrationResponse({
 			response: body.response as RegistrationResponseJSON,
 			expectedChallenge: pending.challenge,
-			expectedOrigin: origin,
+			expectedOrigin: origins,
 			expectedRPID: rpID,
 			requireUserVerification: true
 		});
@@ -226,13 +226,13 @@ export async function passkeyLogin(
 	const handle = response.response?.userHandle;
 	if (handle && handle !== userHandleBase64(passkey.user_id)) failed(FAILED);
 
-	const { origin, rpID } = relyingParty(url);
+	const { origins, rpID } = relyingParty(url);
 	let info;
 	try {
 		const result = await verifyAuthenticationResponse({
 			response,
 			expectedChallenge: pending!.challenge,
-			expectedOrigin: origin,
+			expectedOrigin: origins,
 			expectedRPID: rpID,
 			requireUserVerification: true,
 			credential: {

@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { Tabs } from 'expo-router/tabs';
 import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-native';
 import { Avatar } from '@/components/ui';
@@ -72,6 +73,13 @@ export default function TabsLayout() {
 			/>
 			<Tabs.Screen
 				name="me"
+				// like the website's avatar menu: a sheet with the profile switcher, not a page
+				listeners={{
+					tabPress: (e) => {
+						e.preventDefault();
+						router.push('/menu');
+					}
+				}}
 				options={{
 					title: 'You',
 					tabBarAccessibilityLabel: 'Profile menu',

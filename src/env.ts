@@ -49,6 +49,16 @@ export const variables = defineEnvVars({
 		}
 	},
 	ADDRESS_HEADER: { schema: optional },
+	// the mobile apps allowed to use this instance's passkeys (src/lib/server/appLinks.ts), served
+	// in /.well-known. Apple: TEAMID.bundle ids. Android: the package and its signing certificates'
+	// SHA-256 fingerprints (AA:BB:…), all comma separated
+	APPLE_APP_IDS: {
+		schema: (input: string | undefined) => input ?? 'A7DPA4RJ43.casa.giorgiovola.social'
+	},
+	ANDROID_APP_PACKAGE: {
+		schema: (input: string | undefined) => input || 'casa.giorgiovola.social'
+	},
+	ANDROID_APP_FINGERPRINTS: { schema: optional },
 	// the bucket for avatars and images, the local disk when empty. The schemas can't see each
 	// other, so checkStorageConfig (src/lib/server/storage.ts) refuses an incomplete set at startup
 	S3_BUCKET: { schema: optional },

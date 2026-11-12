@@ -58,6 +58,17 @@ function Navigation() {
 				<Stack.Screen name="share" options={{ presentation: 'modal', title: 'Send via message' }} />
 				<Stack.Screen name="report" options={{ presentation: 'modal', title: 'Report' }} />
 				<Stack.Screen
+					name="menu"
+					options={{
+						presentation: 'formSheet',
+						headerShown: false,
+						sheetAllowedDetents: [0.6, 1],
+						sheetGrabberVisible: true,
+						sheetCornerRadius: 10,
+						contentStyle: { backgroundColor: colors.background }
+					}}
+				/>
+				<Stack.Screen
 					name="admin/action"
 					options={{ presentation: 'modal', title: 'Moderation' }}
 				/>

@@ -249,7 +249,15 @@ function EmojiButton({
 	);
 }
 
-function MenuRow({ item, padding, compact }: { item: MenuItem; padding: number; compact?: boolean }) {
+function MenuRow({
+	item,
+	padding,
+	compact
+}: {
+	item: MenuItem;
+	padding: number;
+	compact?: boolean;
+}) {
 	return (
 		<Pressable
 			accessibilityRole="menuitem"
@@ -268,7 +276,10 @@ function MenuRow({ item, padding, compact }: { item: MenuItem; padding: number; 
 			})}
 		>
 			{item.icon}
-			<Txt size={compact ? 15 : undefined} style={item.danger ? { color: colors.danger } : undefined}>
+			<Txt
+				size={compact ? 15 : undefined}
+				style={item.danger ? { color: colors.danger } : undefined}
+			>
 				{item.label}
 			</Txt>
 		</Pressable>

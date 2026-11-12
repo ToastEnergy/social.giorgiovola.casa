@@ -160,7 +160,7 @@ export default function Compose() {
 						onChangeText={setText}
 						onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
 						placeholder={
-							poll ? 'Ask a question' : params.reply ? 'Giorgia un commento' : (instance?.motd ?? '')
+							poll ? 'Ask a question' : params.reply ? 'Giorgia un commento' : instance?.motd ?? ''
 						}
 						placeholderTextColor={colors.muted}
 						selectionColor={colors.accent}

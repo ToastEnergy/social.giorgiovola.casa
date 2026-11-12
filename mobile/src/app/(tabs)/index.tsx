@@ -17,7 +17,7 @@ import * as SecureStore from 'expo-secure-store';
 type Feed = 'all' | 'following';
 
 export default function Home() {
-	const { me, instance, profileKey } = useSession();
+	const { me, profileKey } = useSession();
 	const [feed, setFeedState] = useState<Feed>('all');
 	const [pinned, setPinned] = useState<Post[]>([]);
 	const list = usePaged<Post>(`timeline?feed=${feed}`, (p) => p.id);
@@ -73,11 +73,6 @@ export default function Home() {
 				value={feed}
 				onChange={setFeed}
 			/>
-			{instance?.motd ? (
-				<View style={{ padding: 20, paddingBottom: 0 }}>
-					<Notice>{instance.motd}</Notice>
-				</View>
-			) : null}
 			{me?.muted ? (
 				<View style={{ padding: 20, paddingBottom: 0 }}>
 					<Notice>

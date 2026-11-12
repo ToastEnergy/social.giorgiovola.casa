@@ -322,8 +322,6 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			style={({ pressed }) => ({
 				paddingVertical: 12,
 				paddingHorizontal: 20,
-				borderBottomWidth: 1,
-				borderBottomColor: colors.line,
 				backgroundColor: pressed ? colors.hover : 'transparent'
 			})}
 		>

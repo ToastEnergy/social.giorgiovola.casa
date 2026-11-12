@@ -16,9 +16,13 @@ export type MenuItem = {
 	onPress: () => void;
 };
 
+/** Where an element is on screen (window coordinates): a menu opens next to it, like on the web. */
+export type MenuAnchor = { x: number; y: number; width: number; height: number; mine?: boolean };
+
 type MenuState = {
 	items: MenuItem[];
 	emojis?: { list: string[]; selected?: string | null; onPick: (emoji: string) => void };
+	anchor?: MenuAnchor;
 };
 
 type PromptOptions = {
@@ -47,8 +51,9 @@ const set = (patch: Partial<State>) => {
 
 export const showMenu = (
 	items: (MenuItem | false | null | undefined)[],
-	emojis?: MenuState['emojis']
-) => set({ menu: { items: items.filter((i): i is MenuItem => !!i), emojis } });
+	emojis?: MenuState['emojis'],
+	anchor?: MenuAnchor
+) => set({ menu: { items: items.filter((i): i is MenuItem => !!i), emojis, anchor } });
 
 /** Asks for a line of text; null when cancelled. */
 export const ask = (options: PromptOptions) =>
@@ -98,77 +103,45 @@ export function Overlays() {
 				navigationBarTranslucent
 				onRequestClose={() => set({ menu: null })}
 			>
-				<Pressable
-					style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
-					onPress={() => set({ menu: null })}
-				>
+				{menu?.anchor ? (
+					<Popover menu={menu} anchor={menu.anchor} />
+				) : (
 					<Pressable
-						style={{
-							backgroundColor: colors.background,
-							borderTopWidth: 1,
-							borderColor: colors.accent,
-							borderTopLeftRadius: 10,
-							borderTopRightRadius: 10,
-							padding: 10,
-							paddingBottom: insets.bottom + 10
-						}}
+						style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}
+						onPress={() => set({ menu: null })}
 					>
-						{menu?.emojis ? (
-							<View
-								style={{
-									flexDirection: 'row',
-									justifyContent: 'space-around',
-									paddingBottom: 10
-								}}
-							>
-								{menu.emojis.list.map((emoji) => (
-									<Pressable
-										key={emoji}
-										accessibilityLabel={`React with ${emoji}`}
-										onPress={() => {
-											set({ menu: null });
-											menu.emojis?.onPick(emoji);
-										}}
-										style={{
-											width: 44,
-											height: 44,
-											alignItems: 'center',
-											justifyContent: 'center',
-											borderRadius: 5,
-											backgroundColor:
-												menu.emojis?.selected === emoji ? 'rgba(255,255,255,0.15)' : 'transparent'
-										}}
-									>
-										<Txt size={24}>{emoji}</Txt>
-									</Pressable>
-								))}
-							</View>
-						) : null}
-						<ScrollView style={{ maxHeight: Dimensions.get('window').height * 0.6 }}>
-							{menu?.items.map((item) => (
-								<Pressable
-									key={item.label}
-									accessibilityRole="menuitem"
-									onPress={() => {
-										set({ menu: null });
-										item.onPress();
-									}}
-									style={({ pressed }) => ({
+						<Pressable
+							style={{
+								backgroundColor: colors.background,
+								borderTopWidth: 1,
+								borderColor: colors.accent,
+								borderTopLeftRadius: 10,
+								borderTopRightRadius: 10,
+								padding: 10,
+								paddingBottom: insets.bottom + 10
+							}}
+						>
+							{menu?.emojis ? (
+								<View
+									style={{
 										flexDirection: 'row',
-										alignItems: 'center',
-										gap: 10,
-										padding: 12,
-										borderRadius: 5,
-										backgroundColor: pressed ? colors.hover : 'transparent'
-									})}
+										justifyContent: 'space-around',
+										paddingBottom: 10
+									}}
 								>
-									{item.icon}
-									<Txt style={item.danger ? { color: colors.danger } : undefined}>{item.label}</Txt>
-								</Pressable>
-							))}
-						</ScrollView>
+									{menu.emojis.list.map((emoji) => (
+										<EmojiButton key={emoji} menu={menu} emoji={emoji} size={44} fontSize={24} />
+									))}
+								</View>
+							) : null}
+							<ScrollView style={{ maxHeight: Dimensions.get('window').height * 0.6 }}>
+								{menu?.items.map((item) => (
+									<MenuRow key={item.label} item={item} padding={12} />
+								))}
+							</ScrollView>
+						</Pressable>
 					</Pressable>
-				</Pressable>
+				)}
 			</Modal>
 
 			{prompt ? <Prompt key={prompt.title} {...prompt} /> : null}
@@ -241,6 +214,113 @@ export function Overlays() {
 				</View>
 			) : null}
 		</>
+	);
+}
+
+function EmojiButton({
+	menu,
+	emoji,
+	size,
+	fontSize
+}: {
+	menu: MenuState;
+	emoji: string;
+	size: number;
+	fontSize: number;
+}) {
+	return (
+		<Pressable
+			accessibilityLabel={`React with ${emoji}`}
+			onPress={() => {
+				set({ menu: null });
+				menu.emojis?.onPick(emoji);
+			}}
+			style={{
+				width: size,
+				height: size,
+				alignItems: 'center',
+				justifyContent: 'center',
+				borderRadius: 5,
+				backgroundColor: menu.emojis?.selected === emoji ? 'rgba(121,154,116,0.3)' : 'transparent'
+			}}
+		>
+			<Txt size={fontSize}>{emoji}</Txt>
+		</Pressable>
+	);
+}
+
+function MenuRow({ item, padding, compact }: { item: MenuItem; padding: number; compact?: boolean }) {
+	return (
+		<Pressable
+			accessibilityRole="menuitem"
+			onPress={() => {
+				set({ menu: null });
+				item.onPress();
+			}}
+			style={({ pressed }) => ({
+				flexDirection: 'row',
+				alignItems: 'center',
+				gap: 10,
+				padding,
+				paddingVertical: compact ? 9 : padding,
+				borderRadius: 5,
+				backgroundColor: pressed ? colors.hover : 'transparent'
+			})}
+		>
+			{item.icon}
+			<Txt size={compact ? 15 : undefined} style={item.danger ? { color: colors.danger } : undefined}>
+				{item.label}
+			</Txt>
+		</Pressable>
+	);
+}
+
+/**
+ * The menu as a small box next to the element it belongs to, above it when there is room and
+ * below it otherwise, lined up with the side the element hangs on (like the web chat).
+ */
+function Popover({ menu, anchor }: { menu: MenuState; anchor: MenuAnchor }) {
+	const { width, height } = Dimensions.get('window');
+	const above = anchor.y > 240;
+	return (
+		<Pressable style={{ flex: 1 }} onPress={() => set({ menu: null })}>
+			<Pressable
+				style={{
+					position: 'absolute',
+					top: above ? undefined : anchor.y + anchor.height + 5,
+					bottom: above ? height - anchor.y + 5 : undefined,
+					left: anchor.mine ? undefined : Math.max(10, anchor.x),
+					right: anchor.mine ? Math.max(10, width - anchor.x - anchor.width) : undefined,
+					maxWidth: width - 20,
+					minWidth: 176,
+					gap: 5,
+					padding: 5,
+					borderRadius: 5,
+					borderWidth: 1,
+					borderColor: colors.accent,
+					backgroundColor: colors.background
+				}}
+			>
+				{menu.emojis ? (
+					<View
+						style={{
+							flexDirection: 'row',
+							gap: 2,
+							paddingBottom: 5,
+							borderBottomWidth: 1,
+							borderBottomColor: colors.line
+						}}
+					>
+						{menu.emojis.list.map((emoji) => (
+							<EmojiButton key={emoji} menu={menu} emoji={emoji} size={36} fontSize={21} />
+						))}
+					</View>
+				) : null}
+				{menu.items.map((item) => (
+					<MenuRow key={item.label} item={item} padding={10} compact />
+				))}
+			</Pressable>
+		</Pressable>
 	);
 }
 

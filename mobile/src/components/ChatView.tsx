@@ -13,7 +13,7 @@ import {
 	X,
 	Copy
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { FlatList, KeyboardAvoidingView, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, errorMessage, getPage, uploadImage } from '@/lib/api';
@@ -33,7 +33,7 @@ import type {
 import { AttachmentStrip, pickImages, type Picked } from './attachments';
 import { GifPicker } from './GifPicker';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
-import { confirm, showMenu, toast } from './overlays';
+import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
 import { RichText } from './RichText';
 import { Avatar, ErrorBanner, IconButton, Loading, Notice, Txt } from './ui';
 
@@ -81,6 +81,7 @@ export function ChatView(props: Props) {
 	const [gif, setGif] = useState<{ gif: Gif; sent: () => void } | null>(null);
 	const [picking, setPicking] = useState(false);
 	const [replyTo, setReplyTo] = useState<Msg | null>(null);
+	const bubbles = useRef(new Map<number, ComponentRef<typeof View>>());
 	const [editing, setEditing] = useState<Msg | null>(null);
 	const [sending, setSending] = useState(false);
 	const [typing, setTyping] = useState<string | null>(null);
@@ -314,7 +315,22 @@ export function ChatView(props: Props) {
 		}
 	}
 
+	/** opens the message's menu next to its bubble */
 	function messageMenu(message: Msg) {
+		const bubble = bubbles.current.get(message.id);
+		if (!bubble) return openMessageMenu(message);
+		bubble.measureInWindow((x, y, width, height) =>
+			openMessageMenu(message, {
+				x,
+				y,
+				width,
+				height,
+				mine: message.sender.username === myName
+			})
+		);
+	}
+
+	function openMessageMenu(message: Msg, anchor?: MenuAnchor) {
 		const mine = message.sender.username === myName;
 		const editable = mine && Date.now() - new Date(message.created_at).getTime() < EDIT_WINDOW_MS;
 		const icon = { size: 18, color: colors.foreground };
@@ -366,7 +382,8 @@ export function ChatView(props: Props) {
 				list: QUICK_REACTIONS,
 				selected: message.reactions.find((r) => r.username === myName)?.emoji,
 				onPick: (emoji) => react(message, emoji)
-			}
+			},
+			anchor
 		);
 	}
 
@@ -470,9 +487,12 @@ export function ChatView(props: Props) {
 								</Txt>
 							) : null}
 							<Pressable
-								onLongPress={() => messageMenu(item)}
-								delayLongPress={250}
-								accessibilityHint="Long press to react, reply, edit, copy or delete"
+								ref={(node) => {
+									if (node) bubbles.current.set(item.id, node);
+									else bubbles.current.delete(item.id);
+								}}
+								onPress={() => messageMenu(item)}
+								accessibilityHint="Opens the menu to react, reply, edit, copy or delete"
 								style={{
 									borderRadius: 10,
 									borderWidth: 1,

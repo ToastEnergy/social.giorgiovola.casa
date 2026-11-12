@@ -1,6 +1,7 @@
 import type { Cookies } from '@sveltejs/kit';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { PUBLIC_URL } from '$app/env/public';
+import { androidOrigins } from './appLinks.js';
 
 /** How many passkeys one account can register. */
 export const MAX_PASSKEYS = 20;
@@ -24,11 +25,15 @@ setInterval(() => {
 
 const cookieOptions = { path: '/', httpOnly: true, sameSite: 'strict' } as const;
 
-/** The relying party: passkeys are bound to the public hostname, so PUBLIC_URL wins over the request. */
+/**
+ * The relying party: passkeys are bound to the public hostname, so PUBLIC_URL wins over the
+ * request. `origins` are the ones a ceremony may come from: the site (browsers, iOS apps) and the
+ * Android apps listed in ANDROID_APP_FINGERPRINTS.
+ */
 export function relyingParty(url: URL) {
 	const origin = PUBLIC_URL ? new URL(PUBLIC_URL).origin : url.origin;
 	const rpID = new URL(origin).hostname;
-	return { origin, rpID, rpName: rpID };
+	return { origins: [origin, ...androidOrigins()], rpID, rpName: rpID };
 }
 
 /** The WebAuthn user handle of an account. Stable, so an authenticator keeps one passkey per account. */

@@ -5,6 +5,7 @@ import { ask, confirm, toast } from '@/components/overlays';
 import { Button, ErrorBanner, Field, Hint, Section, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { shortDate } from '@/lib/format';
+import { addPasskey, PasskeyCancelled, passkeysSupported } from '@/lib/passkeys';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Passkey, Session } from '@/lib/types';
@@ -23,9 +24,13 @@ const card = {
 
 /** The password, passkeys and every place the account is signed in. */
 export default function SecuritySettings() {
-	const { server } = useSession();
+	const { me } = useSession();
 	const [sessions, setSessions] = useState<Session[]>([]);
 	const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+	const [maxPasskeys, setMaxPasskeys] = useState(0);
+	const [passkeyPassword, setPasskeyPassword] = useState('');
+	const [passkeyName, setPasskeyName] = useState('');
+	const [adding, setAdding] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [current, setCurrent] = useState('');
 	const [password, setPassword] = useState('');
@@ -35,8 +40,11 @@ export default function SecuritySettings() {
 		api<{ items: Session[] }>('auth/sessions')
 			.then((res) => setSessions(res.items))
 			.catch((e) => setError(errorMessage(e)));
-		api<{ items: Passkey[] }>('me/passkeys')
-			.then((res) => setPasskeys(res.items))
+		api<{ items: Passkey[]; max: number }>('me/passkeys')
+			.then((res) => {
+				setPasskeys(res.items);
+				setMaxPasskeys(res.max);
+			})
 			.catch(() => {});
 	}, []);
 	useEffect(load, [load]);
@@ -65,6 +73,22 @@ export default function SecuritySettings() {
 		setBusy(false);
 	}
 
+	async function createPasskey() {
+		setAdding(true);
+		setError(null);
+		try {
+			await addPasskey(passkeyPassword, passkeyName.trim());
+			setPasskeyPassword('');
+			setPasskeyName('');
+			toast('Passkey added');
+			load();
+		} catch (e) {
+			if (!(e instanceof PasskeyCancelled)) setError(errorMessage(e));
+		} finally {
+			setAdding(false);
+		}
+	}
+
 	return (
 		<KeyboardAvoidingView behavior="padding" style={{ flex: 1 }} keyboardVerticalOffset={90}>
 			<Stack.Screen options={{ title: 'Security' }} />
@@ -89,8 +113,9 @@ export default function SecuritySettings() {
 
 				<Section title="Passkeys">
 					<Hint>
-						Passkeys are bound to {server.replace(/^https?:\/\//, '')}: add one from the website’s
-						settings. Here you can rename or delete them; the password always keeps working.
+						Passkeys let you sign in to @{me?.account?.username ?? me?.user.username} with your
+						fingerprint, face or screen lock instead of typing your password. They are optional:
+						your password keeps working either way.
 					</Hint>
 					{passkeys.map((passkey) => (
 						<View key={passkey.id} style={card}>
@@ -135,6 +160,30 @@ export default function SecuritySettings() {
 						</View>
 					))}
 					{!passkeys.length ? <Txt muted>No passkeys.</Txt> : null}
+					{passkeysSupported() && passkeys.length < maxPasskeys ? (
+						<>
+							<Field
+								label="Name (optional)"
+								value={passkeyName}
+								onChangeText={setPasskeyName}
+								placeholder="Passkey"
+								maxLength={64}
+							/>
+							<Field
+								label="Current password"
+								value={passkeyPassword}
+								onChangeText={setPasskeyPassword}
+								secureTextEntry
+								hint="A passkey is lasting access to your account, so it needs your password."
+							/>
+							<Button
+								label="Add a passkey"
+								disabled={!passkeyPassword}
+								loading={adding}
+								onPress={createPasskey}
+							/>
+						</>
+					) : null}
 				</Section>
 
 				<Section title="Where you’re signed in">

@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import {
 	Bot,
 	Ellipsis,
+	Flag,
 	Heart,
 	Link as LinkIcon,
 	MessageCircle,
@@ -161,6 +162,13 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 					icon: <Pin size={18} color={colors.foreground} />,
 					onPress: () => setPin(post, 'timeline-pin', !post.timeline_pinned)
 				},
+			!mine &&
+				!!me &&
+				me.auth !== 'bot' && {
+					label: 'Report post',
+					icon: <Flag size={18} color={colors.foreground} />,
+					onPress: () => router.push(`/report?post=${post.id}&username=${post.user.username}`)
+				},
 			(mine || staff) && {
 				label: 'Delete post',
 				danger: true,
@@ -314,8 +322,6 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			style={({ pressed }) => ({
 				paddingVertical: 12,
 				paddingHorizontal: 20,
-				borderBottomWidth: 1,
-				borderBottomColor: colors.line,
 				backgroundColor: pressed ? colors.hover : 'transparent'
 			})}
 		>

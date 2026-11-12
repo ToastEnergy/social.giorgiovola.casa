@@ -1,13 +1,20 @@
+import { router } from 'expo-router';
 import { Tabs } from 'expo-router/tabs';
 import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
+
+// breathing room between the bar's top border and the icons; the bar grows by the same amount so
+// the icons don't get pushed into the home indicator area
+const TAB_BAR_PADDING_TOP = 8;
 
 const badge = (count: number) => (count > 99 ? '99+' : count > 0 ? count : undefined);
 
 export default function TabsLayout() {
 	const { me, unread } = useSession();
+	const insets = useSafeAreaInsets();
 	return (
 		<Tabs
 			screenOptions={{
@@ -15,7 +22,12 @@ export default function TabsLayout() {
 				headerTintColor: colors.foreground,
 				headerTitleStyle: { fontFamily: fonts.bold, fontSize: 20 },
 				headerShadowVisible: false,
-				tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.line },
+				tabBarStyle: {
+					backgroundColor: colors.background,
+					borderTopColor: colors.line,
+					paddingTop: TAB_BAR_PADDING_TOP,
+					height: 49 + TAB_BAR_PADDING_TOP + insets.bottom
+				},
 				tabBarActiveTintColor: colors.accent,
 				tabBarInactiveTintColor: colors.foreground,
 				tabBarShowLabel: false,
@@ -72,6 +84,13 @@ export default function TabsLayout() {
 			/>
 			<Tabs.Screen
 				name="me"
+				// like the website's avatar menu: a sheet with the profile switcher, not a page
+				listeners={{
+					tabPress: (e) => {
+						e.preventDefault();
+						router.push('/menu');
+					}
+				}}
 				options={{
 					title: 'You',
 					tabBarAccessibilityLabel: 'Profile menu',

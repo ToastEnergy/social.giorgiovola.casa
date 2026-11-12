@@ -5,6 +5,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, ErrorBanner, Field, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { PasskeyCancelled, passkeyLogin, passkeysSupported } from '@/lib/passkeys';
 import { DEFAULT_SERVER, useSession } from '@/lib/session';
 import type { LoginResult } from '@/lib/types';
 
@@ -27,6 +28,26 @@ export default function Login() {
 	const [password, setPassword] = useState('');
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	const [passkeyBusy, setPasskeyBusy] = useState(false);
+
+	async function signedIn(origin: string, result: LoginResult) {
+		await session.signIn(origin, result);
+		if (router.canDismiss()) router.dismissAll();
+		router.replace('/');
+	}
+
+	async function withPasskey() {
+		setPasskeyBusy(true);
+		setError(null);
+		const origin = normalizeServer(server);
+		try {
+			await signedIn(origin, await passkeyLogin(origin, CLIENT_NAME));
+		} catch (e) {
+			if (!(e instanceof PasskeyCancelled)) setError(errorMessage(e));
+		} finally {
+			setPasskeyBusy(false);
+		}
+	}
 
 	async function submit() {
 		if (!username.trim() || !password) return setError('Enter your username and password.');
@@ -40,9 +61,7 @@ export default function Login() {
 				token: null,
 				body: { username: username.trim(), password, client_name: CLIENT_NAME }
 			});
-			await session.signIn(origin, result);
-			if (router.canDismiss()) router.dismissAll();
-			router.replace('/');
+			await signedIn(origin, result);
 		} catch (e) {
 			setError(errorMessage(e));
 		} finally {
@@ -112,6 +131,14 @@ export default function Login() {
 					</Pressable>
 				)}
 				<Button variant="primary" size="lg" label="Log in" onPress={submit} loading={busy} />
+				{passkeysSupported() ? (
+					<Button
+						size="lg"
+						label={passkeyBusy ? 'Waiting for your passkey…' : 'Sign in with a passkey'}
+						disabled={passkeyBusy || busy}
+						onPress={withPasskey}
+					/>
+				) : null}
 				<Button
 					size="lg"
 					label="Create an account"

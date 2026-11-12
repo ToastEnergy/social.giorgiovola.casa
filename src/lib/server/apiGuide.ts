@@ -300,7 +300,9 @@ POST /auth/passkeys/options                                    public
   Starts a passkey (WebAuthn) sign-in. 200: the WebAuthn PublicKeyCredentialRequestOptions
   JSON plus "challenge_id". Pass the options to the platform's WebAuthn API (in a browser:
   @simplewebauthn/browser startAuthentication). Passkeys are bound to the hostname of
-  ${origin}, so only clients allowed to use passkeys for that domain can do this.
+  ${origin}, so only clients allowed to use passkeys for that domain can do this: browsers,
+  and the mobile apps listed in /.well-known/apple-app-site-association and
+  /.well-known/assetlinks.json (the instance's APPLE_APP_IDS / ANDROID_APP_FINGERPRINTS).
 POST /auth/passkeys/login                                      public
   Body: { "challenge_id": "…", "response": <the assertion JSON>, "client_name"? }
   200: like /auth/login. 400 when it can't be verified or the challenge expired (5

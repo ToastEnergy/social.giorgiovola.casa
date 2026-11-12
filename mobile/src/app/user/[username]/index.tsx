@@ -1,10 +1,10 @@
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { Bot, Ellipsis, Link as LinkIcon } from 'lucide-react-native';
+import { Bot, Ellipsis, Flag, Link as LinkIcon, Shield } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { ask, showMenu, toast, viewImages } from '@/components/overlays';
+import { showMenu, toast, viewImages } from '@/components/overlays';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
 import { openLink, RichText } from '@/components/RichText';
@@ -21,6 +21,7 @@ import {
 import { api, auth, avatarUrl, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
 import { count, shortDate, websiteLabel } from '@/lib/format';
+import { actionHref, moderate, untilLabel } from '@/lib/moderation';
 import { usePostSync } from '@/lib/posts';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -56,6 +57,7 @@ export default function UserScreen() {
 		load();
 	}, [load, profileKey]);
 	useBus('pins_changed', load);
+	useBus('moderation_changed', load);
 
 	async function toggleFollow() {
 		if (!profile) return;
@@ -86,28 +88,10 @@ export default function UserScreen() {
 		}
 	}
 
-	/** staff: ban or mute the account behind this profile, or undo it */
-	async function moderate(kind: 'ban' | 'mute', undo: boolean) {
-		let reason: string | null = '';
-		if (!undo) {
-			reason = await ask({
-				title: kind === 'ban' ? `Ban @${username}?` : `Mute @${username}?`,
-				message:
-					kind === 'ban'
-						? 'They are signed out everywhere and can’t sign in.'
-						: 'They can read, but not post or send messages.',
-				placeholder: 'Reason (optional)',
-				maxLength: 200,
-				confirm: kind === 'ban' ? 'Ban' : 'Mute'
-			});
-			if (reason === null) return;
-		}
+	/** staff: lift the ban or mute of the account behind this profile */
+	async function lift(action: 'unban' | 'unmute') {
 		try {
-			const res = await api<{ message: string }>(`admin/users/${username}/${kind}`, {
-				method: undo ? 'DELETE' : 'PUT',
-				body: undo ? {} : { reason: reason.trim() || undefined }
-			});
-			toast(res.message);
+			toast((await moderate(username, action)).message);
 			load();
 		} catch (e) {
 			toast(errorMessage(e));
@@ -131,15 +115,17 @@ export default function UserScreen() {
 				danger: !profile.blocked,
 				onPress: toggleBlock
 			},
+			!profile.self &&
+				!!me &&
+				me.auth !== 'bot' && {
+					label: `Report @${username}`,
+					icon: <Flag size={18} color={colors.foreground} />,
+					onPress: () => router.push(`/report?username=${username}`)
+				},
 			moderation && {
-				label: moderation.muted ? 'Unmute account' : 'Mute account',
-				danger: !moderation.muted,
-				onPress: () => moderate('mute', moderation.muted)
-			},
-			moderation && {
-				label: moderation.banned ? 'Unban account' : 'Ban account',
-				danger: !moderation.banned,
-				onPress: () => moderate('ban', moderation.banned)
+				label: 'Open moderation case',
+				icon: <Shield size={18} color={colors.foreground} />,
+				onPress: () => router.push(`/admin/user/${username}`)
 			}
 		]);
 	};
@@ -221,14 +207,8 @@ export default function UserScreen() {
 						</Txt>
 					</Pressable>
 				) : null}
-				{profile.moderation?.banned || profile.moderation?.muted ? (
-					<Notice>
-						{profile.moderation.banned
-							? `Banned${profile.moderation.ban_reason ? `: ${profile.moderation.ban_reason}` : ''}`
-							: `Muted${
-									profile.moderation.mute_reason ? `: ${profile.moderation.mute_reason}` : ''
-							  }`}
-					</Notice>
+				{profile.moderation ? (
+					<ModerationPanel username={username} moderation={profile.moderation} onLift={lift} />
 				) : null}
 				{profile.blocks_you ? <Notice>This profile blocked you.</Notice> : null}
 				{me ? (
@@ -258,6 +238,15 @@ export default function UserScreen() {
 								{profile.blocked ? (
 									<Button size="sm" variant="danger" label="Unblock" onPress={toggleBlock} />
 								) : null}
+								{me.auth !== 'bot' ? (
+									<Button
+										size="sm"
+										style={{ width: 32, paddingHorizontal: 0 }}
+										onPress={() => router.push(`/report?username=${username}`)}
+									>
+										<Flag size={16} color={colors.foreground} />
+									</Button>
+								) : null}
 							</>
 						)}
 					</View>
@@ -285,6 +274,108 @@ export default function UserScreen() {
 				onRefresh={load}
 				empty={tab === 'posts' && pinned.length ? '' : 'Nothing here yet.'}
 			/>
+		</View>
+	);
+}
+
+/** Staff only: the ban or mute of the account behind a profile, and the actions on it. */
+function ModerationPanel({
+	username,
+	moderation: m,
+	onLift
+}: {
+	username: string;
+	moderation: NonNullable<Profile['moderation']>;
+	onLift: (action: 'unban' | 'unmute') => void;
+}) {
+	const states = [
+		m.banned && { label: 'Banned', reason: m.ban_reason, until: m.banned_until },
+		m.muted && { label: 'Muted', reason: m.mute_reason, until: m.muted_until }
+	].filter((s) => !!s);
+	return (
+		<View
+			style={{
+				borderWidth: 1,
+				borderColor: m.banned || m.muted ? colors.danger : colors.line,
+				borderRadius: 6,
+				padding: 10,
+				gap: 10
+			}}
+		>
+			<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+				<Shield size={18} color={colors.muted} />
+				<Txt bold size={14} style={{ flex: 1 }}>
+					Moderation
+				</Txt>
+				<Txt
+					size={14}
+					accent
+					onPress={() => router.push(`/admin/user/${username}`)}
+					suppressHighlighting
+				>
+					Open case
+				</Txt>
+			</View>
+			{m.identity ? (
+				<Txt size={13} muted>
+					This profile is an identity: actions apply to the whole account behind it.
+				</Txt>
+			) : null}
+			{states.map((s) => (
+				<Txt key={s.label} size={14}>
+					<Txt bold size={14} style={{ color: colors.danger }}>
+						{s.label}
+					</Txt>
+					<Txt size={14} muted>
+						{' · '}
+						{untilLabel(s.until)}
+					</Txt>
+					{s.reason ? <Txt size={13} dim={0.8}>{`\n“${s.reason}”`}</Txt> : null}
+				</Txt>
+			))}
+			<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+				{m.banned ? (
+					<>
+						<Button size="sm" label="Unban" onPress={() => onLift('unban')} />
+						<Button
+							size="sm"
+							label="Change ban"
+							onPress={() =>
+								router.push(
+									actionHref(username, 'ban', { reason: m.ban_reason, until: m.banned_until })
+								)
+							}
+						/>
+					</>
+				) : (
+					<Button
+						size="sm"
+						variant="danger"
+						label="Ban…"
+						onPress={() => router.push(actionHref(username, 'ban'))}
+					/>
+				)}
+				{m.muted ? (
+					<>
+						<Button size="sm" label="Unmute" onPress={() => onLift('unmute')} />
+						<Button
+							size="sm"
+							label="Change mute"
+							onPress={() =>
+								router.push(
+									actionHref(username, 'mute', { reason: m.mute_reason, until: m.muted_until })
+								)
+							}
+						/>
+					</>
+				) : (
+					<Button
+						size="sm"
+						label="Mute…"
+						onPress={() => router.push(actionHref(username, 'mute'))}
+					/>
+				)}
+			</View>
 		</View>
 	);
 }

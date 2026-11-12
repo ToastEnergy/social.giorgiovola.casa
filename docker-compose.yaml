@@ -19,6 +19,10 @@ x-web: &web
     DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     SIGNUP_PASSWORD: ${SIGNUP_PASSWORD:-}
     ADDRESS_HEADER: ${ADDRESS_HEADER:-}
+    # the mobile apps that may use passkeys here (README: passkeys in the mobile app)
+    APPLE_APP_IDS: ${APPLE_APP_IDS-A7DPA4RJ43.casa.giorgiovola.social}
+    ANDROID_APP_PACKAGE: ${ANDROID_APP_PACKAGE:-}
+    ANDROID_APP_FINGERPRINTS: ${ANDROID_APP_FINGERPRINTS:-}
     # optional bucket for avatars and images (README: storing assets in S3 / R2)
     S3_BUCKET: ${S3_BUCKET:-}
     S3_ENDPOINT: ${S3_ENDPOINT:-}

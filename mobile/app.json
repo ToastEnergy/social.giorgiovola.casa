@@ -12,7 +12,8 @@
 			"infoPlist": {
 				"CFBundleDisplayName": "SGC"
 			},
-			"appleTeamId": "A7DPA4RJ43"
+			"appleTeamId": "A7DPA4RJ43",
+			"associatedDomains": ["webcredentials:social.giorgiovola.casa"]
 		},
 		"android": {
 			"adaptiveIcon": {
@@ -37,7 +38,8 @@
 					"photosPermission": "Choose images for your posts, messages and profile picture."
 				}
 			],
-			"./plugins/disable-script-sandboxing"
+			"./plugins/disable-script-sandboxing",
+			"expo-status-bar"
 		],
 		"scheme": "social",
 		"backgroundColor": "#0c0b0b"

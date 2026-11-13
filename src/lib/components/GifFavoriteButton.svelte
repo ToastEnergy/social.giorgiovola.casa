@@ -13,7 +13,7 @@
 <!-- the corner of a picker tile: the hit area is bigger than the star, for fingers -->
 <button
 	type="button"
-	class="group absolute top-0 right-0 flex size-10 cursor-pointer items-start justify-end p-[5px] outline-none"
+	class="group absolute top-0 right-0 flex size-10 cursor-pointer touch-manipulation items-start justify-end p-[5px] outline-none"
 	title={saved ? 'Remove from favorites' : 'Add to favorites'}
 	aria-label={saved ? 'Remove from favorites' : 'Add to favorites'}
 	aria-pressed={saved}

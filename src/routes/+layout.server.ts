@@ -32,6 +32,8 @@ export const load = (async ({ fetch, cookies, request, route, url }) => {
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),
 		accounts,
 		motd: instance.motd,
+		// signed out on a members-only instance the realtime stream answers 401: don't open it
+		membersOnly: instance.members_only ?? false,
 		// KLIPY's settings for the GIF pickers, null when GIFs are off
 		gifs: instance.gifs ?? null,
 		// the reader's zone and locale (UI preference cookies), so dates render as in the browser

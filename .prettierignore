@@ -22,6 +22,7 @@ src/lib/components/PhotoEditor.svelte
 src/routes/messages/+layout.svelte
 src/lib/components/BottomNav.svelte
 src/lib/components/MobileHeader.svelte
+src/lib/components/PostComposer.svelte
 src/routes/settings/+layout.svelte
 .wrangler
 src/routes/admin/+layout.svelte

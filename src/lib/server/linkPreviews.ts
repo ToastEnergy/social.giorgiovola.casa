@@ -13,7 +13,8 @@ import {
 	type Meta
 } from '#lib/linkPreviewMeta.js';
 import type { LinkPreview } from '#lib/types.js';
-import { isHttpLink, unwrapMarkdownImages } from '#lib/utils.js';
+import { unwrapMarkdownImages } from '#lib/utils.js';
+import { extractLinks } from '#lib/richText.js';
 import { LINK_PREVIEWS, LINK_PREVIEWS_SECRET, LINK_PREVIEWS_URL } from '$app/env/private';
 import { PUBLIC_URL } from '$app/env/public';
 import { db, link_previews } from './db/index.js';
@@ -72,11 +73,10 @@ const ownHost = (() => {
 /** The first external http(s) link of a post, or null. Links to this instance are left out. */
 export function firstExternalLink(content: string): string | null {
 	// a markdown image is shown as a plain link, so it is previewed like one
-	for (const raw of unwrapMarkdownImages(content).split(/\s+/)) {
-		// punctuation right after a link ends the sentence, it isn't part of it
-		const word = raw.replace(/[.,;:!?)\]}'"]+$/, '');
-		if (word.length > MAX_URL || !isHttpLink(word)) continue;
-		const url = new URL(word);
+	// links glued to the text before them count too, the same ones a post shows (richText)
+	for (const link of extractLinks(unwrapMarkdownImages(content))) {
+		if (link.length > MAX_URL) continue;
+		const url = new URL(link);
 		if (url.host.toLowerCase() === ownHost) continue;
 		url.hash = '';
 		return url.href;

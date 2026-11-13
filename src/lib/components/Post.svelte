@@ -27,9 +27,10 @@
 	import GifMedia from './GifMedia.svelte';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
-	import { markMentionSeen, mentions, splitMentions } from '#lib/mentions.js';
-	import { isHttpLink, isRatio, ratioPercent, unwrapMarkdownImages } from '#lib/utils.js';
-	import { hashtagHref, parseHashtag } from '#lib/hashtags.js';
+	import { markMentionSeen, mentions } from '#lib/mentions.js';
+	import { isRatio, ratioPercent, unwrapMarkdownImages } from '#lib/utils.js';
+	import { hashtagHref } from '#lib/hashtags.js';
+	import { richText } from '#lib/richText.js';
 	import { openImage } from '#lib/imageViewer.svelte.js';
 	import { profileHover } from '#lib/profileCard.svelte.js';
 	import { modal } from '#lib/modal.js';
@@ -103,7 +104,9 @@
 	let parentLikes = $derived(post.reply_to?.likes ?? 0);
 
 	// images linked with markdown syntax show as plain links, never loaded (unwrapMarkdownImages)
-	const contentParts = $derived(unwrapMarkdownImages(post.content).trim().split(/(\s)/));
+	const contentPieces = $derived(
+		richText(unwrapMarkdownImages(post.content).trim(), { hashtags: true })
+	);
 	const gallery = $derived(post.images ?? []);
 
 	const ratioPost = $derived({
@@ -745,31 +748,22 @@
 					<LocalTime class="text-[0.8rem] opacity-70" date={post.created_at} />
 				</div>
 				<div class="flex flex-col gap-2.5">
-					{#if contentParts.join('').trim()}
+					{#if contentPieces.length > 0}
 						<!-- pre-line: the post's line breaks show, runs of spaces still collapse -->
 						<p class="cursor-text wrap-anywhere whitespace-pre-line">
-							{#each contentParts as part}
-								{#if isHttpLink(part)}
-									<a onclick={stop} href={part} target="_blank" rel="noopener noreferrer nofollow"
-										>{part}</a
-									>
-								{:else if parseHashtag(part)}
-									{@const hashtag = parseHashtag(part)!}
-									<a onclick={stop} href={hashtagHref(hashtag.tag)}>#{hashtag.tag}</a>{hashtag.rest}
-								{:else}
-									{#each splitMentions(part) as piece}
-										{#if typeof piece === 'string'}
-											{piece}
-										{:else}
-											<a
-												onclick={stop}
-												href={`/@${piece.username}`}
-												use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
-											>
-										{/if}
-									{/each}
-								{/if}
-							{/each}
+							{#each contentPieces as piece}{#if piece.type === 'link'}<a
+										onclick={stop}
+										href={piece.url}
+										target="_blank"
+										rel="noopener noreferrer nofollow">{piece.url}</a
+									>{:else if piece.type === 'hashtag'}<a
+										onclick={stop}
+										href={hashtagHref(piece.tag)}>#{piece.tag}</a
+									>{:else if piece.type === 'mention'}<a
+										onclick={stop}
+										href={`/@${piece.username}`}
+										use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
+									>{:else}{piece.text}{/if}{/each}
 						</p>
 					{/if}
 					{#if post.poll}

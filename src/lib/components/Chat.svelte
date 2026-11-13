@@ -37,9 +37,8 @@
 	} from '#lib/types.js';
 	import MentionInput from './MentionInput.svelte';
 	import { api, errorOf } from '#lib/api.js';
-	import { splitMentions } from '#lib/mentions.js';
+	import { richText } from '#lib/richText.js';
 	import { profileHover } from '#lib/profileCard.svelte.js';
-	import { isHttpLink } from '#lib/utils.js';
 	import { openImage } from '#lib/imageViewer.svelte.js';
 	import { groupEventText } from '#lib/groupEvents.js';
 	import { editable } from '#lib/messageEdits.js';
@@ -1631,20 +1630,20 @@
 							{/if}
 							{#if message.content}
 								<p class="wrap-anywhere whitespace-pre-wrap">
-									{#each message.content.split(/(\s)/) as part}{#if isHttpLink(part)}<a
+									{#each richText(message.content) as piece}{#if piece.type === 'link'}<a
 												class={mine ? 'text-inherit underline' : ''}
-												href={part}
+												href={piece.url}
 												target="_blank"
-												rel="noopener noreferrer nofollow">{part}</a
-											>{:else}{#each splitMentions(part) as piece}{#if typeof piece === 'string'}{piece}{:else}<a
-														class="font-bold {mine
-															? 'text-inherit'
-															: ''} {piece.username.toLowerCase() === $user?.username
-															? 'rounded-[5px] bg-accent/25 px-[2px]'
-															: ''}"
-														href={`/@${piece.username}`}
-														use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
-													>{/if}{/each}{/if}{/each}{#if inlineMeta}<span
+												rel="noopener noreferrer nofollow">{piece.url}</a
+											>{:else if piece.type === 'mention'}<a
+												class="font-bold {mine
+													? 'text-inherit'
+													: ''} {piece.username.toLowerCase() === $user?.username
+													? 'rounded-[5px] bg-accent/25 px-[2px]'
+													: ''}"
+												href={`/@${piece.username}`}
+												use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
+											>{:else if piece.type === 'text'}{piece.text}{/if}{/each}{#if inlineMeta}<span
 											aria-hidden="true"
 											class="invisible inline-flex gap-2 pl-2.5 text-[0.7rem] select-none"
 											>{#if message.edited_at}<span>edited</span>{/if}<span>{timeOf(message)}</span

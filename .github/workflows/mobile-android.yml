@@ -6,6 +6,8 @@ name: mobile-android
 
 on:
   workflow_dispatch:
+  # TEMP: testing on the PR, remove before merging
+  pull_request:
   push:
     tags: ['mobile-v*']
 

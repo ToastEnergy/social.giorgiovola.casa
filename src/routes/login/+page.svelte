@@ -102,11 +102,11 @@
 </script>
 
 {#if error || passkeyError}
-	<p>{error || passkeyError}</p>
+	<p class="mb-5 rounded-[5px] bg-danger p-[5px]" role="alert">{error || passkeyError}</p>
 {/if}
 
-<div class="mb-2.5 rounded-[5px] bg-black/70 p-2 text-[0.8rem]">
-	<p>New here? <a href="/register">Register!</a></p>
+<div class="mb-5 rounded-[10px] bg-black/70 p-2.5 text-[0.9em]">
+	<p>New here? <a href="/register">Sign up</a> with the invite someone sent you.</p>
 </div>
 <form method="POST" class="flex flex-col gap-5" onsubmit={signIn}>
 	<input

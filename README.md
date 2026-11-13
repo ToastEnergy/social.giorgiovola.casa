@@ -415,6 +415,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`      |
 | `POST`   | `/api/v1/auth/register`         | public    | `{ invite_code, email, name, username, password }` → a token, like login      |
 | `GET`    | `/api/v1/invites/:code`         | public    | whether an invite code works, and who it is from (404 when it doesn't)        |
+| `GET`    | `/api/v1/invites/:code/avatar`  | public    | the inviter's picture while the code works, even on a members-only instance   |
 | `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`                |
 | `POST`   | `/api/v1/auth/passkeys/login`   | public    | `{ challenge_id, response }` → a token, like login                            |
 | `POST`   | `/api/v1/auth/logout`           | signed in | revoke the token in use                                                       |
@@ -594,6 +595,7 @@ Signing up needs an invite, except for the very first account. Invites are hande
 
 - Admins give accounts invites, one person at a time from their case page (Moderation → Accounts → the account), or a number to everyone at once from Moderation → Invites. Banned accounts don't get any. The accounts are told with a notification (and a push) saying how many they got; grants that arrive while it is unread add up in it. `GET /api/v1/me` has the account's invites too.
 - People turn an invite into a link (`/register?invite=<code>`) under Settings → Invites, with an optional note of who it is for. A link works once and expires after 14 days.
+- Opening a link shows who sent it (picture, name and bio, on a members-only instance too) and when it expires, and offers to follow them on signing up. A code typed or pasted (the whole link works too) is checked as it's entered.
 - An invite is only used up when someone signs up with it: revoking a link, or letting it expire, gives it back. Lowering an account's invites below the links it has out revokes the newest ones. Links of a banned account stop working.
 - Admins can also create links of their own (any number, with any expiry) that don't come out of anyone's invites, and `bun admin.ts --invite` prints one from the command line.
 - Moderation → Invites shows how many invites are held, still to give, out as links and used, who holds them, and every code with who made and used it. The case page says who invited an account. Changes are in the moderation log.

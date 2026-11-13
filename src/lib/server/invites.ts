@@ -4,6 +4,7 @@ import { PUBLIC_URL } from '$app/env/public';
 import { db, inbox, invites, users } from './db/index.js';
 import { fail } from './api.js';
 import { actionsLimited, findTarget, logAction } from './moderation.js';
+import { INVITE_CODE_LENGTH, isInviteCode, normalizeInviteCode } from '../invites.js';
 import { sendInvitesPush } from './push.js';
 import { pushUnread } from './realtime.js';
 
@@ -28,7 +29,7 @@ export const MAX_BATCH = 50;
 // no 0/o, 1/l/i: codes get read out and typed by hand. 12 of 31 symbols is about 59 bits, and
 // wrong guesses are rate limited like the signup password was
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
-const CODE_LENGTH = 12;
+const CODE_LENGTH = INVITE_CODE_LENGTH;
 
 function newCode() {
 	let code = '';
@@ -42,19 +43,16 @@ function newCode() {
 	return code;
 }
 
-/** What people type or paste: any case, spaces and dashes ignored, or a whole invite link. */
-export function normalizeCode(raw: string) {
-	let value = raw.trim();
-	const fromLink = /[?&]invite=([^&#\s]+)/.exec(value);
-	if (fromLink) value = decodeURIComponent(fromLink[1]);
-	return value.toLowerCase().replace(/[\s-]/g, '');
-}
-
-const isCode = (code: string) => code.length === CODE_LENGTH && /^[a-z0-9]+$/.test(code);
+const normalizeCode = normalizeInviteCode;
+const isCode = isInviteCode;
 
 /** The link to share: absolute when PUBLIC_URL is set. */
 export const inviteUrl = (code: string) =>
 	`${PUBLIC_URL.replace(/\/$/, '')}/register?invite=${code}`;
+
+/** The inviter's picture for someone holding the code, who may not be signed in yet. */
+const inviterAvatarUrl = (code: string) =>
+	`${PUBLIC_URL.replace(/\/$/, '')}/api/v1/invites/${code}/avatar`;
 
 export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';
 
@@ -264,7 +262,7 @@ export async function lookupInvite(rawCode: string) {
 		.select({
 			expires_at: invites.expires_at,
 			by_staff: invites.by_staff,
-			inviter: inviterProfile,
+			inviter: { ...inviterProfile, bio: inviterUser.bio },
 			inviter_banned: inviterUser.banned_at,
 			inviter_invites: inviterUser.invites
 		})
@@ -274,7 +272,11 @@ export async function lookupInvite(rawCode: string) {
 	if (!row || !usable(row)) return null;
 	return {
 		code,
-		inviter: row.inviter?.username ? row.inviter : null,
+		// the code is all the holder has: on a members-only instance the profile and its avatar
+		// are out of reach until they sign up, so the picture comes through the code too
+		inviter: row.inviter?.username
+			? { ...row.inviter, bio: row.inviter.bio ?? '', avatar_url: inviterAvatarUrl(code) }
+			: null,
 		expires_at: row.expires_at
 	};
 }

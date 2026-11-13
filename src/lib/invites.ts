@@ -1,7 +1,34 @@
 import type { Profile } from './moderation.js';
 
-/** GET /api/v1/invites/{code} */
-export type InviteCheck = { code: string; inviter: Profile | null; expires_at: string | null };
+/** GET /api/v1/invites/{code}: who invited, with a picture that loads even on members-only instances */
+export type InviteCheck = {
+	code: string;
+	inviter: (Profile & { bio?: string; avatar_url?: string }) | null;
+	expires_at: string | null;
+};
+
+/** how long a code is */
+export const INVITE_CODE_LENGTH = 12;
+
+/**
+ * What people type or paste: any case, spaces and dashes ignored, or a whole invite link. Shared
+ * by the server and the sign up page, which checks a code once it looks complete.
+ */
+export function normalizeInviteCode(raw: string) {
+	let value = raw.trim();
+	const fromLink = /[?&]invite=([^&#\s]+)/.exec(value);
+	if (fromLink) {
+		try {
+			value = decodeURIComponent(fromLink[1]);
+		} catch {
+			value = fromLink[1];
+		}
+	}
+	return value.toLowerCase().replace(/[\s-]/g, '');
+}
+
+export const isInviteCode = (code: string) =>
+	code.length === INVITE_CODE_LENGTH && /^[a-z0-9]+$/.test(code);
 
 export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';
 

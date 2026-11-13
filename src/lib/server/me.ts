@@ -9,11 +9,12 @@ import { activateSession, setActing } from './session.js';
 import { closeSessionStreams } from './realtime.js';
 import { isStaff } from './moderation.js';
 import { openReportCount } from './reports.js';
+import { pendingOf } from './invites.js';
 
 /**
  * The signed in profile as GET /api/v1/me shows it: the profile in use (`user`), the account
- * behind it (null for bots), moderation state and unread counts. `profileId` defaults to the
- * account itself.
+ * behind it (null for bots), moderation state, unread counts and the account's invites.
+ * `profileId` defaults to the account itself.
  */
 export async function getMe(accountId: number | null, profileId: number = accountId!) {
 	const account = alias(users, 'account');
@@ -36,7 +37,8 @@ export async function getMe(accountId: number | null, profileId: number = accoun
 				username: account.username,
 				role: account.role,
 				muted_at: account.muted_at,
-				mute_reason: account.mute_reason
+				mute_reason: account.mute_reason,
+				invites: account.invites
 			}
 		})
 		.from(users)
@@ -45,13 +47,23 @@ export async function getMe(accountId: number | null, profileId: number = accoun
 	if (!row) fail(401, 'Sign in first');
 	const { owner_id, ...user } = row.user;
 	const acct = accountId === null ? null : row.account;
+	// only an account that holds invites has codes out to count
+	const pending = acct?.invites ? await pendingOf(acct.id) : 0;
 	return {
 		user: { ...user, identity: owner_id !== null && !user.bot },
 		account: acct ? { id: acct.id, username: acct.username } : null,
 		role: acct?.role ?? 'user',
 		muted: !!acct?.muted_at,
 		mute_reason: acct?.mute_reason ?? null,
-		unread: await unreadCounts(profileId)
+		unread: await unreadCounts(profileId),
+		// the account's invites (also while an identity is in use), null for bots
+		invites: acct
+			? {
+					invites: acct.invites,
+					pending,
+					available: Math.max(0, acct.invites - pending)
+			  }
+			: null
 	};
 }
 

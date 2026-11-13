@@ -124,7 +124,9 @@ function payloadFor(row: Row) {
 		// follows go through sendFollowPush
 		follow: 'followed you',
 		regiorg: 'regiorged your post',
-		quote: 'quoted your post'
+		quote: 'quoted your post',
+		// invites go through sendInvitesPush
+		invites: 'gave you invites'
 	};
 	const verb = verbs[row.type];
 	// likes and regiorgs are of the recipient's own post: no need to quote it back
@@ -317,6 +319,49 @@ export async function sendFollowPush(followerId: number, followedId: number) {
 		});
 	} catch (e) {
 		console.error('push: sendFollowPush failed', e);
+	}
+}
+
+/**
+ * Tells the accounts given invites, once per notification: the rows are claimed like in sendPush.
+ * A grant that adds to an unread notification sends it again with the new total.
+ */
+export async function sendInvitesPush(accountIds: number[]) {
+	try {
+		if (accountIds.length === 0) return;
+		const sender = alias(users, 'sender');
+		const claimed = await db
+			.update(inbox)
+			.set({ pushed_at: sql`NOW()` })
+			.where(
+				and(
+					eq(inbox.type, 'invites'),
+					inArray(inbox.user_id, accountIds),
+					isNull(inbox.pushed_at),
+					isNull(inbox.read_at)
+				)
+			)
+			.returning({ user_id: inbox.user_id, sender_id: inbox.sender_id, invites: inbox.invites });
+		if (claimed.length === 0) return;
+		const senderIds = [...new Set(claimed.map((c) => c.sender_id).filter((id) => id !== null))];
+		const senders = senderIds.length
+			? await db
+					.select({ id: sender.id, name: sender.name })
+					.from(sender)
+					.where(inArray(sender.id, senderIds))
+			: [];
+		for (const row of claimed) {
+			const n = row.invites ?? 0;
+			await deliver(row.user_id, {
+				title: senders.find((s) => s.id === row.sender_id)?.name ?? 'Invites',
+				body: `gave you ${n} ${n === 1 ? 'invite' : 'invites'}: invite someone to join`,
+				url: '/settings/invites',
+				// per account: a browser can be signed in to several
+				tag: `invites:${row.user_id}`
+			});
+		}
+	} catch (e) {
+		console.error('push: sendInvitesPush failed', e);
 	}
 }
 

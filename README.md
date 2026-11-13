@@ -428,7 +428,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 | method                    | path                                              | who       |                                                                                       |
 | ------------------------- | ------------------------------------------------- | --------- | ------------------------------------------------------------------------------------- |
-| `GET`                     | `/api/v1/me`                                      | signed in | the profile in use, its account, role, mute state and unread counts                   |
+| `GET`                     | `/api/v1/me`                                      | signed in | the profile in use, its account, role, mute state, unread counts and invites          |
 | `PATCH`                   | `/api/v1/me`                                      | signed in | any of `{ name, username, bio, website, email }`; new email: `current_password`       |
 | `PUT` / `DELETE`          | `/api/v1/me/avatar`                               | signed in | set the picture (raw image body) / remove it                                          |
 | `PUT`                     | `/api/v1/me/password`                             | account   | `{ current_password, password }`; signs out every other session                       |
@@ -592,7 +592,7 @@ docker compose exec web bun admin.ts <username>
 
 Signing up needs an invite, except for the very first account. Invites are handed out by hand:
 
-- Admins give accounts invites, one person at a time from their case page (Moderation → Accounts → the account), or a number to everyone at once from Moderation → Invites. Banned accounts don't get any.
+- Admins give accounts invites, one person at a time from their case page (Moderation → Accounts → the account), or a number to everyone at once from Moderation → Invites. Banned accounts don't get any. The accounts are told with a notification (and a push) saying how many they got; grants that arrive while it is unread add up in it. `GET /api/v1/me` has the account's invites too.
 - People turn an invite into a link (`/register?invite=<code>`) under Settings → Invites, with an optional note of who it is for. A link works once and expires after 14 days.
 - An invite is only used up when someone signs up with it: revoking a link, or letting it expire, gives it back. Lowering an account's invites below the links it has out revokes the newest ones. Links of a banned account stop working.
 - Admins can also create links of their own (any number, with any expiry) that don't come out of anyone's invites, and `bun admin.ts --invite` prints one from the command line.

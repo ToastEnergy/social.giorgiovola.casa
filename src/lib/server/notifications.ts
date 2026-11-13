@@ -21,6 +21,7 @@ export async function listNotifications(userId: number, limit: number, offset: n
 				FROM posts p WHERE p.id = inbox.post_id
 			)`,
 			type: inbox.type,
+			invites: inbox.invites,
 			created_at: inbox.created_at,
 			read_at: inbox.read_at
 		})
@@ -48,7 +49,7 @@ export const GROUP_KEY = /^(?:(?:like|regiorg)-\d{1,10}-\d{8}|follow-\d{8}|n-\d{
 /** A profile's notifications grouped (see groupKey), newest group first (`limit + 1` rows). */
 export async function listNotificationGroups(userId: number, limit: number, offset: number) {
 	const rows = (await db.execute(sql`
-		SELECT g.key, g.type, g.count, g.unread, g.created_at,
+		SELECT g.key, g.type, g.count, g.unread, g.invites, g.created_at,
 			CASE WHEN g.unread > 0 THEN NULL ELSE g.read_at END AS read_at,
 			COALESCE((
 				SELECT jsonb_agg(
@@ -65,6 +66,8 @@ export async function listNotificationGroups(userId: number, limit: number, offs
 			SELECT ${groupKey} AS key,
 				min(inbox.type) AS type,
 				min(inbox.post_id) AS post_id,
+				-- invites are groups of one
+				min(inbox.invites) AS invites,
 				count(*)::int AS count,
 				(count(*) FILTER (WHERE inbox.read_at IS NULL))::int AS unread,
 				max(inbox.created_at) AS created_at,

@@ -240,9 +240,22 @@ export const inbox = pgTable(
 		// follow: the sender followed the recipient, post_id is null
 		// regiorg: the sender regiorged the recipient's post
 		// quote: the sender's post (post_id) quotes the recipient's post
+		// invites: the sender (an admin) gave the recipient `invites` more, post_id is null
 		type: text('type', {
-			enum: ['mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote']
+			enum: [
+				'mention',
+				'reply',
+				'like',
+				'ratio',
+				'ratioed_by_you',
+				'follow',
+				'regiorg',
+				'quote',
+				'invites'
+			]
 		}).notNull(),
+		// invites: how many were given (grants add up while the notification is unread)
+		invites: integer('invites'),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		read_at: timestamptz('read_at'),
 		// set once a push for this row has been sent, so it never goes out twice
@@ -257,7 +270,7 @@ export const inbox = pgTable(
 			.where(sql`${t.type} = 'follow'`),
 		check(
 			'inbox_type_check',
-			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote')`
+			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`
 		)
 	]
 );

@@ -538,7 +538,14 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/invites/:code',
 				auth: 'public',
-				summary: "whether an invite code works, and who it is from (404 when it doesn't)"
+				summary:
+					"whether an invite code works, and who it is from: name, bio, `avatar_url` (404 when it doesn't)"
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/invites/:code/avatar',
+				auth: 'public',
+				summary: "the inviter's picture while the code works, even on a members-only instance"
 			},
 			{
 				method: 'POST',

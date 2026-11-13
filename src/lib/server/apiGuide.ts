@@ -282,7 +282,8 @@ GET /instance                                                  public
   anyone with an invite can sign up.
   "members_only": true when the instance is closed to signed-out readers. Then every
   endpoint except GET /instance and the sign-in ones below (/auth/login, /auth/register,
-  GET /invites/:code, /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
+  GET /invites/:code and /invites/:code/avatar, /auth/passkeys/options, /auth/passkeys/login,
+  /auth/logout) answers 401 { "error": "This
   instance is members only: sign in first" } without a token or the session cookie, and so
   do images, avatars and social cards outside the API. Load those with the same
   \`Authorization: Bearer …\` header: on a members-only instance it is read on /uploads/,
@@ -318,10 +319,20 @@ POST /auth/register                                            public
   The code is only used up when the account is created.
 
 GET /invites/:code                                             public
-  Checks an invite code before signing up (the sign up page shows who invited you).
-  200: { "code": "normalized code", "inviter": User | null, "expires_at": "…" | null }.
+  Checks an invite code before signing up (the sign up page shows who invited you). The code
+  is accepted in any case, with spaces or dashes.
+  200: { "code": "normalized code",
+         "inviter": { "username", "name", "avatar", "bio", "avatar_url" } | null,
+         "expires_at": "…" | null }
+  "inviter" is who made the code (null if that account is gone). "avatar_url" is the link of
+  GET /invites/:code/avatar: use it rather than "avatar", which on a members-only instance
+  needs a sign in the person signing up doesn't have yet.
   404 { "error": "This invite code is not valid: …" } when it can't be used. Wrong codes
   count against the same limits as POST /auth/register (429).
+GET /invites/:code/avatar?size=128                             public
+  The inviter's profile picture as an image (their upload, or the generated SVG; "size"
+  32-1024 only applies to the generated one), served while the code can be used, members-only
+  instances included. Cache-Control private. 404 / 429 JSON errors like GET /invites/:code.
 
 POST /auth/passkeys/options                                    public
   Starts a passkey (WebAuthn) sign-in. 200: the WebAuthn PublicKeyCredentialRequestOptions

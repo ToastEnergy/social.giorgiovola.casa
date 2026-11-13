@@ -5,6 +5,7 @@
 	import Shield from '@lucide/svelte/icons/shield';
 	import UsersRound from '@lucide/svelte/icons/users-round';
 	import Download from '@lucide/svelte/icons/download';
+	import Gift from '@lucide/svelte/icons/gift';
 	import UserPlus from '@lucide/svelte/icons/user-plus';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import { page } from '$app/state';
@@ -76,6 +77,7 @@
 	}
 
 	const accounts = () => (page.data.accounts ?? []) as SwitcherAccount[];
+	const invitesAvailable = $derived((page.data.invitesAvailable as number | undefined) ?? 0);
 	const otherUnread = () =>
 		accounts()
 			.flatMap(profilesOf)
@@ -244,6 +246,18 @@
 						aria-label="Settings"><Settings size={20} /></a
 					>
 				</div>
+
+				{#if invitesAvailable > 0}
+					<!-- only while there are invites to give, so it never sits there empty -->
+					<div class="mt-1 shrink-0 border-t border-line pt-1">
+						<a class={actionClass} href="/settings/invites" role="menuitem"
+							><Gift size={16} class="shrink-0 text-accent" />Invite someone<span
+								class="ml-auto flex shrink-0 items-center rounded-full border border-accent px-[7px] text-[0.75em] font-bold text-accent"
+								title="Invites you can give">{invitesAvailable} left</span
+							></a
+						>
+					</div>
+				{/if}
 
 				<div class="grid shrink-0 grid-cols-2 gap-1 border-t border-line pt-1 mt-1">
 					<a class={actionClass} href="/settings/accounts" role="menuitem"

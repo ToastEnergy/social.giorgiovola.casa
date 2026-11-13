@@ -172,15 +172,18 @@ export type NotificationType =
 	| 'ratioed_by_you'
 	| 'follow'
 	| 'regiorg'
-	| 'quote';
+	| 'quote'
+	| 'invites';
 
 export type Notification = {
 	id: number;
 	user_id: number;
 	sender: Pick<User, 'id' | 'username' | 'name' | 'avatar'>;
-	/** null for follows */
+	/** null for follows and invites */
 	post: Pick<Post, 'id' | 'content'> | null;
 	type: NotificationType;
+	/** invites: how many the sender (an admin) gave, null for the other types */
+	invites: number | null;
 	created_at: Date;
 	read_at: Date | null;
 };
@@ -198,8 +201,10 @@ export type NotificationGroup = {
 	/** how many notifications (senders) the group has */
 	count: number;
 	unread: number;
-	/** null for follows */
+	/** null for follows and invites */
 	post: Pick<Post, 'id' | 'content'> | null;
+	/** invites: how many the sender (an admin) gave, null for the other types */
+	invites: number | null;
 	/** of the newest notification */
 	created_at: Date;
 	/** null while any of them is unread */

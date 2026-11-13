@@ -606,7 +606,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/me',
 				auth: 'signed in',
-				summary: 'the profile in use, its account, role, mute state and unread counts'
+				summary:
+					"the profile in use, its account, role, mute state, unread counts and the account's invites"
 			},
 			{
 				method: 'PATCH',
@@ -1197,13 +1198,15 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/admin/invites/grant',
 				auth: 'admin',
-				summary: "give every account that isn't banned `{ count }` more invites"
+				summary:
+					"give every account that isn't banned `{ count }` more invites (each gets an `invites` notification)"
 			},
 			{
 				method: 'PUT',
 				path: '/api/v1/admin/users/:username/invites',
 				auth: 'admin',
-				summary: 'set how many invites an account holds `{ invites }`'
+				summary:
+					'set how many invites an account holds `{ invites }` (raising it sends an `invites` notification)'
 			},
 			{
 				method: 'GET / DELETE',

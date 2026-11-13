@@ -1,10 +1,12 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { PUBLIC_URL } from '$app/env/public';
-import { db, invites, users } from './db/index.js';
+import { db, inbox, invites, users } from './db/index.js';
 import { fail } from './api.js';
 import { actionsLimited, findTarget, logAction } from './moderation.js';
 import { INVITE_CODE_LENGTH, isInviteCode, normalizeInviteCode } from '../invites.js';
+import { sendInvitesPush } from './push.js';
+import { pushUnread } from './realtime.js';
 
 /**
  * Invites: the only way to sign up once the instance has an account. Admins give accounts a
@@ -127,7 +129,7 @@ const columns = {
 };
 
 /** How many pending codes an account has out. */
-async function pendingOf(accountId: number, tx: Pick<typeof db, 'select'> = db) {
+export async function pendingOf(accountId: number, tx: Pick<typeof db, 'select'> = db) {
 	const [row] = await tx
 		.select({ n: sql<number>`count(*)::int` })
 		.from(invites)
@@ -357,6 +359,43 @@ export function daysField(body: Record<string, unknown>) {
 	return countField(body, 'days', 1, MAX_INVITE_DAYS);
 }
 
+/**
+ * Tells accounts an admin (`actorId`) gave them invites: an `invites` notification with how many,
+ * a web push and the new unread count. A grant adds to the account's unread invites notification
+ * when it has one, so a few grants in a row read as one. The admin's own grants don't notify.
+ */
+async function notifyInvites(actorId: number, grants: { id: number; amount: number }[]) {
+	const given = grants.filter((g) => g.amount > 0 && g.id !== actorId);
+	if (given.length === 0) return;
+	const ids = given.map((g) => g.id);
+	// one text parameter each, however many accounts a grant to everyone reaches
+	const idList = ids.join(',');
+	const amountList = given.map((g) => g.amount).join(',');
+	await db.execute(sql`
+		WITH grants AS (
+			SELECT * FROM unnest(
+				string_to_array(${idList}, ',')::int[],
+				string_to_array(${amountList}, ',')::int[]
+			) AS g(id, amount)
+		), merged AS (
+			UPDATE ${inbox} SET
+				invites = COALESCE(${inbox.invites}, 0) + grants.amount,
+				sender_id = ${actorId},
+				created_at = NOW(),
+				pushed_at = NULL
+			FROM grants
+			WHERE ${inbox.user_id} = grants.id AND ${inbox.type} = 'invites' AND ${inbox.read_at} IS NULL
+			RETURNING ${inbox.user_id}
+		)
+		INSERT INTO ${inbox} (user_id, sender_id, post_id, type, invites)
+		SELECT grants.id, ${actorId}, NULL, 'invites', grants.amount FROM grants
+		WHERE grants.id NOT IN (SELECT user_id FROM merged)
+	`);
+	// many accounts at once for a grant to everyone: the response doesn't wait for the pushes
+	void sendInvitesPush(ids);
+	void pushUnread(ids);
+}
+
 /** Codes an admin makes outside any balance. */
 export async function createStaffInvites(
 	locals: App.Locals,
@@ -495,6 +534,7 @@ export async function setInvites(locals: App.Locals, username: string, count: nu
 				.where(inArray(invites.id, extra));
 		return { from: account.invites, revoked: extra.length };
 	});
+	if (count > from) await notifyInvites(actorId, [{ id: target.id, amount: count - from }]);
 	if (from !== count)
 		await logAction({
 			actor: await actorOf(actorId),
@@ -515,11 +555,21 @@ export async function setInvites(locals: App.Locals, username: string, count: nu
 /** Gives every account in good standing (not banned) `count` more invites. */
 export async function grantEveryone(locals: App.Locals, count: number) {
 	const actorId = requireInviteAdmin(locals);
+	// the old balance comes from the locked rows, so what each account got (less near the cap)
+	// can be told in its notification
+	const before = db
+		.select({ id: users.id, old: sql<number>`${users.invites}`.as('old') })
+		.from(users)
+		.where(and(isNull(users.owner_id), isNull(users.banned_at)))
+		.for('update')
+		.as('before');
 	const rows = await db
 		.update(users)
 		.set({ invites: sql`LEAST(${users.invites} + ${count}, ${MAX_BALANCE})` })
-		.where(and(isNull(users.owner_id), isNull(users.banned_at)))
-		.returning({ id: users.id });
+		.from(before)
+		.where(eq(users.id, before.id))
+		.returning({ id: users.id, amount: sql<number>`${users.invites} - ${before.old}` });
+	await notifyInvites(actorId, rows);
 	await logAction({
 		actor: await actorOf(actorId),
 		target: null,

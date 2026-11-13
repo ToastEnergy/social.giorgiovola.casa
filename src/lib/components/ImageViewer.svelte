@@ -6,7 +6,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { flushSync } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import { viewer, closeImage } from '#lib/imageViewer.svelte.js';
 
 	const MIN_SCALE = 1;
@@ -262,7 +262,9 @@
 		};
 	});
 
-	afterNavigate(closeImage);
+	afterPageChange(closeImage);
+	// back closes the preview
+	overlayEntry('image', () => open, closeImage);
 
 	const control =
 		'flex size-10 cursor-pointer items-center justify-center rounded-full bg-black/60 text-foreground outline-none hover:bg-black/80 hover:no-underline focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40';

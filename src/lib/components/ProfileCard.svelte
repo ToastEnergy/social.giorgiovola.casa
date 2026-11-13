@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { errorOf } from '#lib/api.js';
-	import { afterNavigate, invalidate } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
+	import { afterPageChange } from '#lib/history.svelte.js';
 	import { page } from '$app/state';
 	import { user } from '#lib/store.js';
 	import { closeCard, holdCard, hoverCard, releaseCard, setCard } from '#lib/profileCard.svelte.js';
@@ -52,7 +53,7 @@
 		error = null;
 	});
 
-	afterNavigate(closeCard);
+	afterPageChange(closeCard);
 
 	async function toggleFollow() {
 		if (!card) return;

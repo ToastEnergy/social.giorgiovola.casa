@@ -1,17 +1,14 @@
 <script lang="ts">
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { page } from '$app/state';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { goBack } from '#lib/history.svelte.js';
 	import Search from './Search.svelte';
 
-	// away from home a back arrow comes before the logo. a page opened directly (a shared link) has
-	// nothing of ours to go back to, so the arrow leads home instead
+	// away from home a back arrow comes before the logo. a page opened directly (a shared link, a
+	// push notification) has nothing of ours to go back to, so the arrow goes up instead (a post to
+	// its author, a profile home)
 	const home = $derived(page.route.id === '/');
-	let inApp = $state(false);
-	afterNavigate(({ from }) => {
-		if (from) inApp = true;
-	});
-	const back = () => (inApp ? history.back() : goto('/'));
+	const back = () => goBack();
 </script>
 
 <!-- touch devices: the logo and a full width search bar above every page but messages (mouse

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import Button from '#lib/components/Button.svelte';
 	import { api, messageOf } from '#lib/api.js';
 	import { modal } from '#lib/modal.js';
@@ -26,7 +26,8 @@
 		sent = '';
 	});
 
-	afterNavigate(closeReport);
+	afterPageChange(closeReport);
+	overlayEntry('report', () => open, closeReport);
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();

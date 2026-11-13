@@ -9,7 +9,7 @@
 	import MobileHeader from '#lib/components/MobileHeader.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
-	import { navigating, page } from '$app/state';
+	import { page } from '$app/state';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
 	import PhotoEditor from '#lib/components/PhotoEditor.svelte';
@@ -19,6 +19,8 @@
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
 	import Splash from '#lib/components/Splash.svelte';
+	import NavHistory from '#lib/components/NavHistory.svelte';
+	import PullToRefresh from '#lib/components/PullToRefresh.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -185,6 +187,8 @@
 	<ComposeSheet />
 	<ConnectionStatus />
 	<PhotoEditor />
+	<PullToRefresh />
+	<NavHistory />
 	<Splash />
 </div>
 <svelte:head>
@@ -329,8 +333,7 @@
 			{/if}
 			<slot />
 		</div>
-		{#if navigating.to}
-			<LoadingOverlay />
-		{/if}
+		<!-- shows itself when a page change is slow -->
+		<LoadingOverlay />
 	</main>
 </div>

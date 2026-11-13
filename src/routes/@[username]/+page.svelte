@@ -170,23 +170,27 @@
 	/>
 {/if}
 
+<!-- tabs swap in place: switching doesn't add history entries to step back through -->
 <nav class="mb-5 flex">
 	<a
 		class={tabClass(data.tab === 'posts')}
 		href="/@{profile.username}"
 		data-sveltekit-noscroll
+		data-sveltekit-replacestate
 		aria-current={data.tab === 'posts' ? 'page' : undefined}>Posts</a
 	>
 	<a
 		class={tabClass(data.tab === 'replies')}
 		href="/@{profile.username}?tab=replies"
 		data-sveltekit-noscroll
+		data-sveltekit-replacestate
 		aria-current={data.tab === 'replies' ? 'page' : undefined}>Replies</a
 	>
 	<a
 		class={tabClass(data.tab === 'regiorgs')}
 		href="/@{profile.username}?tab=regiorgs"
 		data-sveltekit-noscroll
+		data-sveltekit-replacestate
 		aria-current={data.tab === 'regiorgs' ? 'page' : undefined}>Regiorgios</a
 	>
 </nav>

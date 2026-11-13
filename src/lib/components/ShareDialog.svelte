@@ -2,7 +2,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import Check from '@lucide/svelte/icons/check';
 	import { errorOf } from '#lib/api.js';
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import { modal } from '#lib/modal.js';
@@ -68,7 +68,8 @@
 		};
 	});
 
-	afterNavigate(closeShare);
+	afterPageChange(closeShare);
+	overlayEntry('share', () => open, closeShare);
 
 	async function loadRecent() {
 		loadingRecent = true;

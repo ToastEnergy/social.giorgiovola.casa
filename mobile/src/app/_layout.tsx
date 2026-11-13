@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Overlays } from '@/components/overlays';
+import { PostingStatus } from '@/components/PostingStatus';
 import { Button, Txt } from '@/components/ui';
 import { PushNotifications } from '@/lib/push';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -120,6 +121,7 @@ export default function RootLayout() {
 				<SessionProvider>
 					<StatusBar style="light" />
 					<Navigation />
+					<PostingStatus />
 					<Overlays />
 					<PushNotifications />
 				</SessionProvider>

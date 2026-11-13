@@ -1,0 +1,77 @@
+# builds an unsigned release .ipa of the mobile app for sideloading (AltStore signs it itself).
+# Run it by hand (Actions → mobile-ios → Run workflow) or push a mobile-v* tag, which also attaches
+# the .ipa to that tag's GitHub release. See "mobile app builds" in README.md.
+name: mobile-ios
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['mobile-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # pinned: expo sdk 58 needs xcode 26.4+, the default on this image
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the token isn't left in .git/config for the steps that run dependencies' code
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      # ios/ is regenerated every run (--clean), so only the downloaded pod sources are worth
+      # keeping; derived data from another prebuild would be invalidated anyway
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: pods-${{ runner.os }}-${{ hashFiles('mobile/bun.lock', 'mobile/app.json', 'mobile/plugins/**') }}
+          restore-keys: pods-${{ runner.os }}-
+      - run: bunx expo prebuild --platform ios --clean
+      # prebuild installs the pods itself, but carries on with a warning if that fails
+      - name: Install pods
+        run: test -f ios/Pods/Manifest.lock || (cd ios && pod install)
+      - run: ./generate-ipa.sh
+      - name: Check the .ipa
+        run: |
+          unzip -l build/SocialGiorgiovolaCasa.ipa | grep -q 'Payload/SocialGiorgiovolaCasa.app/main.jsbundle' \
+            || { echo '::error::the .ipa has no main.jsbundle'; exit 1; }
+          echo "Built \`SocialGiorgiovolaCasa.ipa\` ($(du -h build/SocialGiorgiovolaCasa.ipa | cut -f1)), unsigned: sideload it with AltStore." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SocialGiorgiovolaCasa-ios
+          path: mobile/build/SocialGiorgiovolaCasa.ipa
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # only this job, which runs no third-party code, may write the release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: SocialGiorgiovolaCasa-ios
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        # mobile-android attaches to the same release, whichever runs first creates it
+        run: |
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes '' \
+            || gh release view "$TAG" > /dev/null
+          gh release upload "$TAG" SocialGiorgiovolaCasa.ipa --clobber

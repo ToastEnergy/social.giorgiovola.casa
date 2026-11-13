@@ -1,6 +1,6 @@
 {
 	"expo": {
-		"name": "SocialGiorgiovolaCasa",
+		"name": "Social Giorgiovola Casa",
 		"slug": "social-giorgiovola",
 		"version": "1.0.0",
 		"orientation": "portrait",
@@ -20,9 +20,8 @@
 		},
 		"android": {
 			"adaptiveIcon": {
-				"backgroundColor": "#0c0b0b",
+				"backgroundColor": "#ffe9e9",
 				"foregroundImage": "./assets/android-icon-foreground.png",
-				"backgroundImage": "./assets/android-icon-background.png",
 				"monochromeImage": "./assets/android-icon-monochrome.png"
 			},
 			"predictiveBackGestureEnabled": false,
@@ -56,7 +55,17 @@
 				}
 			],
 			"./plugins/disable-script-sandboxing",
-			"expo-status-bar"
+			"./plugins/android-release-signing",
+			["./plugins/android-launcher-label", "SGC"],
+			"expo-status-bar",
+			[
+				"expo-splash-screen",
+				{
+					"image": "./assets/splash-icon.png",
+					"imageWidth": 170,
+					"backgroundColor": "#0c0b0b"
+				}
+			]
 		],
 		"scheme": "sgc-app",
 		"backgroundColor": "#0c0b0b"

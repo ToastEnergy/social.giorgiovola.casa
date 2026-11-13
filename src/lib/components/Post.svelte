@@ -808,7 +808,8 @@
 						</div>
 					{/if}
 					{#if post.gif}
-						<GifMedia gif={post.gif} />
+						<!-- like a photo: in a list it opens the post, the open post plays and pauses it -->
+						<GifMedia gif={post.gif} toggleable={isPostOpen} />
 					{/if}
 					{#if quote}
 						<QuoteCard {quote} />

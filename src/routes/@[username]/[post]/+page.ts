@@ -1,17 +1,23 @@
 import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import type { PageLoad } from './$types';
 import { allPages, type Page } from '#lib/api.js';
 import { apiGet } from '#lib/apiLoad.js';
+import { cachedPage } from '#lib/pageCache.js';
 import type { Post } from '#lib/types.js';
 
 const MAX_REPLIES = 200;
 const MAX_PARENTS = 20;
 
-export const load = (async ({ params, fetch }) => {
+// universal, so back and forward can show it from the cache (#lib/pageCache.ts)
+export const load = (async ({ params, fetch, url }) => {
 	if (!/^\d{1,10}$/.test(params.post)) error(404, 'Post not found');
-	const post = await apiGet<Post>(fetch, `/posts/${params.post}`, { login: false });
+	return cachedPage(url, () => loadPost(params.post, params.username, fetch));
+}) satisfies PageLoad;
+
+async function loadPost(id: string, username: string, fetch: typeof globalThis.fetch) {
+	const post = await apiGet<Post>(fetch, `/posts/${id}`, { login: false });
 	// the URL names the author: another username is another post
-	if (post.user.username !== params.username.toLowerCase()) error(404, 'Post not found');
+	if (post.user.username !== username.toLowerCase()) error(404, 'Post not found');
 
 	return {
 		post,
@@ -40,4 +46,4 @@ export const load = (async ({ params, fetch }) => {
 					: Promise.resolve([] as Post[])
 		}
 	};
-}) satisfies PageServerLoad;
+}

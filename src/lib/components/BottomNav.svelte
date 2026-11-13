@@ -57,7 +57,8 @@
 			return;
 		}
 		// unread items are at the section's start: the link goes there
-		if (count === 0 && returnToSection(item.href)) e.preventDefault();
+		if (count === 0 && returnToSection(item.href, (url) => isActive(url.pathname, item.href)))
+			e.preventDefault();
 	}
 
 	const itemClass = (active: boolean) =>

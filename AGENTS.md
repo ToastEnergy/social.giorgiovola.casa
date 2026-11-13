@@ -25,7 +25,7 @@ Write all new and modified Svelte code with Svelte 5 runes. Do not introduce leg
 
 **Existing code is not fully migrated.** Many components and pages still use legacy syntax (`export let`, `on:`, `createEventDispatcher`, `$store` auto-subscriptions). When you touch such a file in a meaningful way, convert it to runes as part of the change; do not mix legacy and runes syntax within a single component (Svelte forbids it). Don't do drive-by migrations of files you aren't otherwise changing.
 
-SvelteKit conventions: `+server.ts` endpoints under `/api/v1` hold the server logic (see "API-first rule"), `+page.server.ts` / `+layout.server.ts` `load` functions only read from them; types come from `./$types`. There are no form actions.
+SvelteKit conventions: `+server.ts` endpoints under `/api/v1` hold the server logic (see "API-first rule"), `load` functions only read from them; types come from `./$types`. The reading pages (home, profile, post, hashtag, notifications, search) use universal `+page.ts` loads wrapped in `cachedPage` (`src/lib/pageCache.ts`) so back/forward can show them at once; the rest use `+page.server.ts`. Things only the server can read (httpOnly UI preference cookies such as the feed) come from `+layout.server.ts`. There are no form actions.
 
 ## Design guide
 
@@ -82,12 +82,12 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
 
 The app should move like a native one; the helpers are in `src/lib/history.svelte.ts`, wired up by `NavHistory.svelte` in the root layout.
 
-- **Back arrows** call `goBack(fallback?)`: back through the history when the previous page is ours, else "up" (`parentOf`: a post to its author, a chat to `/messages`), replacing the current entry. Never a plain link to the parent, which piles a copy of it on top.
+- **Back arrows** call `goBack(fallback?)`: back through the history when the previous page is ours (the browser's Navigation API: `navigation.currentEntry.index`; SvelteKit has no public history position), else "up" (`parentOf`: a post to its author, a chat to `/messages`), replacing the current entry. Never a plain link to the parent, which piles a copy of it on top.
 - **Overlays** (image viewer, composer, dialogs) hold one shallow history entry each through `overlayEntry(name, isOpen, close)`, listed in `page.state.overlays`. Leaving the page from inside one first steps back over those entries.
 - **Tabs and filters** within a page use `data-sveltekit-replacestate` (and usually `data-sveltekit-noscroll`), so switching doesn't add entries to step back through.
 - **Redirects after an action** (a deleted post, a created group) replace the entry (`goto(url, { replace: true })`) or go back, so back never lands on a page that's gone.
 - The **bottom bar** returns to a section's last history entry (with its scroll and loaded posts), and tapping the current section goes to its start, then to the top, then refreshes.
-- Back/forward shows feed-like pages from a short-lived cache of their data (`src/lib/backCache.ts`, production builds only) and refreshes them in the background.
+- Back/forward shows the reading pages from a short-lived cache of what their universal loads returned (`cachedPage` in `src/lib/pageCache.ts`, browser only, never on the server) and refreshes them in the background. Pages must not mutate their `data`, which comes back on the next back.
 - Touch devices slide pages in with view transitions (`app.css`); the installed app has pull-to-refresh (`PullToRefresh.svelte`).
 
 ### Prettier caveat
@@ -166,6 +166,7 @@ There is no test suite (CI runs `bun run check` and `bun run lint`). Before fini
 
 - Prettier: tabs, single quotes, no trailing commas, print width 100 (`.prettierrc`).
 - Import local modules with the `.js` extension where the existing code does (e.g. `#lib/store.js`).
+- **Only public, documented APIs.** Build on what the Svelte / SvelteKit docs and web standards document. Never read framework internals (keys SvelteKit puts in `history.state`, its `__data.json` requests, private modules or `node_modules` source), patch globals such as `window.fetch` or `history`, or rely on undocumented behaviour, even when it works today: it breaks silently on an upgrade. Check the docs first; when they offer no way, use a platform API (the Navigation API, for example) or change the design, and say why in the PR.
 - Keep server-only logic in `src/lib/server/`; validate all user input on the server (`src/lib/server/validation.ts`) and apply rate limits (`rateLimit` in `src/lib/server/api.ts`, built on `src/lib/server/ratelimit.ts`) to new write endpoints.
 - Comments explain _why_, matching the existing terse lowercase style.
 

@@ -4,25 +4,18 @@
 	import { page } from '$app/state';
 	import { user } from '#lib/store.js';
 	import { homeItem, isActive, navItems } from '#lib/nav.js';
-	import { leaveOverlays, motion, noteEntry, trackSections } from '#lib/history.svelte.js';
-	import {
-		clearBackCache,
-		endTraversal,
-		installBackCache,
-		startTraversal
-	} from '#lib/backCache.js';
+	import { leaveOverlays, motion, trackSections } from '#lib/history.svelte.js';
+	import { clearPageCache, endTraversal, startTraversal } from '#lib/pageCache.js';
 
 	// the app's history behaviour (#lib/history.svelte.ts), mounted once in the root layout
 
 	const sections = [homeItem, ...navItems].map((item) => item.href);
 
-	onMount(installBackCache);
-
 	// another profile's pages must not come back from the cache
 	let userId = $user?.id ?? null;
 	$effect(() => {
 		const id = $user?.id ?? null;
-		if (id !== userId) clearBackCache();
+		if (id !== userId) clearPageCache();
 		userId = id;
 	});
 
@@ -42,11 +35,7 @@
 
 	afterNavigate((nav) => {
 		if (nav.shallow) return;
-		if (nav.type === 'enter') noteEntry();
-		trackSections(
-			sections.filter((href) => isActive(page.url.pathname, href)),
-			nav
-		);
+		trackSections(sections.filter((href) => isActive(page.url.pathname, href)));
 	});
 
 	// ---- page transitions (touch devices): pages slide in like a native stack

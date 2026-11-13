@@ -15,52 +15,14 @@ type AfterNavigate = Parameters<Parameters<typeof afterNavigate>[0]>[0];
 
 // ---- where we are in the history
 
-// SvelteKit numbers its history entries (+1 per push, the same on a replace, kept across reloads).
-// it's internal, so everything below falls back to "nothing to go back to" without it
-function entryIndex(): number | null {
-	try {
-		const index = history.state?.['sveltekit:metadata']?.historyIndex;
-		return typeof index === 'number' ? index : null;
-	} catch {
-		return null;
-	}
-}
-
-// the entries where the app was opened (a typed url, a link from elsewhere, a reload of a fresh
-// tab). pages before such an entry belong to whatever was open earlier in the tab
-const ROOTS = 'nav:roots';
-
-function readRoots(): number[] {
-	try {
-		const roots = JSON.parse(sessionStorage.getItem(ROOTS) ?? '[]');
-		return Array.isArray(roots) ? roots.filter((r) => typeof r === 'number') : [];
-	} catch {
-		return [];
-	}
-}
-
-function rootOf(index: number) {
-	let root: number | null = null;
-	for (const r of readRoots()) if (r <= index && (root === null || r > root)) root = r;
-	return root;
-}
-
-function markRoot(index: number) {
-	const roots = readRoots();
-	if (roots.includes(index)) return;
-	try {
-		sessionStorage.setItem(ROOTS, JSON.stringify([...roots, index].slice(-20)));
-	} catch {
-		// private mode: every page counts as opened directly
-	}
-}
+// the browser's Navigation API (all major browsers since early 2026). its entries are only the
+// same-origin ones next to the current page, so an index above 0 means one of our pages is behind
+// this one. without it (older browsers) every page counts as opened directly: the arrows go up
+const nav = (): Navigation | null => (typeof navigation === 'undefined' ? null : navigation);
 
 /** How many of our own pages (and open overlays) are behind this one. */
 export function depth() {
-	const index = entryIndex();
-	if (index === null) return 0;
-	const root = rootOf(index);
-	return root === null ? 0 : index - root;
+	return nav()?.currentEntry?.index ?? 0;
 }
 
 /** The page "up" from `url`: a post's author, a chat's list, a settings section's index. */
@@ -137,8 +99,6 @@ export function overlayEntry(name: string, isOpen: () => boolean, close: () => v
 		untrack(() => {
 			if (open && entry === 'none') {
 				entry = 'pushing';
-				const index = entryIndex();
-				if (index !== null) forgetAfter(index);
 				goto(page.url.href, {
 					shallow: true,
 					state: { ...page.state, overlays: [...overlays(), name] }
@@ -204,46 +164,27 @@ let leaving = false;
 
 // ---- sections of the bottom bar
 
-// the history entry each section was last seen at, to step back (or forward) to it
-const sectionEntries = new Map<string, { index: number; url: string }>();
+// the history entry (Navigation API key) each section was last seen at, to step back or forward to
+const sectionEntries = new Map<string, string>();
 
-/** Remembers that the current page (a new history entry or not) belongs to `section`. */
-export function trackSections(sections: string[], nav: AfterNavigate) {
-	const index = entryIndex();
-	if (index === null) return;
-	// a new entry drops the ones after it from the browser's history: forget them too
-	if (nav.type !== 'popstate' && nav.type !== 'enter')
-		for (const [key, entry] of sectionEntries) if (entry.index >= index) sectionEntries.delete(key);
-	const url = page.url.pathname + page.url.search;
-	for (const section of sections) sectionEntries.set(section, { index, url });
-}
-
-// an overlay's entry replaces any forward history too
-function forgetAfter(index: number) {
-	for (const [key, entry] of sectionEntries) if (entry.index > index) sectionEntries.delete(key);
+/** Remembers that the current page belongs to these sections. */
+export function trackSections(sections: string[]) {
+	const key = nav()?.currentEntry?.key;
+	if (!key) return;
+	for (const section of sections) sectionEntries.set(section, key);
 }
 
 /**
  * Returns to where `section` was left: through the history when its entry is still there, so the
- * page comes back with its scroll and loaded posts. Returns false when there is nothing to return to.
+ * page comes back with its scroll and loaded posts. `belongs` checks the entry still shows the
+ * section (a replace keeps the key). Returns false when there is nothing to return to.
  */
-export function returnToSection(section: string) {
-	const entry = sectionEntries.get(section);
-	const index = entryIndex();
-	if (!entry || index === null || entry.index === index) return false;
-	const root = rootOf(index);
-	if (root === null || entry.index < root || rootOf(entry.index) !== root) return false;
-	history.go(entry.index - index);
+export function returnToSection(section: string, belongs: (url: URL) => boolean) {
+	const api = nav();
+	const key = sectionEntries.get(section);
+	if (!api || !key || key === api.currentEntry?.key) return false;
+	const entry = api.entries().find((e) => e.key === key);
+	if (!entry?.url || !belongs(new URL(entry.url))) return false;
+	api.traverseTo(key);
 	return true;
-}
-
-// ---- roots
-
-/** Call on the app's first navigation: a freshly opened page starts a new stack. */
-export function noteEntry() {
-	const index = entryIndex();
-	if (index === null) return;
-	const type = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming)?.type;
-	// a reload or back/forward into the app keeps the stack it had; a new document is a new root
-	if (type === 'navigate' || type === undefined || rootOf(index) === null) markRoot(index);
 }

@@ -8,7 +8,9 @@ import { redirect } from '@sveltejs/kit';
 import { isPublicPage } from '#lib/membersOnly.js';
 import { rememberedFeed } from '#lib/feed.js';
 
-export const load = (async ({ fetch, cookies, request, route, url }) => {
+export const load = (async ({ fetch, cookies, request, route, url, depends }) => {
+	// creating or revoking a code changes the invites the profile menu offers
+	depends('app:invites');
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
 	const [me, accounts, instance] = await Promise.all([
 		fetch('/api/v1/me').then((res) => (res.ok ? (res.json() as Promise<Me>) : null)),
@@ -27,6 +29,8 @@ export const load = (async ({ fetch, cookies, request, route, url }) => {
 		muteReason: me?.mute_reason ?? null,
 		// staff: the moderation item shows the reports waiting
 		reportsCount: me?.open_reports ?? 0,
+		// invites the account can still give: the profile menu offers to invite someone
+		invitesAvailable: me?.invites?.available ?? 0,
 		notisCount: me?.unread.notifications ?? 0,
 		// reactions to your messages make a chat unread too
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),

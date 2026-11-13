@@ -118,8 +118,18 @@ export const assetUrl = (path: string) => (/^https?:\/\//.test(path) ? path : au
 export const avatarUrl = (user: { username: string; avatar: string | null }, size = 96) =>
 	user.avatar ? assetUrl(user.avatar) : `${auth.server}/avatar/${user.username}.png?size=${size}`;
 
-/** Message images are private: they need the token (see "Message images" in /api.txt). */
-export const privateImage = (path: string) => ({
-	uri: assetUrl(path),
-	headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : undefined
-});
+/**
+ * An image of the instance (an upload, an avatar, a link preview) with the token: message images
+ * need it, and on a members-only instance every image does. Never sent to another host.
+ */
+export function instanceImage(path: string) {
+	const uri = assetUrl(path);
+	const ours = uri.startsWith(`${auth.server}/`);
+	return {
+		uri,
+		headers: auth.token && ours ? { Authorization: `Bearer ${auth.token}` } : undefined
+	};
+}
+
+export const avatarImage = (user: { username: string; avatar: string | null }, size = 96) =>
+	instanceImage(avatarUrl(user, size));

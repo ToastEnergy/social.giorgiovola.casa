@@ -128,13 +128,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 		})();
 	}, [apply, drop]);
 
-	// the instance's limits, message of the day and GIF settings
+	// the instance's limits, message of the day and GIF settings. with the token: a members-only
+	// instance hides its message of the day from signed-out callers
+	const token = stored.accounts[stored.current]?.token ?? null;
 	useEffect(() => {
 		if (!ready) return;
-		api<Instance>('instance', { server: stored.server, token: null })
+		api<Instance>('instance', { server: stored.server, token })
 			.then(setInstance)
 			.catch(() => {});
-	}, [ready, stored.server]);
+	}, [ready, stored.server, token]);
 
 	// the stream follows the profile in use: reopened when it changes, closed in the background
 	const profileKey = me ? `${stored.accounts[stored.current]?.token}:${me.user.username}` : '';

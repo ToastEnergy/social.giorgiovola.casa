@@ -44,3 +44,34 @@ export const STATUS_LABELS: Record<InviteStatus, string> = {
 /** The link to share, absolute even when the server only knows its path. */
 export const linkOf = (invite: Pick<Invite, 'url'>) =>
 	new URL(invite.url, location.origin).toString();
+
+/**
+ * Copies a link, falling back to a hidden field and execCommand where the clipboard API isn't
+ * allowed (an insecure origin). Says whether it worked.
+ */
+export async function copyText(text: string) {
+	try {
+		await navigator.clipboard.writeText(text);
+		return true;
+	} catch {
+		const field = document.createElement('textarea');
+		field.value = text;
+		field.style.position = 'fixed';
+		field.style.opacity = '0';
+		document.body.append(field);
+		field.select();
+		const ok = document.execCommand('copy');
+		field.remove();
+		return ok;
+	}
+}
+
+/** How long until a code expires, in words: "in 14 days", "tomorrow", "in 3 hours". */
+export function expiresIn(date: string, now = Date.now()) {
+	const ms = new Date(date).getTime() - now;
+	const hours = Math.floor(ms / 3_600_000);
+	if (hours < 1) return 'in less than an hour';
+	if (hours < 24) return `in ${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+	const days = Math.round(ms / 86_400_000);
+	return days === 1 ? 'tomorrow' : `in ${days} days`;
+}

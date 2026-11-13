@@ -1,11 +1,12 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { X } from 'lucide-react-native';
+import { Pencil, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { api, withQuery } from '@/lib/api';
 import { colors } from '@/lib/theme';
 import type { Gif, Page, User } from '@/lib/types';
+import { canEdit, PhotoEditor } from './PhotoEditor';
 import { Avatar, Txt } from './ui';
 
 export type Picked = { uri: string; mimeType?: string | null };
@@ -37,18 +38,25 @@ export async function pickAvatar(): Promise<Picked | null> {
 	return { uri: result.assets[0].uri, mimeType: result.assets[0].mimeType };
 }
 
-/** The images or GIF attached to what is being written, each with a remove button. */
+/**
+ * The images or GIF attached to what is being written, each with a remove button. With
+ * `onReplaceImage`, tapping an image (not a GIF) opens the photo editor, and the edited copy
+ * replaces it.
+ */
 export function AttachmentStrip({
 	images,
 	gif,
 	onRemoveImage,
-	onRemoveGif
+	onRemoveGif,
+	onReplaceImage
 }: {
 	images: Picked[];
 	gif: Gif | null;
 	onRemoveImage: (index: number) => void;
 	onRemoveGif: () => void;
+	onReplaceImage?: (image: Picked, edited: Picked) => void;
 }) {
+	const [editing, setEditing] = useState<Picked | null>(null);
 	if (!images.length && !gif) return null;
 	const remove = (label: string, onPress: () => void) => (
 		<Pressable
@@ -73,15 +81,38 @@ export function AttachmentStrip({
 			showsHorizontalScrollIndicator={false}
 			contentContainerStyle={{ gap: 5 }}
 		>
-			{images.map((image, index) => (
-				<View key={image.uri}>
+			{images.map((image, index) => {
+				const thumb = (
 					<Image
 						source={{ uri: image.uri }}
 						style={{ width: 90, height: 90, borderRadius: 5, backgroundColor: '#111' }}
 					/>
-					{remove('Remove image', () => onRemoveImage(index))}
-				</View>
-			))}
+				);
+				return (
+					<View key={image.uri}>
+						{onReplaceImage && canEdit(image) ? (
+							<Pressable accessibilityLabel="Edit image" onPress={() => setEditing(image)}>
+								{thumb}
+								<View
+									style={{
+										position: 'absolute',
+										bottom: 4,
+										left: 4,
+										backgroundColor: 'rgba(12,11,11,0.8)',
+										borderRadius: 12,
+										padding: 5
+									}}
+								>
+									<Pencil size={12} color={colors.foreground} />
+								</View>
+							</Pressable>
+						) : (
+							thumb
+						)}
+						{remove('Remove image', () => onRemoveImage(index))}
+					</View>
+				);
+			})}
 			{gif ? (
 				<View>
 					<Image
@@ -95,6 +126,15 @@ export function AttachmentStrip({
 					/>
 					{remove('Remove GIF', onRemoveGif)}
 				</View>
+			) : null}
+			{editing ? (
+				<PhotoEditor
+					image={editing}
+					onClose={(edited) => {
+						setEditing(null);
+						if (edited) onReplaceImage?.(editing, edited);
+					}}
+				/>
 			) : null}
 		</ScrollView>
 	);

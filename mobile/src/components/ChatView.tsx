@@ -716,6 +716,9 @@ export function ChatView(props: Props) {
 							gif={gif?.gif ?? null}
 							onRemoveImage={(index) => setImages((now) => now.filter((_, i) => i !== index))}
 							onRemoveGif={() => setGif(null)}
+							onReplaceImage={(old, edited) =>
+								setImages((now) => now.map((image) => (image === old ? edited : image)))
+							}
 						/>
 						<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
 							{editing ? null : (

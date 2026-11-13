@@ -519,7 +519,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/instance',
 				auth: 'public',
 				summary:
-					'message of the day, whether registration is open, limits, and `gifs` (the KLIPY app key for GIF search, null when off)'
+					'message of the day, whether registration is open, `members_only`, limits, and `gifs` (the KLIPY app key for GIF search, null when off)'
 			},
 			{
 				method: 'POST',

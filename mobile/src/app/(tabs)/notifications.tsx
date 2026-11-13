@@ -1,5 +1,4 @@
 import { router, useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import {
 	AtSign,
 	Gift,
@@ -72,7 +71,7 @@ function people(group: NotificationGroup) {
 }
 
 export default function Notifications() {
-	const { me, server, unread, setUnread } = useSession();
+	const { me, unread, setUnread } = useSession();
 	const list = usePaged<NotificationGroup>('notifications/grouped', (g) => g.key);
 	const { items, setItems, reload } = list;
 
@@ -102,9 +101,7 @@ export default function Notifications() {
 			);
 		}
 		const sender = group.senders[0];
-		// the app has no invites screen yet: codes are made on the website
-		if (group.type === 'invites')
-			WebBrowser.openBrowserAsync(`${server}/settings/invites`).catch(() => {});
+		if (group.type === 'invites') router.push('/settings/invites');
 		else if (group.type === 'follow')
 			router.push(
 				group.count > 1 ? `/user/${me?.user.username}/followers` : `/user/${sender?.username}`

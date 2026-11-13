@@ -105,6 +105,7 @@ export function appPath(url: string): string | null {
 		return parts[1] ? `/chat/${parts[1]}` : '/messages';
 	}
 	if (parts[0] === 'notifications') return '/notifications';
+	if (parts[0] === 'settings' && parts[1] === 'invites') return '/settings/invites';
 	return null;
 }
 
@@ -248,7 +249,7 @@ export function PushNotifications() {
 			}
 			if (!data.url) return;
 			const path = appPath(data.url);
-			// pages the app doesn't have yet (invites) open on the website
+			// pages the app doesn't have open on the website
 			if (path) router.push(path);
 			else WebBrowser.openBrowserAsync(server + data.url).catch(() => {});
 		})();

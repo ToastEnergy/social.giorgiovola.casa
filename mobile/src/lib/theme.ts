@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // the web app's design tokens (src/app.css): flat, dark, one green accent
 export const colors = {
 	background: '#0c0b0b',
@@ -13,5 +15,7 @@ export const colors = {
 export const fonts = {
 	medium: 'Manrope_500Medium',
 	bold: 'Manrope_700Bold',
-	extrabold: 'Manrope_800ExtraBold'
+	extrabold: 'Manrope_800ExtraBold',
+	/** codes (invite codes): the system's monospaced font */
+	mono: Platform.select({ ios: 'Menlo', default: 'monospace' })
 };

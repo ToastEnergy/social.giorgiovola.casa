@@ -5,6 +5,7 @@ import { Pressable, ScrollView, View } from 'react-native';
 import { Hint, Txt } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
+import type { Me } from '@/lib/types';
 
 const sections = [
 	{ href: '/settings/profile', label: 'Profile', hint: 'Name, username, bio, picture, email' },
@@ -23,8 +24,19 @@ const sections = [
 		label: 'Security',
 		hint: 'Password, passkeys, where you are signed in'
 	},
+	{ href: '/settings/invites', label: 'Invites', hint: 'Invite links for people to join' },
 	{ href: '/settings/developers', label: 'Developers', hint: 'Access tokens and bots' }
 ];
+
+/** "2 to give, 1 link out": the invites row's hint once the server says */
+function invitesHint(invites: NonNullable<Me['invites']>) {
+	if (invites.invites === 0) return null;
+	const out =
+		invites.pending > 0
+			? `, ${invites.pending} ${invites.pending === 1 ? 'link' : 'links'} out`
+			: '';
+	return `${invites.available} to give${out}`;
+}
 
 export default function Settings() {
 	const { me, server } = useSession();
@@ -45,7 +57,10 @@ export default function Settings() {
 				>
 					<View style={{ flex: 1 }}>
 						<Txt bold>{section.label}</Txt>
-						<Hint>{section.hint}</Hint>
+						<Hint>
+							{(section.href === '/settings/invites' && me?.invites && invitesHint(me.invites)) ||
+								section.hint}
+						</Hint>
 					</View>
 					<ChevronRight size={20} color={colors.muted} />
 				</Pressable>

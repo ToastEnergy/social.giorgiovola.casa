@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { ChevronDown, Inbox } from 'lucide-react-native';
@@ -5,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { Badge, LogEntryRow, ReportCard, StatTile } from '@/components/moderation';
 import { ask, confirm, showMenu, toast } from '@/components/overlays';
+import { InviteRow } from '@/components/InviteRow';
 import { refreshColors } from '@/components/PostList';
 import {
 	Avatar,
@@ -22,15 +24,41 @@ import {
 import { api, errorMessage, withQuery } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
 import { fullDate } from '@/lib/format';
+import { linkOf, STATUS_LABELS } from '@/lib/invites';
 import { LOG_ACTIONS, relative } from '@/lib/moderation';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
-import type { AdminGroup, AdminUser, LogEntry, Overview, Report } from '@/lib/types';
+import type {
+	AdminGroup,
+	AdminUser,
+	Invite,
+	InviteStatus,
+	InviteSummary,
+	LogEntry,
+	Overview,
+	Report
+} from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
 
-type Tab = 'reports' | 'accounts' | 'log' | 'settings';
+type Tab = 'reports' | 'accounts' | 'log' | 'invites' | 'settings';
 type ReportFilter = 'open' | 'resolved' | 'dismissed' | 'all';
 type AccountFilter = 'all' | 'reported' | 'banned' | 'muted' | 'staff';
+type InviteFilter = 'all' | InviteStatus;
+
+const inviteFilters: { value: InviteFilter; label: string }[] = [
+	{ value: 'all', label: 'All' },
+	...(['pending', 'used', 'expired', 'revoked'] as const).map((value) => ({
+		value,
+		label: STATUS_LABELS[value]
+	}))
+];
+const EXPIRY = [
+	{ label: '1 day', days: 1 },
+	{ label: '1 week', days: 7 },
+	{ label: '2 weeks', days: 14 },
+	{ label: '30 days', days: 30 },
+	{ label: 'Never', days: null }
+];
 
 const reportFilters: { value: ReportFilter; label: string }[] = [
 	{ value: 'open', label: 'Open' },
@@ -83,7 +111,7 @@ function useDebounced(value: string) {
 
 /** Moderation: reports, accounts, the log and (admins) instance settings. */
 export default function Admin() {
-	const params = useLocalSearchParams<{ tab?: Tab; username?: string }>();
+	const params = useLocalSearchParams<{ tab?: Tab; username?: string; status?: InviteFilter }>();
 	const { me, reloadMe } = useSession();
 	const admin = me?.role === 'admin';
 	const [tab, setTab] = useState<Tab>(params.tab ?? 'reports');
@@ -118,7 +146,13 @@ export default function Admin() {
 		},
 		{ value: 'accounts', label: 'Accounts' },
 		{ value: 'log', label: 'Log' },
-		...(admin ? [{ value: 'settings' as const, label: 'Settings' }] : [])
+		// only admins hand out invites
+		...(admin
+			? [
+					{ value: 'invites' as const, label: 'Invites' },
+					{ value: 'settings' as const, label: 'Settings' }
+			  ]
+			: [])
 	];
 
 	const showAccounts = (filter: AccountFilter) => {
@@ -178,6 +212,17 @@ export default function Admin() {
 	if (tab === 'accounts')
 		return <AccountsTab header={header} filter={accountFilter} setFilter={setAccountFilter} />;
 	if (tab === 'log') return <LogTab header={header} />;
+	// the admin tabs, opened by a link, show the reports to a mod
+	if (!admin) return <ReportsTab header={header} onChange={changed} />;
+	if (tab === 'invites')
+		return (
+			<InvitesTab
+				header={header}
+				username={params.tab === 'invites' ? params.username : undefined}
+				status={params.status}
+				onChange={changed}
+			/>
+		);
 	return <SettingsTab header={header} onStaff={() => showAccounts('staff')} />;
 }
 
@@ -481,6 +526,317 @@ function LogTab({ header }: { header: React.ReactElement }) {
 	);
 }
 
+const flashView = (flash: { message: string; failed: boolean } | null) =>
+	flash ? (
+		<View
+			style={{
+				borderRadius: 5,
+				padding: 5,
+				backgroundColor: flash.failed ? colors.danger : colors.accent
+			}}
+		>
+			<Txt style={{ color: flash.failed ? '#fff' : colors.background }}>{flash.message}</Txt>
+		</View>
+	) : null;
+
+/** A whole number typed in a field, or null when it isn't one from min to max. */
+function wholeNumber(text: string, min: number, max: number) {
+	const value = text.trim();
+	const n = Number(value);
+	return /^\d+$/.test(value) && n >= min && n <= max ? n : null;
+}
+
+function InvitesTab({
+	header,
+	username,
+	status: initialStatus,
+	onChange
+}: {
+	header: React.ReactElement;
+	username?: string;
+	status?: InviteFilter;
+	onChange: (message: string, failed?: boolean) => void;
+}) {
+	const [summary, setSummary] = useState<InviteSummary | null>(null);
+	const [summaryError, setSummaryError] = useState<string | null>(null);
+	const [status, setStatus] = useState<InviteFilter>(
+		inviteFilters.find((f) => f.value === initialStatus)?.value ?? 'all'
+	);
+	const [account, setAccount] = useState(username ?? '');
+	const search = useDebounced(account);
+	const [grantCount, setGrantCount] = useState('1');
+	const [note, setNote] = useState('');
+	const [count, setCount] = useState('1');
+	const [days, setDays] = useState<number | null>(14);
+	const [busy, setBusy] = useState(false);
+	// a number that isn't one, before anything is sent
+	const [invalid, setInvalid] = useState<string | null>(null);
+	const list = usePaged<Invite>(
+		withQuery('admin/invites', { status, username: search }),
+		(i) => i.id,
+		50
+	);
+
+	const loadSummary = useCallback(() => {
+		api<InviteSummary>('admin/invites/summary')
+			.then((s) => {
+				setSummary(s);
+				setSummaryError(null);
+			})
+			.catch((e) => setSummaryError(errorMessage(e)));
+	}, []);
+	useEffect(loadSummary, [loadSummary]);
+	useBus('moderation_reload', () => {
+		loadSummary();
+		list.reload(true);
+	});
+
+	async function run(action: () => Promise<string>) {
+		setBusy(true);
+		setInvalid(null);
+		try {
+			onChange(await action());
+		} catch (e) {
+			onChange(errorMessage(e), true);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	async function grant() {
+		const n = wholeNumber(grantCount, 1, 100);
+		if (n === null) return setInvalid('Give from 1 to 100 invites each.');
+		const ok = await confirm(
+			'Give invites?',
+			`Give every account that isn’t banned ${n} more ${n === 1 ? 'invite' : 'invites'}?`,
+			'Give'
+		);
+		if (!ok) return;
+		run(async () => {
+			const res = await api<{ message: string }>('admin/invites/grant', {
+				method: 'POST',
+				body: { count: n }
+			});
+			return res.message;
+		});
+	}
+
+	function create() {
+		const n = wholeNumber(count, 1, 50);
+		if (n === null) return setInvalid('Create from 1 to 50 links at a time.');
+		run(async () => {
+			const res = await api<{ items: Invite[] }>('admin/invites', {
+				method: 'POST',
+				body: { note: note.trim(), count: n, days }
+			});
+			setNote('');
+			// no clipboard: the links are in the list below
+			const copied = await Clipboard.setStringAsync(res.items.map(linkOf).join('\n')).catch(
+				() => false
+			);
+			const what = res.items.length === 1 ? 'Invite' : `${res.items.length} invites`;
+			const link = res.items.length === 1 ? 'link' : 'links';
+			return copied ? `${what} created, ${link} copied.` : `${what} created.`;
+		});
+	}
+
+	const pickExpiry = () =>
+		showMenu(EXPIRY.map((e) => ({ label: e.label, onPress: () => setDays(e.days) })));
+
+	const s = summary;
+	const filtered = !!(search || status !== 'all');
+
+	return (
+		<FlatList
+			data={list.items}
+			keyExtractor={(i) => String(i.id)}
+			keyboardShouldPersistTaps="handled"
+			automaticallyAdjustKeyboardInsets
+			keyboardDismissMode="on-drag"
+			onEndReached={list.loadMore}
+			onEndReachedThreshold={0.6}
+			refreshControl={
+				<RefreshControl
+					refreshing={list.refreshing}
+					onRefresh={() => {
+						loadSummary();
+						list.refresh();
+					}}
+					{...refreshColors}
+				/>
+			}
+			ListHeaderComponent={
+				<View>
+					{header}
+					<View style={{ padding: 20, paddingBottom: 10 }}>
+						{s ? (
+							<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 40 }}>
+								<StatTile label="Available to give" value={s.available} />
+								<StatTile
+									label="Codes out"
+									value={s.pending + s.pending_staff}
+									onPress={() => setStatus('pending')}
+								/>
+								<StatTile label="Used" value={s.used} onPress={() => setStatus('used')} />
+								<StatTile label="Accounts with invites" value={s.accounts.length} />
+							</View>
+						) : summaryError ? (
+							<View style={{ marginBottom: 20 }}>
+								<ErrorBanner message={summaryError} />
+							</View>
+						) : (
+							<Loading />
+						)}
+
+						<Section title="Give invites">
+							<Hint>
+								People turn their invites into links from Settings → Invites. An invite is only used
+								up when someone signs up with it. To give or take away invites from one person, open
+								their case page (Accounts → the account).
+							</Hint>
+							<ErrorBanner message={invalid} />
+							<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+								<View style={{ width: 110 }}>
+									<Field
+										label="Invites each"
+										value={grantCount}
+										onChangeText={setGrantCount}
+										keyboardType="number-pad"
+										maxLength={3}
+									/>
+								</View>
+								<Button label="Give to everyone" disabled={busy} onPress={grant} />
+							</View>
+						</Section>
+
+						<Section title="Create invite links">
+							<Hint>
+								Links of your own, for people you invite yourself. They don’t come out of anyone’s
+								invites.
+							</Hint>
+							<Field
+								label="Who is it for? (optional)"
+								value={note}
+								onChangeText={setNote}
+								maxLength={100}
+								autoCapitalize="words"
+								autoCorrect={false}
+							/>
+							<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+								<View style={{ width: 80 }}>
+									<Field
+										label="How many"
+										value={count}
+										onChangeText={setCount}
+										keyboardType="number-pad"
+										maxLength={2}
+									/>
+								</View>
+								<View style={{ flex: 1 }}>
+									<Txt size={13} dim={0.8}>
+										Expires after
+									</Txt>
+									<Pressable
+										onPress={pickExpiry}
+										accessibilityRole="button"
+										accessibilityLabel="Expires after"
+										style={{
+											flexDirection: 'row',
+											alignItems: 'center',
+											borderBottomWidth: 1,
+											borderBottomColor: colors.line,
+											paddingVertical: 8
+										}}
+									>
+										<Txt style={{ flex: 1 }}>{EXPIRY.find((e) => e.days === days)?.label}</Txt>
+										<ChevronDown size={18} color={colors.muted} />
+									</Pressable>
+								</View>
+								<Button label="Create" disabled={busy} onPress={create} />
+							</View>
+						</Section>
+
+						<Section title="Who has invites">
+							{!s ? null : s.accounts.length > 0 ? (
+								<>
+									<Hint>
+										{s.held} {s.held === 1 ? 'invite' : 'invites'} held: {s.available} still to
+										give, {s.pending} out as links.
+									</Hint>
+									<View>
+										{s.accounts.map((a) => (
+											<Pressable
+												key={a.username}
+												onPress={() => router.push(`/admin/user/${a.username}`)}
+												style={({ pressed }) => ({
+													flexDirection: 'row',
+													alignItems: 'center',
+													gap: 10,
+													paddingVertical: 10,
+													borderBottomWidth: 1,
+													borderBottomColor: colors.line,
+													backgroundColor: pressed ? colors.hover : 'transparent'
+												})}
+											>
+												<Avatar user={a} size={32} />
+												<Txt bold numberOfLines={1} style={{ flex: 1 }}>
+													{a.name}{' '}
+													<Txt size={14} dim={0.7}>
+														@{a.username}
+													</Txt>
+												</Txt>
+												<Txt size={14}>
+													<Txt bold size={14}>
+														{a.available}
+													</Txt>
+													<Txt size={14} muted>
+														{' '}
+														to give{a.pending > 0 ? `, ${a.pending} out` : ''}
+													</Txt>
+												</Txt>
+											</Pressable>
+										))}
+									</View>
+								</>
+							) : (
+								<Txt muted>Nobody has invites to give right now.</Txt>
+							)}
+						</Section>
+
+						<View style={{ gap: 12 }}>
+							<Txt bold size={20}>
+								Invite links
+							</Txt>
+							<Filters options={inviteFilters} value={status} onChange={setStatus} />
+							<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+								<View style={{ flex: 1 }}>
+									<Field
+										label="Made by or used by"
+										placeholder="@username"
+										value={account}
+										onChangeText={setAccount}
+										autoCorrect={false}
+									/>
+								</View>
+								{account ? <Button size="sm" label="Clear" onPress={() => setAccount('')} /> : null}
+							</View>
+						</View>
+					</View>
+				</View>
+			}
+			ListEmptyComponent={
+				<ListState
+					loading={list.loading}
+					error={list.error}
+					empty={filtered ? 'Nothing matches.' : 'No invites yet.'}
+				/>
+			}
+			renderItem={({ item }) => <InviteRow invite={item} admin onChange={onChange} />}
+			ListFooterComponent={<View style={{ height: 40 }} />}
+		/>
+	);
+}
+
 type Motd = { motd: string; custom: boolean; default: string; max: number };
 
 function SettingsTab({ header, onStaff }: { header: React.ReactElement; onStaff: () => void }) {
@@ -564,19 +920,6 @@ function SettingsTab({ header, onStaff }: { header: React.ReactElement; onStaff:
 			setBusy(false);
 		}
 	}
-
-	const flashView = (flash: { message: string; failed: boolean } | null) =>
-		flash ? (
-			<View
-				style={{
-					borderRadius: 5,
-					padding: 5,
-					backgroundColor: flash.failed ? colors.danger : colors.accent
-				}}
-			>
-				<Txt style={{ color: flash.failed ? '#fff' : colors.background }}>{flash.message}</Txt>
-			</View>
-		) : null;
 
 	return (
 		<ScrollView

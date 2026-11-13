@@ -40,7 +40,7 @@ export function getAvatar(
 
 /** Whether a whitespace-delimited word is a link. Anchored, so `javascript:alert(1)//https://x` isn't. */
 export function isHttpLink(word: string) {
-	if (!/^https?:\/\/\S+$/.test(word)) return false;
+	if (!/^https?:\/\/\S+$/i.test(word)) return false;
 	try {
 		const { protocol } = new URL(word);
 		return protocol === 'https:' || protocol === 'http:';

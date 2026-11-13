@@ -69,7 +69,7 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
   - Handlers are callback props (`onclick`), including from legacy components. Write `on:click|stopPropagation` as `onclick={(e) => { e.stopPropagation(); … }}`.
   - Icon-only controls (the composer, chat input, image viewer and like buttons) are plain unbordered buttons and stay that way. Give them an `aria-label` or `title`.
 - **Inputs:** the `.input` class (bottom border only, `p-2.5`) for standalone fields. Labelled form fields are a `flex flex-col` with a `text-[0.8em] opacity-80` label above an input that has only `border-b`.
-- **Popovers and dialogs:** `rounded-[5px] border border-accent bg-background p-2.5` (dialogs: `rounded-md … p-5`). For one shared overlay (image viewer, profile hover card), mount a single instance in `+layout.svelte`, drive it from a `.svelte.ts` state module and close it on `afterNavigate` and Escape.
+- **Popovers and dialogs:** `rounded-[5px] border border-accent bg-background p-2.5` (dialogs: `rounded-md … p-5`). For one shared overlay (image viewer, profile hover card), mount a single instance in `+layout.svelte`, drive it from a `.svelte.ts` state module and close it on `afterPageChange` (not `afterNavigate`, which also fires for an overlay's own history entry) and Escape. Full screen overlays and dialogs call `overlayEntry()` so the back button or gesture closes them (see "Navigation and history").
 - **Info panels:** `rounded-[10px] bg-black/70 p-2.5`.
 - **Errors:** `rounded-[5px] bg-danger p-[5px]` above the thing that failed.
 - **Tabs and filters:** an underline tab row (`border-b-2`, `border-accent` when active, `opacity-60` otherwise) or `Button`s with the active one `primary`. Mark the active one with `aria-current="page"`.
@@ -77,6 +77,18 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
 - **Avatars:** always `src/lib/components/Avatar.svelte` (round). Common sizes are 24 (inline stacks), 45 (posts), 50 (header), 60–64 (profile and card).
 - **Numbers:** show large counts compactly with `Intl.NumberFormat(undefined, { notation: 'compact' })` (`49.4K`).
 - **Touch:** hover-only UI (such as the profile card) must only open for `pointerType === 'mouse'`, and tapping must still work without it.
+
+### Navigation and history
+
+The app should move like a native one; the helpers are in `src/lib/history.svelte.ts`, wired up by `NavHistory.svelte` in the root layout.
+
+- **Back arrows** call `goBack(fallback?)`: back through the history when the previous page is ours, else "up" (`parentOf`: a post to its author, a chat to `/messages`), replacing the current entry. Never a plain link to the parent, which piles a copy of it on top.
+- **Overlays** (image viewer, composer, dialogs) hold one shallow history entry each through `overlayEntry(name, isOpen, close)`, listed in `page.state.overlays`. Leaving the page from inside one first steps back over those entries.
+- **Tabs and filters** within a page use `data-sveltekit-replacestate` (and usually `data-sveltekit-noscroll`), so switching doesn't add entries to step back through.
+- **Redirects after an action** (a deleted post, a created group) replace the entry (`goto(url, { replace: true })`) or go back, so back never lands on a page that's gone.
+- The **bottom bar** returns to a section's last history entry (with its scroll and loaded posts), and tapping the current section goes to its start, then to the top, then refreshes.
+- Back/forward shows feed-like pages from a short-lived cache of their data (`src/lib/backCache.ts`, production builds only) and refreshes them in the background.
+- Touch devices slide pages in with view transitions (`app.css`); the installed app has pull-to-refresh (`PullToRefresh.svelte`).
 
 ### Prettier caveat
 

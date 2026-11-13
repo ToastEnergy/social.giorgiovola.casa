@@ -8,7 +8,7 @@
 	import Trash from '@lucide/svelte/icons/trash';
 	import Download from '@lucide/svelte/icons/download';
 	import { flushSync } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import { photoEditor, closeEditor } from '#lib/photoEditor.svelte.js';
 	import Button from './Button.svelte';
 
@@ -101,9 +101,10 @@
 		return { left: (stageW - w) / 2, top: (stageH - h) / 2, w, h, k };
 	});
 
-	afterNavigate(() => {
+	afterPageChange(() => {
 		if (open) closeEditor(null);
 	});
+	overlayEntry('photo-editor', () => open, () => closeEditor(null));
 
 	// a new image: start over
 	$effect(() => {

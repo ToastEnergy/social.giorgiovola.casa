@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import { modal } from '#lib/modal.js';
 	import { compose, closeCompose, composed } from '#lib/compose.svelte.js';
 	import type { Post } from '#lib/types.js';
 	import { keyboard } from '#lib/keyboard.svelte.js';
 	import PostComposer from './PostComposer.svelte';
 
-	afterNavigate(closeCompose);
+	afterPageChange(closeCompose);
+	overlayEntry('compose', () => compose.open, closeCompose);
 
 	// the page behind doesn't scroll under the open composer
 	$effect(() => {

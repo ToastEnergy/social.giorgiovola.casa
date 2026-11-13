@@ -29,6 +29,10 @@ declare global {
 			invalidToken: boolean;
 		}
 		// interface PageData {}
+		interface PageState {
+			/** open overlays, one history entry each, so back closes them (#lib/history.svelte.ts) */
+			overlays?: string[];
+		}
 		// interface Platform {}
 	}
 }

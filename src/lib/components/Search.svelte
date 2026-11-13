@@ -1,7 +1,8 @@
 <script lang="ts">
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
+	import { afterPageChange } from '#lib/history.svelte.js';
 	import { page } from '$app/state';
 	import { tick } from 'svelte';
 	import { PUBLIC_SEARCH_PLACEHOLDER } from '$app/env/public';
@@ -104,7 +105,7 @@
 		input?.blur();
 	}
 
-	afterNavigate(() => {
+	afterPageChange(() => {
 		collapse();
 		// on the search page the bar shows what was searched (it is that page's field on touch)
 		query = page.url.pathname === '/search' ? page.url.searchParams.get('q') ?? '' : '';

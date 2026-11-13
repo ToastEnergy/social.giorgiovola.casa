@@ -19,6 +19,8 @@
 	import ComposeSheet from '#lib/components/ComposeSheet.svelte';
 	import ConnectionStatus from '#lib/components/ConnectionStatus.svelte';
 	import Splash from '#lib/components/Splash.svelte';
+	import NavHistory from '#lib/components/NavHistory.svelte';
+	import PullToRefresh from '#lib/components/PullToRefresh.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -184,6 +186,8 @@
 	<ComposeSheet />
 	<ConnectionStatus />
 	<PhotoEditor />
+	<PullToRefresh />
+	<NavHistory />
 	<Splash />
 </div>
 <svelte:head>
@@ -328,7 +332,8 @@
 			{/if}
 			<slot />
 		</div>
-		{#if navigating.to}
+		<!-- not for an overlay's history entry (shallow), which isn't a page change -->
+		{#if navigating.to && !(navigating as { shallow?: boolean }).shallow}
 			<LoadingOverlay />
 		{/if}
 	</main>

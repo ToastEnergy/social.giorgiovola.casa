@@ -2,6 +2,8 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import LogIn from '@lucide/svelte/icons/log-in';
 	import { flushSync } from 'svelte';
+	import { goto, refreshAll } from '$app/navigation';
+	import { motion, returnToSection } from '#lib/history.svelte.js';
 	import { openCompose } from '#lib/compose.svelte.js';
 	import { page } from '$app/state';
 	import { countLabel, homeItem, isActive, navItems, navLabel, type NavItem } from '#lib/nav.js';
@@ -38,6 +40,26 @@
 		};
 	});
 
+	// like a native tab bar: a section comes back as it was left (through the history, so with its
+	// scroll and loaded posts), and the current one goes to its start, then to the top, then refreshes
+	function tap(e: MouseEvent, item: NavItem, count: number) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		const path = page.url.pathname;
+		motion.tab = true;
+		if (isActive(path, item.href)) {
+			e.preventDefault();
+			if (path !== item.href) goto(item.href);
+			else if (scrollY > 0) scrollTo({ top: 0, behavior: 'smooth' });
+			else {
+				motion.tab = false;
+				refreshAll();
+			}
+			return;
+		}
+		// unread items are at the section's start: the link goes there
+		if (count === 0 && returnToSection(item.href)) e.preventDefault();
+	}
+
 	const itemClass = (active: boolean) =>
 		`flex h-14 flex-1 items-center justify-center hover:no-underline [-webkit-tap-highlight-color:transparent] ${
 			active ? 'text-accent' : 'text-foreground'
@@ -51,7 +73,7 @@
 	bind:offsetHeight={height}
 	data-bottom-cover={joined ? undefined : ''}
 	aria-label="Main"
-	class="{hidden ? 'hidden' : 'flex'} bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
+	class="{hidden ? 'hidden' : 'flex'} [view-transition-name:bottom-bar] bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? 'relative z-10 -mx-5 -mb-5 shrink-0'
 		: `fixed right-0 bottom-0 left-0 z-999 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >
@@ -64,6 +86,7 @@
 			title={navLabel(item, count)}
 			aria-label={navLabel(item, count)}
 			aria-current={active ? 'page' : undefined}
+			onclick={(e) => tap(e, item, count)}
 		>
 			<span class="relative flex">
 				<item.icon size={24} strokeWidth={active ? 2.5 : 2} />

@@ -39,6 +39,7 @@
 				}
 			],
 			"./plugins/disable-script-sandboxing",
+			"./plugins/android-release-signing",
 			"expo-status-bar"
 		],
 		"scheme": "social",

@@ -34,6 +34,7 @@ import type {
 import { AttachmentStrip, pickImages, type Picked } from './attachments';
 import { GifPicker } from './GifPicker';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
+import { MessageGestures } from './MessageGestures';
 import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
 import { RichText } from './RichText';
 import { UploadProgress } from './UploadProgress';
@@ -530,6 +531,7 @@ export function ChatView(props: Props) {
 	const data = useMemo(() => [...messages].reverse(), [messages]);
 	const title = direct ? peer?.name ?? `@${props.username}` : group?.name ?? 'Group';
 	const blocked = direct && info ? info.block.me || info.block.peer : false;
+	const canWrite = !blocked && !me?.muted;
 	const maxImages = instance?.limits.messageImages ?? 5;
 	const banner = editing ?? replyTo;
 
@@ -563,119 +565,135 @@ export function ChatView(props: Props) {
 						{groupEventText(item, myName)}
 					</Txt>
 				) : (
-					<View
-						style={{
-							flexDirection: 'row',
-							justifyContent: mine ? 'flex-end' : 'flex-start',
-							alignItems: 'flex-end',
-							gap: 8,
-							marginTop: showSender ? 8 : 3
+					<MessageGestures
+						enabled={canWrite}
+						onReply={() => {
+							setEditing(null);
+							setReplyTo(item);
+						}}
+						onDoubleTap={() => {
+							// like the web (and Instagram), a double tap only ever adds the heart
+							if (item.reactions.find((r) => r.username === myName)?.emoji !== '❤️')
+								react(item, '❤️');
 						}}
 					>
-						{!direct && !mine ? (
-							<View style={{ width: 28 }}>
-								{showSender ? <Avatar user={item.sender} size={28} link /> : null}
-							</View>
-						) : null}
-						<View style={{ maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
-							{showSender ? (
-								<Txt size={13} bold dim={0.8} style={{ marginBottom: 2 }}>
-									{item.sender.name}
-								</Txt>
-							) : null}
-							<Pressable
-								ref={(node) => {
-									if (node) bubbles.current.set(item.id, node);
-									else bubbles.current.delete(item.id);
-								}}
-								onPress={() => messageMenu(item)}
-								accessibilityHint="Opens the menu to react, reply, edit, copy or delete"
-								style={{
-									borderRadius: 10,
-									borderWidth: 1,
-									borderColor: mine ? colors.accent : colors.line,
-									backgroundColor: mine ? 'rgba(121,154,116,0.15)' : 'rgba(255,255,255,0.04)',
-									paddingVertical: 7,
-									paddingHorizontal: 10,
-									gap: 6
-								}}
-							>
-								{item.reply_to ? (
-									<View
-										style={{ borderLeftWidth: 2, borderLeftColor: colors.accent, paddingLeft: 8 }}
-									>
-										<Txt size={13} bold accent>
-											{item.reply_to.sender.name}
-										</Txt>
-										<Txt size={13} muted numberOfLines={2}>
-											{item.reply_to.content ||
-												(item.reply_to.gif
-													? 'GIF'
-													: item.reply_to.images
-													? `${item.reply_to.images} ${
-															item.reply_to.images === 1 ? 'image' : 'images'
-													  }`
-													: '')}
-										</Txt>
-									</View>
-								) : null}
-								{item.images.length ? (
-									<View style={{ width: 230 }}>
-										<ImageGrid images={item.images} height={200} />
-									</View>
-								) : null}
-								{item.gif ? (
-									<View style={{ width: 230 }}>
-										<GifMedia gif={item.gif} maxHeight={230} />
-									</View>
-								) : null}
-								{item.content ? <RichText content={item.content} /> : null}
-								{item.linked_post ? (
-									<View style={{ width: 230 }}>
-										<QuoteCard quote={item.linked_post} />
-									</View>
-								) : null}
-								<Txt size={11} muted style={{ alignSelf: 'flex-end' }}>
-									{item.edited_at ? 'edited · ' : ''}
-									{clock(item.created_at)}
-								</Txt>
-							</Pressable>
-							{grouped.length ? (
-								<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
-									{grouped.map((reaction) => (
-										<Pressable
-											key={reaction.emoji}
-											accessibilityLabel={`${reaction.emoji} ${reaction.by.length}`}
-											onPress={() =>
-												reaction.mine
-													? react(item, reaction.emoji)
-													: toast(`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`)
-											}
-											onLongPress={() =>
-												toast(`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`)
-											}
-											style={{
-												flexDirection: 'row',
-												gap: 3,
-												borderRadius: 12,
-												borderWidth: 1,
-												borderColor: reaction.mine ? colors.accent : colors.line,
-												paddingHorizontal: 6,
-												paddingVertical: 1
-											}}
-										>
-											<Txt size={13}>{reaction.emoji}</Txt>
-											{reaction.by.length > 1 ? (
-												<Txt size={13} muted>
-													{reaction.by.length}
-												</Txt>
-											) : null}
-										</Pressable>
-									))}
+						<View
+							style={{
+								flexDirection: 'row',
+								justifyContent: mine ? 'flex-end' : 'flex-start',
+								alignItems: 'flex-end',
+								gap: 8,
+								marginTop: showSender ? 8 : 3
+							}}
+						>
+							{!direct && !mine ? (
+								<View style={{ width: 28 }}>
+									{showSender ? <Avatar user={item.sender} size={28} link /> : null}
 								</View>
 							) : null}
+							<View style={{ maxWidth: '80%', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+								{showSender ? (
+									<Txt size={13} bold dim={0.8} style={{ marginBottom: 2 }}>
+										{item.sender.name}
+									</Txt>
+								) : null}
+								<Pressable
+									ref={(node) => {
+										if (node) bubbles.current.set(item.id, node);
+										else bubbles.current.delete(item.id);
+									}}
+									onLongPress={() => messageMenu(item)}
+									delayLongPress={450}
+									accessibilityHint="Long press to react, reply, edit, copy or delete"
+									style={{
+										borderRadius: 10,
+										borderWidth: 1,
+										borderColor: mine ? colors.accent : colors.line,
+										backgroundColor: mine ? 'rgba(121,154,116,0.15)' : 'rgba(255,255,255,0.04)',
+										paddingVertical: 7,
+										paddingHorizontal: 10,
+										gap: 6
+									}}
+								>
+									{item.reply_to ? (
+										<View
+											style={{ borderLeftWidth: 2, borderLeftColor: colors.accent, paddingLeft: 8 }}
+										>
+											<Txt size={13} bold accent>
+												{item.reply_to.sender.name}
+											</Txt>
+											<Txt size={13} muted numberOfLines={2}>
+												{item.reply_to.content ||
+													(item.reply_to.gif
+														? 'GIF'
+														: item.reply_to.images
+														? `${item.reply_to.images} ${
+																item.reply_to.images === 1 ? 'image' : 'images'
+														  }`
+														: '')}
+											</Txt>
+										</View>
+									) : null}
+									{item.images.length ? (
+										<View style={{ width: 230 }}>
+											<ImageGrid images={item.images} height={200} />
+										</View>
+									) : null}
+									{item.gif ? (
+										<View style={{ width: 230 }}>
+											<GifMedia gif={item.gif} maxHeight={230} />
+										</View>
+									) : null}
+									{item.content ? <RichText content={item.content} /> : null}
+									{item.linked_post ? (
+										<View style={{ width: 230 }}>
+											<QuoteCard quote={item.linked_post} />
+										</View>
+									) : null}
+									<Txt size={11} muted style={{ alignSelf: 'flex-end' }}>
+										{item.edited_at ? 'edited · ' : ''}
+										{clock(item.created_at)}
+									</Txt>
+								</Pressable>
+								{grouped.length ? (
+									<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+										{grouped.map((reaction) => (
+											<Pressable
+												key={reaction.emoji}
+												accessibilityLabel={`${reaction.emoji} ${reaction.by.length}`}
+												onPress={() =>
+													reaction.mine
+														? react(item, reaction.emoji)
+														: toast(
+																`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`
+														  )
+												}
+												onLongPress={() =>
+													toast(`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`)
+												}
+												style={{
+													flexDirection: 'row',
+													gap: 3,
+													borderRadius: 12,
+													borderWidth: 1,
+													borderColor: reaction.mine ? colors.accent : colors.line,
+													paddingHorizontal: 6,
+													paddingVertical: 1
+												}}
+											>
+												<Txt size={13}>{reaction.emoji}</Txt>
+												{reaction.by.length > 1 ? (
+													<Txt size={13} muted>
+														{reaction.by.length}
+													</Txt>
+												) : null}
+											</Pressable>
+										))}
+									</View>
+								) : null}
+							</View>
 						</View>
-					</View>
+					</MessageGestures>
 				)}
 			</View>
 		);

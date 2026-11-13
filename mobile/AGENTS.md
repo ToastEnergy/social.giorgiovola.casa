@@ -34,10 +34,14 @@ Before committing, run `bun format` and then `bun lint` **from the parent folder
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
-## Building with EAS
+## Building
 
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>`; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
+The app is not built with EAS (there is no `eas.json`), and isn't in the app stores: it is sideloaded. GitHub Actions builds it, by hand or on a `mobile-v*` tag (`../README.md`, "mobile app builds"):
+
+- `../.github/workflows/mobile-ios.yml`: `expo prebuild`, then `generate-ipa.sh` makes an unsigned `.ipa` that AltStore signs on install. Run `generate-ipa.sh` on a Mac after `bunx expo prebuild --platform ios` to build one locally.
+- `../.github/workflows/mobile-android.yml`: `expo prebuild`, then `./gradlew assembleRelease`, signed through `plugins/android-release-signing.js` with the keystore in the `ANDROID_KEYSTORE_*` secrets (the debug keystore without them). Its SHA-256 fingerprint must be in the server's `ANDROID_APP_FINGERPRINTS` for passkeys and app links.
+
+Native signing and build settings go in config plugins (`plugins/`), never in hand edits to the generated `ios/` / `android/`. Don't add EAS without asking.
 
 ## Rules
 

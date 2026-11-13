@@ -58,7 +58,7 @@
 			"./plugins/disable-script-sandboxing",
 			"expo-status-bar"
 		],
-		"scheme": "social",
+		"scheme": "sgc-app",
 		"backgroundColor": "#0c0b0b"
 	}
 }

@@ -14,7 +14,7 @@ export const redirectSystemPath: NativeIntent['redirectSystemPath'] = ({ path })
 		if (invite) params.set('invite', invite);
 		return `/register?${params}`;
 	} catch {
-		// not a full URL (an in-app path or a social:// link): routed as it is
+		// not a full URL (an in-app path or an sgc-app:// link): routed as it is
 		return path;
 	}
 };

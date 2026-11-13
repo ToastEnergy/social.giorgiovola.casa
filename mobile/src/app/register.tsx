@@ -32,7 +32,7 @@ const inviterAvatar = (server: string, inviter: Inviter) =>
 		: `${server}/avatar/${inviter.username}.png?size=150`);
 
 export default function Register() {
-	// invite: opened from a link (social://register?invite=…&server=…)
+	// invite: opened from a link (sgc-app://register?invite=…&server=…)
 	const params = useLocalSearchParams<{ server?: string; invite?: string }>();
 	const session = useSession();
 	const [server, setServer] = useState(params.server || DEFAULT_SERVER);

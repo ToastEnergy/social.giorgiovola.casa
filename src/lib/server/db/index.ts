@@ -34,5 +34,6 @@ export const {
 	bots,
 	link_previews,
 	reports,
-	moderation_log
+	moderation_log,
+	gif_favorites
 } = schema;

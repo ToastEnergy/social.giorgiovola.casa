@@ -281,6 +281,13 @@
       "when": 1794328272115,
       "tag": "0039_moderation_reports_log",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794535128762,
+      "tag": "0040_gif_favorites",
+      "breakpoints": true
     }
   ]
 }

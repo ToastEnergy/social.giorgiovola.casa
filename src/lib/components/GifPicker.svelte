@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
 	import type { Gif } from '#lib/types.js';
+	import { messageOf } from '#lib/api.js';
+	import { gifFavorites } from '#lib/gifFavorites.svelte.js';
 	import {
 		fetchGifs,
 		KlipyError,
@@ -10,11 +12,12 @@
 		type GifConfig,
 		type KlipyItem
 	} from '#lib/klipy.js';
+	import GifFavoriteButton from './GifFavoriteButton.svelte';
 	import LoadingScreen from './LoadingScreen.svelte';
 
 	type Props = {
 		config: GifConfig;
-		/** a GIF was chosen, found with `query` (empty from the trending ones) */
+		/** a GIF was chosen, found with `query` (empty from the trending ones or the favorites) */
 		onpick: (gif: Gif, query: string) => void;
 		onclose: () => void;
 		/** the grid's height (a tailwind class) */
@@ -25,6 +28,8 @@
 
 	const DEBOUNCE_MS = 300;
 
+	/** KLIPY's results (trending or a search), or the saved GIFs: never mixed (KLIPY's terms) */
+	let tab: 'klipy' | 'favorites' = $state('klipy');
 	let query = $state('');
 	/** the query the shown results are for */
 	let shownQuery = $state('');
@@ -33,6 +38,10 @@
 	let hasNext = $state(true);
 	let loading = $state(false);
 	let error: string | null = $state(null);
+	/** a star that couldn't be saved */
+	let favoriteError: string | null = $state(null);
+	/** favorites whose poster no longer loads (KLIPY removed the GIF) */
+	let gone: Set<string> = $state(new Set());
 	let input: HTMLInputElement | undefined = $state();
 	let grid: HTMLDivElement | undefined = $state();
 	let sentinel: HTMLDivElement | undefined = $state();
@@ -69,6 +78,8 @@
 	}
 
 	function onInput() {
+		// a search is always KLIPY's
+		showTab('klipy');
 		clearTimeout(debounce);
 		debounce = setTimeout(() => {
 			if (query.trim() === shownQuery) return;
@@ -77,15 +88,38 @@
 		}, DEBOUNCE_MS);
 	}
 
+	function showTab(next: typeof tab) {
+		if (tab === next) return;
+		tab = next;
+		grid?.scrollTo({ top: 0 });
+		if (next === 'favorites') gifFavorites.load();
+	}
+
 	function pick(item: KlipyItem) {
 		const gif = toGif(item);
 		if (gif) onpick(gif, shownQuery);
+	}
+
+	function pickFavorite({ provider, slug, title, video, poster, width, height }: Gif) {
+		// without the list's own fields (favorited_at)
+		onpick({ provider, slug, title, video, poster, width, height }, '');
+	}
+
+	async function toggleFavorite(gif: Gif) {
+		favoriteError = null;
+		try {
+			await gifFavorites.toggle(gif);
+		} catch (e) {
+			favoriteError = messageOf(e, 'Could not save the GIF.');
+		}
 	}
 
 	onMount(() => {
 		// a mouse: type right away. On touch the keyboard would cover the trending GIFs
 		if (matchMedia('(pointer: fine)').matches) input?.focus();
 		load(true);
+		// for the stars on KLIPY's results
+		gifFavorites.load();
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== 'Escape') return;
 			e.stopPropagation();
@@ -111,6 +145,9 @@
 		observer.observe(sentinel);
 		return () => observer.disconnect();
 	});
+
+	const tileClass =
+		'block size-full cursor-pointer overflow-hidden rounded-[5px] bg-white/5 outline-none focus-visible:outline-2 focus-visible:outline-accent';
 </script>
 
 <div
@@ -143,39 +180,104 @@
 			><X size={18} /></button
 		>
 	</div>
+	<nav class="flex gap-5 text-[0.9em]">
+		{#each [['klipy', shownQuery ? 'Results' : 'Trending'], ['favorites', 'Favorites']] as const as [kind, label]}
+			<button
+				type="button"
+				class="cursor-pointer border-b-2 pb-[5px] font-bold outline-none focus-visible:text-accent {tab ===
+				kind
+					? 'border-accent'
+					: 'border-transparent opacity-60 hover:opacity-100'}"
+				aria-current={tab === kind ? 'true' : undefined}
+				onclick={() => showTab(kind)}
+				>{label}{#if kind === 'favorites' && gifFavorites.loaded}
+					<span class="font-medium text-muted"> {gifFavorites.items.length}</span>{/if}</button
+			>
+		{/each}
+	</nav>
+	{#if favoriteError}
+		<p class="rounded-[5px] bg-danger p-[5px] text-[0.85em]" role="alert">{favoriteError}</p>
+	{/if}
 	<div bind:this={grid} class="{height} overflow-y-auto overscroll-contain">
-		{#if error && items.length === 0}
-			<p class="p-2.5 text-[0.85em] text-muted">{error}</p>
-		{:else if !loading && items.length === 0}
-			<p class="p-2.5 text-[0.85em] text-muted">No GIFs found.</p>
+		{#if tab === 'favorites'}
+			{#if gifFavorites.error && !gifFavorites.loaded}
+				<p class="p-2.5 text-[0.85em] text-muted">{gifFavorites.error}</p>
+			{:else if gifFavorites.loaded && gifFavorites.items.length === 0}
+				<p class="p-2.5 text-[0.85em] text-muted">
+					No favorites yet. Tap the star on a GIF to save it here.
+				</p>
+			{:else if !gifFavorites.loaded}
+				<div class="flex justify-center p-2.5" aria-busy="true"><LoadingScreen size={24} /></div>
+			{/if}
+			<div class="grid grid-cols-3 gap-[5px]">
+				{#each gifFavorites.items as gif (gif.slug)}
+					<div class="relative aspect-square">
+						{#if gone.has(gif.slug)}
+							<div
+								class="flex size-full items-center justify-center rounded-[5px] bg-white/5 p-[5px] text-center text-[0.75em] text-muted"
+							>
+								No longer available
+							</div>
+						{:else}
+							<button
+								type="button"
+								class={tileClass}
+								title={gif.title || 'GIF'}
+								aria-label={gif.title || 'GIF'}
+								onclick={() => pickFavorite(gif)}
+							>
+								<img
+									class="size-full object-cover"
+									src={gif.poster}
+									alt=""
+									loading="lazy"
+									referrerpolicy="no-referrer"
+									onerror={() => (gone = new Set(gone).add(gif.slug))}
+								/>
+							</button>
+						{/if}
+						<GifFavoriteButton {gif} ontoggle={toggleFavorite} />
+					</div>
+				{/each}
+			</div>
+		{:else}
+			{#if error && items.length === 0}
+				<p class="p-2.5 text-[0.85em] text-muted">{error}</p>
+			{:else if !loading && items.length === 0}
+				<p class="p-2.5 text-[0.85em] text-muted">No GIFs found.</p>
+			{/if}
+			<div class="grid grid-cols-3 gap-[5px]">
+				{#each items as item, i (`${item.id}:${i}`)}
+					{@const thumb = thumbnailOf(item)}
+					{@const gif = toGif(item)}
+					{#if thumb && gif}
+						<div class="relative aspect-square">
+							<button
+								type="button"
+								class={tileClass}
+								title={item.title || 'GIF'}
+								aria-label={item.title || 'GIF'}
+								onclick={() => pick(item)}
+							>
+								<img
+									class="size-full object-cover"
+									src={thumb.url}
+									alt=""
+									loading="lazy"
+									referrerpolicy="no-referrer"
+								/>
+							</button>
+							{#if gifFavorites.loaded}<GifFavoriteButton {gif} ontoggle={toggleFavorite} />{/if}
+						</div>
+					{/if}
+				{/each}
+			</div>
+			{#if loading}
+				<div class="flex justify-center p-2.5" aria-busy="true"><LoadingScreen size={24} /></div>
+			{/if}
+			<!-- prettier-ignore -->
+			<div bind:this={sentinel} class="h-px"></div>
 		{/if}
-		<div class="grid grid-cols-3 gap-[5px]">
-			{#each items as item, i (`${item.id}:${i}`)}
-				{@const thumb = thumbnailOf(item)}
-				{#if thumb && item.type === 'gif'}
-					<button
-						type="button"
-						class="aspect-square cursor-pointer overflow-hidden rounded-[5px] bg-white/5 outline-none focus-visible:outline-2 focus-visible:outline-accent"
-						title={item.title || 'GIF'}
-						aria-label={item.title || 'GIF'}
-						onclick={() => pick(item)}
-					>
-						<img
-							class="size-full object-cover"
-							src={thumb.url}
-							alt=""
-							loading="lazy"
-							referrerpolicy="no-referrer"
-						/>
-					</button>
-				{/if}
-			{/each}
-		</div>
-		{#if loading}
-			<div class="flex justify-center p-2.5" aria-busy="true"><LoadingScreen size={24} /></div>
-		{/if}
-		<!-- prettier-ignore -->
-		<div bind:this={sentinel} class="h-px"></div>
 	</div>
 	<p class="text-right text-[0.75em] text-muted">Powered by KLIPY</p>
 </div>

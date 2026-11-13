@@ -1,6 +1,12 @@
 <script lang="ts">
 	import LogIn from '@lucide/svelte/icons/log-in';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Settings from '@lucide/svelte/icons/settings';
+	import Shield from '@lucide/svelte/icons/shield';
+	import UsersRound from '@lucide/svelte/icons/users-round';
+	import Download from '@lucide/svelte/icons/download';
+	import UserPlus from '@lucide/svelte/icons/user-plus';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import { page } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
 	import type { SwitcherAccount, SwitcherProfile } from '#lib/types.js';
@@ -50,7 +56,10 @@
 			size < 40 ? 'size-3' : 'size-4'
 		} rounded-full border-2 border-background bg-accent`
 	);
-	const linkClass = 'rounded-sm p-1.5 text-[0.9em] hover:bg-white/5 hover:no-underline';
+	const actionClass =
+		'flex items-center gap-2 rounded-sm p-1.5 text-[0.9em] text-foreground hover:bg-white/5 hover:no-underline';
+	const iconClass =
+		'flex size-9 shrink-0 items-center justify-center rounded-sm text-foreground hover:bg-white/5 hover:no-underline';
 
 	let open = $state(false);
 	let root: HTMLElement | undefined = $state();
@@ -100,6 +109,13 @@
 	const isActiveAccount = (a: SwitcherAccount) => a.active || a.identities.some((i) => i.active);
 	const profilesOf = (a: SwitcherAccount): SwitcherProfile[] => [a, ...a.identities];
 	const label = (p: SwitcherProfile) => `${p.name} (@${p.username})`;
+
+	// every profile there is to switch to, grouped by the account it belongs to
+	const others = () => accounts().flatMap((a) => profilesOf(a).filter((p) => !p.active));
+	const groups = () =>
+		accounts()
+			.map((account) => ({ account, profiles: profilesOf(account).filter((p) => !p.active) }))
+			.filter((g) => g.profiles.length > 0);
 
 	// followed on every load, so a login or a switch in another tab counts as well
 	$effect(() => {
@@ -185,37 +201,69 @@
 		{#if open}
 			<div
 				use:fit
-				class="absolute {menuPlace} flex max-w-[calc(100vw-26px)] flex-col gap-1 overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
+				class="absolute {menuPlace} flex max-w-[calc(100vw-26px)] flex-col overflow-y-auto rounded-md border border-accent bg-background/95 p-1.5"
 				role="menu"
 			>
-				<a
-					class="flex items-center gap-2.5 rounded-sm p-1.5 hover:bg-white/5 hover:no-underline"
-					href={'/@' + $user.username}
-					role="menuitem"
-				>
-					<img
-						class="size-10 max-w-none shrink-0 rounded-full object-cover"
-						src={getAvatar($user, 40)}
-						alt=""
-						width="40"
-						height="40"
-					/>
-					<div class="flex min-w-0 flex-1 flex-col text-left">
-						<b class="truncate text-foreground">{$user.name}</b>
-						<span class="truncate text-[0.8em] text-muted"
-							>@{$user.username}{$user.owner_id ? ' · identity' : ''}</span
+				<!-- the current profile and the actions stay on top, so a long list of profiles can't push
+				     them out of reach: only the list in the middle scrolls -->
+				<div class="flex shrink-0 items-center gap-1">
+					<a
+						class="flex min-w-0 flex-1 items-center gap-2.5 rounded-sm p-1.5 hover:bg-white/5 hover:no-underline"
+						href={'/@' + $user.username}
+						role="menuitem"
+					>
+						<img
+							class="size-10 max-w-none shrink-0 rounded-full object-cover"
+							src={getAvatar($user, 40)}
+							alt=""
+							width="40"
+							height="40"
+						/>
+						<div class="flex min-w-0 flex-1 flex-col text-left">
+							<b class="truncate text-foreground">{$user.name}</b>
+							<span class="truncate text-[0.8em] text-muted"
+								>@{$user.username}{$user.owner_id ? ' · identity' : ''}</span
+							>
+						</div>
+					</a>
+					<!-- settings and moderation are in the sidebar on mouse devices -->
+					{#if page.data.role && page.data.role !== 'user'}
+						<a
+							class="{iconClass} not-pointer-coarse:hidden"
+							href="/admin"
+							role="menuitem"
+							title="Moderation"
+							aria-label="Moderation"><Shield size={20} /></a
 						>
-					</div>
-				</a>
+					{/if}
+					<a
+						class="{iconClass} not-pointer-coarse:hidden"
+						href="/settings"
+						role="menuitem"
+						title="Settings"
+						aria-label="Settings"><Settings size={20} /></a
+					>
+				</div>
 
-				{#each accounts() as account (account.id)}
-					{#if !isActiveAccount(account) || profilesOf(account).some((p) => !p.active)}
-						<div class="flex flex-col border-t border-line pt-1">
-							<p class="truncate px-1.5 py-0.5 text-[0.75em] text-muted">
-								{isActiveAccount(account) ? 'Switch profile' : 'Signed in as @' + account.username}
-							</p>
-							{#each profilesOf(account) as profile (profile.id)}
-								{#if !profile.active}
+				<div class="grid shrink-0 grid-cols-2 gap-1 border-t border-line pt-1 mt-1">
+					<a class={actionClass} href="/settings/accounts" role="menuitem"
+						><UsersRound size={16} class="shrink-0 text-muted" />Identities</a
+					>
+					<a class={actionClass} href="/install" role="menuitem"
+						><Download size={16} class="shrink-0 text-muted" />Install app</a
+					>
+				</div>
+
+				{#if others().length > 0}
+					<div class="mt-1 flex min-h-0 flex-col border-t border-line pt-1">
+						<div class="min-h-12 flex-1 overflow-y-auto overscroll-contain">
+							{#each groups() as group (group.account.id)}
+								<p class="truncate px-1.5 py-0.5 text-[0.75em] text-muted">
+									{isActiveAccount(group.account)
+										? 'Switch profile'
+										: 'Signed in as @' + group.account.username}
+								</p>
+								{#each group.profiles as profile (profile.id)}
 									<button
 										class="flex w-full cursor-pointer items-center gap-2 rounded-sm px-1.5 py-[5px] outline-none hover:bg-white/5 focus-visible:bg-white/5"
 										type="button"
@@ -242,26 +290,19 @@
 											messages={profile.unreadMessages + profile.unreadReactions}
 										/>
 									</button>
-								{/if}
+								{/each}
 							{/each}
 						</div>
-					{/if}
-				{/each}
+					</div>
+				{/if}
 
-				<!-- moderation and settings are in the sidebar on mouse devices -->
-				<div class="flex flex-col border-t border-line pt-1">
-					{#if page.data.role && page.data.role !== 'user'}
-						<a class="{linkClass} not-pointer-coarse:hidden" href="/admin" role="menuitem"
-							>Moderation</a
-						>
-					{/if}
-					<a class={linkClass} href="/settings/accounts" role="menuitem">+ New identity / manage</a>
-					<a class="{linkClass} not-pointer-coarse:hidden" href="/settings" role="menuitem"
-						>Settings</a
+				<div class="mt-1 flex shrink-0 gap-1 border-t border-line pt-1">
+					<a class="{actionClass} flex-1" href="/login" role="menuitem"
+						><UserPlus size={16} class="shrink-0 text-muted" />Add account</a
 					>
-					<a class={linkClass} href="/install" role="menuitem">Install app</a>
-					<a class={linkClass} href="/login" role="menuitem">+ Sign in to another account</a>
-					<a class="{linkClass} text-danger" href="/logout" role="menuitem">Log out</a>
+					<a class="{actionClass} text-danger" href="/logout" role="menuitem"
+						><LogOut size={16} class="shrink-0" />Log out</a
+					>
 				</div>
 			</div>
 		{/if}

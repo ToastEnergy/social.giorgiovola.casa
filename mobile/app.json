@@ -57,7 +57,15 @@
 			"./plugins/disable-script-sandboxing",
 			"./plugins/android-release-signing",
 			["./plugins/android-launcher-label", "SGC"],
-			"expo-status-bar"
+			"expo-status-bar",
+			[
+				"expo-splash-screen",
+				{
+					"image": "./assets/splash-icon.png",
+					"imageWidth": 170,
+					"backgroundColor": "#0c0b0b"
+				}
+			]
 		],
 		"scheme": "sgc-app",
 		"backgroundColor": "#0c0b0b"

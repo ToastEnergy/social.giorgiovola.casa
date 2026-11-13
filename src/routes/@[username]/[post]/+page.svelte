@@ -16,6 +16,13 @@
 
 	// touch devices reply from a bar above the bottom one instead of the composer above the replies
 	const touch = new MediaQuery('(pointer: coarse)');
+	// the server can't tell which one the device needs: it renders both and css shows the right
+	// one, so the page doesn't flash the composer and swap it for the bar once the script runs.
+	// after hydrating only the right one stays mounted
+	let hydrated = $state(false);
+	$effect(() => {
+		hydrated = true;
+	});
 
 	let replies: PostType[] = $state([]);
 	let loaded = $state(false);
@@ -109,8 +116,8 @@
 <!-- prettier-ignore -->
 <div class="-mx-5 mt-2.5 hidden h-px scale-y-50 bg-foreground/60 pointer-coarse:block"></div>
 
-{#if $user && !touch.current}
-	<div class="mb-2.5 rounded-[15px] bg-black p-5 max-nav:rounded-r-none">
+{#if $user && (!hydrated || !touch.current)}
+	<div class="mb-2.5 rounded-[15px] bg-black p-5 pointer-coarse:hidden max-nav:rounded-r-none">
 		<PostComposer alone replyTo={data.post.id} oncreated={onCreated} />
 	</div>
 {/if}
@@ -133,6 +140,8 @@
 	{/if}
 </div>
 
-{#if $user && touch.current}
-	<ReplyDock replyTo={data.post.id} oncreated={onCreated} />
+{#if $user && (!hydrated || touch.current)}
+	<div class="not-pointer-coarse:hidden">
+		<ReplyDock replyTo={data.post.id} oncreated={onCreated} />
+	</div>
 {/if}

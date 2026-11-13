@@ -9,7 +9,7 @@
 	import MobileHeader from '#lib/components/MobileHeader.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
-	import { navigating, page } from '$app/state';
+	import { page } from '$app/state';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
 	import PhotoEditor from '#lib/components/PhotoEditor.svelte';
@@ -333,9 +333,7 @@
 			{/if}
 			<slot />
 		</div>
-		<!-- not for an overlay's history entry (shallow), which isn't a page change -->
-		{#if navigating.to && !(navigating as { shallow?: boolean }).shallow}
-			<LoadingOverlay />
-		{/if}
+		<!-- shows itself when a page change is slow -->
+		<LoadingOverlay />
 	</main>
 </div>

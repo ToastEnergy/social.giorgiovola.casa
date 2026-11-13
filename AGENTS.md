@@ -89,6 +89,7 @@ The app should move like a native one; the helpers are in `src/lib/history.svelt
 - The **bottom bar** returns to a section's last history entry (with its scroll and loaded posts), and tapping the current section goes to its start, then to the top, then refreshes.
 - Back/forward shows the reading pages from a short-lived cache of what their universal loads returned (`cachedPage` in `src/lib/pageCache.ts`, browser only, never on the server) and refreshes them in the background. Pages must not mutate their `data`, which comes back on the next back.
 - Touch devices slide pages in with view transitions (`app.css`); the installed app has pull-to-refresh (`PullToRefresh.svelte`).
+- The loading overlay (`LoadingOverlay.svelte`) only shows when a page change takes longer than a threshold, and leaves without a fade as the new page renders, so it never shows up in a page transition.
 
 ### Prettier caveat
 

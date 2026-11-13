@@ -324,7 +324,11 @@
 	}
 
 	function openPost() {
-		goto(`/@${post.user.username}/${post.id}`);
+		const href = `/@${post.user.username}/${post.id}`;
+		// already on it: navigating again would only pile a copy onto the history
+		if (isPostOpen || decodeURIComponent(page.url.pathname).toLowerCase() === href.toLowerCase())
+			return;
+		goto(href);
 	}
 
 	onMount(() => () => {
@@ -772,11 +776,18 @@
 					{#if gallery.length > 0}
 						<div class="grid gap-1.5 {gallery.length > 1 ? 'grid-cols-2' : ''}">
 							{#each gallery as image, i}
-								<button
-									type="button"
-									class="flex cursor-zoom-in justify-center overflow-hidden rounded-[5px] bg-black/40 outline-none"
-									aria-label="Open image"
-									onclick={(e) => {
+								<!-- in a list a photo is part of the post and opens it; the viewer is for the
+									open post -->
+								<svelte:element
+									this={isPostOpen ? 'button' : 'div'}
+									type={isPostOpen ? 'button' : undefined}
+									role={isPostOpen ? undefined : 'presentation'}
+									class="flex justify-center overflow-hidden rounded-[5px] bg-black/40 outline-none {isPostOpen
+										? 'cursor-zoom-in'
+										: ''}"
+									aria-label={isPostOpen ? 'Open image' : undefined}
+									onclick={(e: MouseEvent) => {
+										if (!isPostOpen) return;
 										e.stopPropagation();
 										// photos are where a double tap is most expected
 										if (canDoubleTap()) tap(e, () => openImage(gallery, i));
@@ -792,7 +803,7 @@
 										referrerpolicy="no-referrer"
 										loading="lazy"
 									/>
-								</button>
+								</svelte:element>
 							{/each}
 						</div>
 					{/if}

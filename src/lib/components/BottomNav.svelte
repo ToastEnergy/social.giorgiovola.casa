@@ -97,9 +97,10 @@
 		{@render link(item)}
 	{/each}
 	{#if $user}
-		<!-- the profile menu (switching, settings), opening up against the bar -->
+		<!-- the profile menu (switching, settings), opening up against the bar. a double tap switches
+			back to the profile used before -->
 		<div class="flex h-14 flex-1 items-center justify-center">
-			<AccountSwitcher size={28} up />
+			<AccountSwitcher size={28} up doubleTap />
 		</div>
 	{:else}
 		{@const active = isActive(page.url.pathname, '/login')}

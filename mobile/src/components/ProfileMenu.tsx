@@ -97,14 +97,7 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 	async function use(index: number, profile: SwitcherProfile) {
 		if (index === session.current && profile.username === me?.user.username) return;
 		try {
-			if (index !== session.current) await session.selectAccount(index);
-			// a token keeps acting as the profile it last switched to
-			await api('auth/switch', {
-				method: 'POST',
-				token: accounts[index].token,
-				body: { username: profile.username }
-			});
-			await session.reloadMe();
+			await session.actAs(index, profile.username);
 			if (sheet) router.dismissTo('/');
 			else router.navigate('/');
 		} catch (e) {

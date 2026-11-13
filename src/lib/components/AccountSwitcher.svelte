@@ -7,7 +7,7 @@
 	import { user } from '#lib/store.js';
 	import { getAvatar } from '#lib/utils.js';
 	import UnreadBadges from './UnreadBadges.svelte';
-	import { switchTo } from '#lib/accounts.js';
+	import { previousProfile, rememberProfile, switchTo } from '#lib/accounts.js';
 
 	type Props = {
 		/** avatar size in px */
@@ -20,8 +20,17 @@
 		badge?: boolean;
 		/** open the menu below, aligned to the button's left edge (top left of the screen) */
 		start?: boolean;
+		/** a double tap switches straight to the profile used before (the touch bottom bar) */
+		doubleTap?: boolean;
 	};
-	let { size = 50, up = false, above = false, badge = false, start = false }: Props = $props();
+	let {
+		size = 50,
+		up = false,
+		above = false,
+		badge = false,
+		start = false,
+		doubleTap = false
+	}: Props = $props();
 
 	const menuPlace = $derived(
 		// against the rail's badge + search wrapper, so it opens under the search box
@@ -91,6 +100,46 @@
 	const isActiveAccount = (a: SwitcherAccount) => a.active || a.identities.some((i) => i.active);
 	const profilesOf = (a: SwitcherAccount): SwitcherProfile[] => [a, ...a.identities];
 	const label = (p: SwitcherProfile) => `${p.name} (@${p.username})`;
+
+	// followed on every load, so a login or a switch in another tab counts as well
+	$effect(() => {
+		if ($user) rememberProfile($user.username);
+	});
+
+	// the profile a double tap goes to: the one used before, or else the first other one
+	const quickSwitch = $derived(
+		doubleTap
+			? previousProfile(
+					accounts()
+						.flatMap(profilesOf)
+						.filter((p) => !p.active)
+						.map((p) => p.username)
+			  )
+			: undefined
+	);
+
+	// with somewhere to switch to, a first tap waits this long for a second before opening the menu
+	const DOUBLE_TAP_MS = 250;
+	let tapTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => () => clearTimeout(tapTimer));
+
+	function onTap() {
+		if (switching) return;
+		if (open || !quickSwitch) {
+			open = !open;
+			return;
+		}
+		if (tapTimer) {
+			clearTimeout(tapTimer);
+			tapTimer = undefined;
+			switchProfile(quickSwitch);
+			return;
+		}
+		tapTimer = setTimeout(() => {
+			tapTimer = undefined;
+			open = true;
+		}, DOUBLE_TAP_MS);
+	}
 </script>
 
 <svelte:window onclick={onWindowClick} onkeydown={onKeydown} />
@@ -98,18 +147,18 @@
 {#if $user}
 	<div class="{up || badge ? '' : 'relative'} {badge ? 'w-full' : ''}" bind:this={root}>
 		<button
-			class="relative flex cursor-pointer [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {badge
+			class="relative flex cursor-pointer touch-manipulation [-webkit-tap-highlight-color:transparent] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent {badge
 				? 'w-full items-center gap-2.5 rounded-[15px] bg-black p-2.5 text-left hover:bg-white/5'
 				: 'rounded-full'}"
 			aria-haspopup="menu"
 			aria-expanded={open}
-			title="Switch account"
+			title={quickSwitch ? `Switch account (double tap: @${quickSwitch})` : 'Switch account'}
 			aria-label={otherUnread() > 0
 				? 'Profile menu (unread on your other profiles)'
 				: 'Profile menu'}
-			onclick={() => (open = !open)}
+			onclick={onTap}
 		>
-			<span class="relative flex shrink-0">
+			<span class="relative flex shrink-0 {switching ? 'opacity-50' : ''}">
 				<img
 					class="max-w-none rounded-full object-cover"
 					style:width="{size}px"

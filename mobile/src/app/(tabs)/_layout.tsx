@@ -1,8 +1,11 @@
 import { router } from 'expo-router';
 import { Tabs } from 'expo-router/tabs';
 import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-native';
+import { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { toast } from '@/components/overlays';
 import { Avatar } from '@/components/ui';
+import { errorMessage } from '@/lib/api';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 
@@ -10,11 +13,41 @@ import { colors, fonts } from '@/lib/theme';
 // the icons don't get pushed into the home indicator area
 const TAB_BAR_PADDING_TOP = 8;
 
+// with a profile to switch back to, a first tap on the avatar waits this long for a second one
+// before opening the menu
+const DOUBLE_TAP_MS = 250;
+
 const badge = (count: number) => (count > 99 ? '99+' : count > 0 ? count : undefined);
 
 export default function TabsLayout() {
-	const { me, unread } = useSession();
+	const { me, unread, canSwitchBack, switchBack } = useSession();
 	const insets = useSafeAreaInsets();
+	const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const switching = useRef(false);
+	useEffect(() => () => clearTimeout(tapTimer.current ?? undefined), []);
+
+	// one tap opens the profile menu, two switch straight back to the profile used before
+	function onAvatarTap() {
+		if (switching.current) return;
+		if (!canSwitchBack) {
+			router.push('/menu');
+			return;
+		}
+		if (tapTimer.current) {
+			clearTimeout(tapTimer.current);
+			tapTimer.current = null;
+			switching.current = true;
+			switchBack()
+				.then((username) => username && toast(`Switched to @${username}`))
+				.catch((e) => toast(errorMessage(e)))
+				.finally(() => (switching.current = false));
+			return;
+		}
+		tapTimer.current = setTimeout(() => {
+			tapTimer.current = null;
+			router.push('/menu');
+		}, DOUBLE_TAP_MS);
+	}
 	return (
 		<Tabs
 			screenOptions={{
@@ -84,11 +117,12 @@ export default function TabsLayout() {
 			/>
 			<Tabs.Screen
 				name="me"
-				// like the website's avatar menu: a sheet with the profile switcher, not a page
+				// like the website's avatar menu: a sheet with the profile switcher, not a page. a double
+				// tap switches back to the profile used before
 				listeners={{
 					tabPress: (e) => {
 						e.preventDefault();
-						router.push('/menu');
+						onAvatarTap();
 					}
 				}}
 				options={{

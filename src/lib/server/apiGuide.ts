@@ -194,15 +194,22 @@ FollowEntry (followers / following lists):
 
 Notification:
   { "id", "type", "sender": { "id", "username", "name", "avatar" },
-    "post": { "id", "content" } | null, "created_at", "read_at": "…" | null }
+    "post": { "id", "content" } | null, "invites": 3 | null, "created_at",
+    "read_at": "…" | null }
   Types: "like", "reply", "mention", "quote", "regiorg", "follow" (post is null),
   "ratio" (the sender's reply to your post ratioed it), "ratioed_by_you" (your reply
-  ratioed the sender's post). For like, regiorg and ratioed_by_you the post is YOURS;
-  for the others it is the sender's.
+  ratioed the sender's post), "invites" (an admin, the sender, gave your account
+  "invites" more invites to hand out, see GET /me/invites; post is null). For like,
+  regiorg and ratioed_by_you the post is YOURS; for the others it is the sender's.
+  "invites" is null for every type but "invites". Grants that arrive while an invites
+  notification is still unread add to it (its sender becomes the latest admin, its
+  created_at moves to now) instead of making a new one. More types may be added: skip
+  ones you don't know.
 
 NotificationGroup (GET /notifications/grouped):
   { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
     "avatar" } ], "count": 5, "unread": 2, "post": { "id", "content" } | null,
+    "invites": 3 | null,   // as in Notification
     "created_at", "read_at": "…" | null }
   Likes and regiorgs of the same post, and follows, that arrived on the same UTC day are
   one group; every other notification is a group of one ("count": 1). "senders" are the
@@ -217,7 +224,10 @@ Me (GET /me):
     "role": "user" | "mod" | "admin", "muted", "mute_reason",
     "unread": { "notifications": 2, "messages": 5, "reactions": 1 },
     "auth": "token" | "bot" | "cookie",
-    "open_reports": 3 | null }   // staff only: reports waiting (null for everyone else)
+    "open_reports": 3 | null,   // staff only: reports waiting (null for everyone else)
+    "invites": { "invites": 3, "pending": 1, "available": 2 } | null }
+      // the account's invites, as in GET /me/invites (also while an identity is in use):
+      // held, out as codes, still to give. null for bots
 
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
@@ -783,7 +793,8 @@ PUT /admin/users/:username/password   { "password" } → { "message" }  admin; s
 PUT /admin/users/:username/invites   { "invites": 0-1000 } → { "invites", "message" }   admin
   Sets how many invites the account holds (codes out included). Going below the codes it
   has out revokes the newest of them. Works on any account, staff included. Logged as
-  action "invites" with details { "from", "to", "revoked" }.
+  action "invites" with details { "from", "to", "revoked" }. Raising it sends the account
+  an "invites" notification (and a web push) with how many it got, unless it is your own.
 POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" }   staff
   A note for the other staff, kept in the moderation log of the account. Works on any
   account, also ones you can't act on.
@@ -829,7 +840,8 @@ GET /admin/invites/summary   admin
   accounts: every account holding invites, most first.
 POST /admin/invites/grant   { "count": 1-100 }   admin
   Gives every account that isn't banned count more invites (at most 1000 each). 200:
-  { "accounts": number given to, "message" }. Logged as "invites_everyone".
+  { "accounts": number given to, "message" }. Logged as "invites_everyone". Every account
+  that got some, except yours, gets an "invites" notification (and a web push).
   Invite admin actions share the moderation rate limit (429 slow down).
 
 GET /admin/groups/:id   admin

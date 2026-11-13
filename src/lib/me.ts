@@ -1,4 +1,5 @@
 import type { User } from './types.js';
+import type { InviteBalance } from './invites.js';
 
 /** GET /api/v1/me */
 export type Me = {
@@ -22,6 +23,8 @@ export type Me = {
 	auth: 'cookie' | 'token' | 'bot';
 	/** staff only: reports waiting for them */
 	open_reports: number | null;
+	/** the account's invites (also while an identity is in use), null for bots */
+	invites: InviteBalance | null;
 };
 
 /** The `user` the components know (the profile in use), from GET /api/v1/me. */

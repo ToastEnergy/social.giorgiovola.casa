@@ -1,0 +1,71 @@
+# type check, bundle and generate the native projects of the mobile app on pull requests that
+# touch it. the root ci.yml lints mobile/ but never installs its dependencies or type checks it
+name: mobile-ci
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the token isn't left in .git/config for the steps that run dependencies' code
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      # compares against the newest patch releases on npm, so a new Expo patch would fail unrelated
+      # pull requests: warn instead of failing
+      - name: expo-doctor
+        run: bunx expo-doctor || echo "::warning::expo-doctor found issues, see the log"
+      # metro catches what tsc doesn't: unresolvable imports, assets, babel errors
+      - name: Bundle
+        run: bunx expo export --platform ios --platform android --output-dir "$RUNNER_TEMP/export"
+        env:
+          CI: 1
+
+  # runs app.json and the config plugins (plugins/) the way a native build would, without
+  # needing xcode or gradle. ios/ and android/ are generated, never committed
+  prebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, android]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      # off a mac, prebuild only generates ios when asked explicitly (and skips pod install)
+      - run: bunx expo prebuild --platform ${{ matrix.platform }} --clean --no-install
+        env:
+          CI: 1
+      # release builds fail in xcode without it (plugins/disable-script-sandboxing.js)
+      - name: Check the xcode project
+        if: matrix.platform == 'ios'
+        run: |
+          pbx=$(ls ios/*.xcodeproj/project.pbxproj)
+          grep -q 'ENABLE_USER_SCRIPT_SANDBOXING = YES' "$pbx" \
+            && { echo "::error::user script sandboxing is on in $pbx"; exit 1; }
+          grep -q 'ENABLE_USER_SCRIPT_SANDBOXING = NO' "$pbx" \
+            || { echo "::error::disable-script-sandboxing plugin had no effect"; exit 1; }

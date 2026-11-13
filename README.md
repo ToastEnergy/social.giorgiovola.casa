@@ -529,29 +529,29 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Moderation and realtime**
 
-| method           | path                                         | who                |                                                                                                                          |
-| ---------------- | -------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `POST`           | `/api/v1/reports`                            | signed in          | report a post `{ post_id, category, details? }` or a profile `{ username, category, details? }` to the staff; 10 an hour |
-| `GET`            | `/api/v1/admin/overview`                     | staff              | counts: open reports, banned, muted, new accounts…                                                                       |
-| `GET`            | `/api/v1/admin/reports?status=&username=`    | staff              | reports (open by default) with the post, reporter and account                                                            |
-| `PATCH`          | `/api/v1/admin/reports/:id`                  | staff              | resolve / dismiss / reopen `{ status, note?, related? }`                                                                 |
-| `GET`            | `/api/v1/admin/users?q=&filter=`             | staff              | accounts (filter: reported, banned, muted, staff) with their identities and what you may do                              |
-| `GET`            | `/api/v1/admin/users/:username`              | staff              | one account: state, identities, counts                                                                                   |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`          | staff              | ban `{ reason?, duration? }` (seconds, null for good) / unban                                                            |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`         | staff              | mute `{ reason?, duration? }` / unmute                                                                                   |
-| `POST`           | `/api/v1/admin/users/:username/notes`        | staff              | leave a note for the staff `{ note }`                                                                                    |
-| `PUT`            | `/api/v1/admin/users/:username/role`         | admin              | `{ role: "mod" \| "user" }`                                                                                              |
-| `PUT`            | `/api/v1/admin/users/:username/password`     | admin              | `{ password }`, signs them out                                                                                           |
-| `GET`            | `/api/v1/admin/log?username=&actor=&action=` | staff              | the moderation log, newest first                                                                                         |
-| `GET` / `PUT`    | `/api/v1/admin/motd`                         | admin              | message of the day / set `{ motd }`                                                                                      |
-| `GET` / `DELETE` | `/api/v1/admin/groups/:id`                   | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                              |
-| `GET` / `POST`   | `/api/v1/admin/invites?status=&username=`    | admin              | every invite code / create codes of your own `{ note?, count?, days? }`                                                  |
-| `DELETE`         | `/api/v1/admin/invites/:id`                  | admin              | revoke any pending code                                                                                                  |
-| `GET`            | `/api/v1/admin/invites/summary`              | admin              | invites held, available, out as codes and used, and who holds them                                                       |
-| `POST`           | `/api/v1/admin/invites/grant`                | admin              | give every account that isn't banned `{ count }` more invites                                                            |
-| `PUT`            | `/api/v1/admin/users/:username/invites`      | admin              | set how many invites an account holds `{ invites }`                                                                      |
-| `GET`            | `/api/v1/stream`                             | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s; at most 30 open per account        |
-| `GET`            | `/api/v1/stream/bot`                         | bot                | the bot stream (same as /api/bot/stream)                                                                                 |
+| method           | path                                         | who                |                                                                                                                                         |
+| ---------------- | -------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`           | `/api/v1/reports`                            | signed in          | report a post `{ post_id, category, details? }` or a profile `{ username, category, details? }` to the staff; 10 an hour                |
+| `GET`            | `/api/v1/admin/overview`                     | staff              | counts: open reports, banned, muted, new accounts…                                                                                      |
+| `GET`            | `/api/v1/admin/reports?status=&username=`    | staff              | reports (open by default) with the post, reporter and account                                                                           |
+| `PATCH`          | `/api/v1/admin/reports/:id`                  | staff              | resolve / dismiss / reopen `{ status, note?, related? }`                                                                                |
+| `GET`            | `/api/v1/admin/users?q=&filter=`             | staff              | accounts (filter: reported, banned, muted, staff) with their identities and what you may do                                             |
+| `GET`            | `/api/v1/admin/users/:username`              | staff              | one account: state, identities, counts                                                                                                  |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`          | staff              | ban `{ reason?, duration? }` (seconds, null for good) / unban                                                                           |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`         | staff              | mute `{ reason?, duration? }` / unmute                                                                                                  |
+| `POST`           | `/api/v1/admin/users/:username/notes`        | staff              | leave a note for the staff `{ note }`                                                                                                   |
+| `PUT`            | `/api/v1/admin/users/:username/role`         | admin              | `{ role: "mod" \| "user" }`                                                                                                             |
+| `PUT`            | `/api/v1/admin/users/:username/password`     | admin              | `{ password }`, signs them out                                                                                                          |
+| `GET`            | `/api/v1/admin/log?username=&actor=&action=` | staff              | the moderation log, newest first                                                                                                        |
+| `GET` / `PUT`    | `/api/v1/admin/motd`                         | admin              | message of the day / set `{ motd }`                                                                                                     |
+| `GET` / `DELETE` | `/api/v1/admin/groups/:id`                   | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                                             |
+| `GET` / `POST`   | `/api/v1/admin/invites?status=&username=`    | admin              | every invite code / create codes of your own `{ note?, count?, days? }`                                                                 |
+| `DELETE`         | `/api/v1/admin/invites/:id`                  | admin              | revoke any pending code                                                                                                                 |
+| `GET`            | `/api/v1/admin/invites/summary`              | admin              | invites held, available, out as codes and used, and who holds them                                                                      |
+| `POST`           | `/api/v1/admin/invites/grant`                | admin              | give every account that isn't banned `{ count }` more invites                                                                           |
+| `PUT`            | `/api/v1/admin/users/:username/invites`      | admin              | set how many invites an account holds `{ invites }`                                                                                     |
+| `GET`            | `/api/v1/stream`                             | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `version` on connect, `ping` every 8 s; at most 30 open per account |
+| `GET`            | `/api/v1/stream/bot`                         | bot                | the bot stream (same as /api/bot/stream)                                                                                                |
 
 ## message images
 

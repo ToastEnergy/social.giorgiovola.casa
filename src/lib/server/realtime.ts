@@ -1,3 +1,4 @@
+import { version } from '$app/env';
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { db, follows, inbox, likes, posts, users } from './db/index.js';
 import { unreadMessageCount } from './messages';
@@ -133,6 +134,9 @@ export function openStream(
 	return eventStream(signal, frame('ping', {}), (send, close) => {
 		const client: Client = { userId, sessionKey, botId, send, close };
 		clients.add(client);
+		// a page still running an older build learns that a new one is out (#lib/appUpdate.ts):
+		// every deploy restarts the server, so every open page reconnects and hears it
+		send(frame('version', { version }));
 		if (userId !== null) void sendUnreadCount(client);
 		return () => {
 			clients.delete(client);

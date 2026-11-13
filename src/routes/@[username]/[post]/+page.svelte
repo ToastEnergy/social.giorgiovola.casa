@@ -10,7 +10,7 @@
 	import LoadingScreen from '#lib/components/LoadingScreen.svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import { PUBLIC_NO_REPLIES_MESSAGE } from '$app/env/public';
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
 	let { data }: PageProps = $props();
 
@@ -20,9 +20,7 @@
 	// one, so the page doesn't flash the composer and swap it for the bar once the script runs.
 	// after hydrating only the right one stays mounted
 	let hydrated = $state(false);
-	$effect(() => {
-		hydrated = true;
-	});
+	onMount(() => (hydrated = true));
 
 	let replies: PostType[] = $state([]);
 	let loaded = $state(false);

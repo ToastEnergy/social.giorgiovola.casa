@@ -45,6 +45,9 @@
 		alone?: boolean;
 		/** the field's height limit (a tailwind class) */
 		maxHeight?: string;
+		/** the send button is the parent's, outside the form and tied to it with `form={formId}`
+		 * (the full screen composer keeps it at the top, out of the keyboard's way) */
+		formId?: string;
 		oncreated?: (post: Post) => void;
 	};
 
@@ -56,6 +59,7 @@
 		docked = false,
 		alone = false,
 		maxHeight,
+		formId,
 		oncreated
 	}: Props = $props();
 
@@ -108,6 +112,8 @@
 	// docked: the buttons show once the field is tapped, until a tap elsewhere with nothing written.
 	// always with something written: a draft put back (coming back to the post, reopening the app)
 	// fills the field without focusing it, and would have no way to be posted
+	// the send button is always in view, beside the field, so a reply can always be posted
+	// (SGC-54): only the attachment buttons fold away
 	let expanded = $state(false);
 	const tools = $derived(
 		!docked || expanded || !!content.trim() || attachments.length > 0 || !!pollOptions
@@ -464,6 +470,21 @@
 	}
 </script>
 
+<!-- the send button: under the field, or beside it when docked -->
+{#snippet send()}
+	<Button
+		type="submit"
+		variant="primary"
+		size="sm"
+		onmousedown={keepFocus}
+		class="{docked
+			? 'shrink-0'
+			: 'ml-auto'} w-10 transition-transform duration-200 ease-out hover:scale-115 hover:rotate-15 hover:bg-accent! hover:text-background!"
+		aria-label="Post"
+		title="Post"><SendHorizontal size={18} strokeWidth={1.8} /></Button
+	>
+{/snippet}
+
 {#if dragging}
 	<div
 		class="pointer-events-none fixed inset-0 z-999 flex items-center justify-center bg-background/70 p-5 backdrop-blur-[2px]"
@@ -484,6 +505,7 @@
 
 <form
 	bind:this={form}
+	id={formId}
 	class="flex flex-col {docked ? 'gap-[5px]' : alone ? 'gap-2.5' : 'mb-5 gap-2.5'}"
 	onfocusin={() => (expanded = true)}
 	onsubmit={(e) => {
@@ -494,7 +516,8 @@
 	}}
 	onpaste={onPaste}
 >
-	<div class="flex flex-col">
+	<!-- docked: the send button beside the field, on its last line -->
+	<div class={docked ? 'flex items-end gap-[5px]' : 'flex flex-col'}>
 		<MentionInput
 			bind:value={content}
 			bind:element={textarea}
@@ -510,6 +533,12 @@
 				? 'rounded-[15px] bg-black px-2.5 py-2 outline-none'
 				: 'bg-transparent p-2.5 outline-none'}
 		/>
+		{#if docked}
+			{#if pending.length > 0}
+				<span class="flex shrink-0 self-center" aria-busy="true"><LoadingScreen size={20} /></span>
+			{/if}
+			<span class="flex h-10 shrink-0 items-center">{@render send()}</span>
+		{/if}
 	</div>
 	<div class="flex items-center gap-[5px] {tools ? '' : 'hidden'}">
 		<input
@@ -557,20 +586,9 @@
 				class={pollOptions ? 'text-accent' : ''}
 			/></button
 		>
-		{#if docked && pending.length > 0}
-			<span class="ml-auto flex" aria-busy="true"><LoadingScreen size={20} /></span>
+		{#if !docked && !formId}
+			{@render send()}
 		{/if}
-		<Button
-			type="submit"
-			variant="primary"
-			size="sm"
-			onmousedown={keepFocus}
-			class="{docked && pending.length > 0
-				? ''
-				: 'ml-auto'} w-10 transition-transform duration-200 ease-out hover:scale-115 hover:rotate-15 hover:bg-accent! hover:text-background!"
-			aria-label="Post"
-			title="Post"><SendHorizontal size={18} strokeWidth={1.8} /></Button
-		>
 	</div>
 	{#if pickingGif && gifConfig}
 		<GifPicker

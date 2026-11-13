@@ -44,6 +44,7 @@
 	import { editable } from '#lib/messageEdits.js';
 	import { calendarDay, dateReady, formatDate } from '#lib/time.svelte.js';
 	import { cubicIn, quintOut } from 'svelte/easing';
+	import { goBack } from '#lib/history.svelte.js';
 	import {
 		dmKey,
 		groupKey,
@@ -1370,6 +1371,11 @@
 		<a
 			class="flex shrink-0 items-center gap-[5px] px-1 text-inherit hover:no-underline lg:hidden"
 			href="/messages"
+			onclick={(e) => {
+				// back to the list it was opened from, not a new copy of it on top of the chat
+				e.preventDefault();
+				goBack('/messages');
+			}}
 			title={$messagesCount > 0
 				? `Back to messages (${$messagesCount} unread)`
 				: 'Back to messages'}
@@ -1852,7 +1858,7 @@
 			config={gifConfig}
 			onpick={sendGif}
 			onclose={() => (pickingGif = false)}
-			height="h-[min(18rem,40vh)]"
+			height="h-[min(18rem,40vh,calc(var(--vv-height,100dvh)*0.35))]"
 		/>
 	{/if}
 

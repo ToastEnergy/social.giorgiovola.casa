@@ -79,11 +79,13 @@
 				<a
 					class={tabClass(data.feed === 'all')}
 					href="/?feed=all"
+					data-sveltekit-replacestate
 					aria-current={data.feed === 'all' ? 'page' : undefined}>All</a
 				>
 				<a
 					class={tabClass(data.feed === 'following')}
 					href="/?feed=following"
+					data-sveltekit-replacestate
 					aria-current={data.feed === 'following' ? 'page' : undefined}>Following</a
 				>
 			</nav>

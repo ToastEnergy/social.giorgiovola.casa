@@ -2,6 +2,7 @@ import { MAX_BOTS } from './bots.js';
 import { MAX_IDENTITIES, MAX_MEMBERS } from './accounts.js';
 import { MAX_PASSKEYS } from './passkeys.js';
 import { MAX_PERSONAL_TOKENS, SESSION_DAYS, TOKEN_DAYS } from './session.js';
+import { GIF_FAVORITE_WRITES_PER_MINUTE, MAX_GIF_FAVORITES } from './gifs.js';
 import { LIMITS } from './validation.js';
 
 /**
@@ -283,8 +284,10 @@ GET /instance                                                  public
   endpoint except GET /instance and the sign-in ones below (/auth/login, /auth/register,
   GET /invites/:code, /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
   instance is members only: sign in first" } without a token or the session cookie, and so
-  do images, avatars and social cards outside the API. "motd" is "" for signed-out callers
-  there. Bot tokens count as signed in.
+  do images, avatars and social cards outside the API. Load those with the same
+  \`Authorization: Bearer …\` header: on a members-only instance it is read on /uploads/,
+  /avatar/, /avatars/ and /previews/ too. "motd" is "" for signed-out callers there. Bot
+  tokens count as signed in.
 
 ### Signing in
 
@@ -687,6 +690,23 @@ text ones.
 Showing GIFs: play "video" muted and looped (\`<video autoplay muted loop playsinline
 poster=…>\`), sized width × height. KLIPY may remove a GIF: then its URLs stop working, so
 show a placeholder when the video fails to load.
+
+Favorite GIFs: each profile can save up to ${MAX_GIF_FAVORITES} GIFs to find again in its picker. The
+server keeps the Gif object (KLIPY's URLs), never the media. Saved per profile (an identity has
+its own; bots may use them too) and the same on every device. Show them in a section of their
+own, apart from KLIPY's results.
+GET /me/gifs/favorites?limit=&cursor=                          signed in
+  { "items": [ <Gif> + "favorited_at" ], "next_cursor" }, newest first. limit 1-100,
+  default 50. Works while GIFs are off too (to let people clean up).
+POST /me/gifs/favorites   { "gif": <Gif> }                     signed in
+  Saves a GIF; "gif" is the object a post takes, checked the same way (400 when invalid,
+  403 when GIFs are off). 201: the saved <Gif> + "favorited_at". Saving a slug already
+  saved → 200 with it: its URLs are refreshed and it keeps its place. 400 "You can keep at
+  most ${MAX_GIF_FAVORITES} favorite GIFs, remove some first" when full.
+DELETE /me/gifs/favorites/:slug                                signed in
+  Removes it → 204. 404 "Not a favorite GIF" when it isn't saved.
+  Saving and removing share a limit of ${GIF_FAVORITE_WRITES_PER_MINUTE} a minute per profile (429). No realtime events:
+  other open tabs see the change the next time they load the list.
 
 ### Reports
 

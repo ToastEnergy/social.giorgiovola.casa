@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
-	import { afterNavigate } from '$app/navigation';
+	import { afterPageChange, overlayEntry } from '#lib/history.svelte.js';
 	import { modal } from '#lib/modal.js';
 	import { compose, closeCompose, composed } from '#lib/compose.svelte.js';
 	import type { Post } from '#lib/types.js';
@@ -9,7 +9,8 @@
 	import Button from './Button.svelte';
 	import PostComposer from './PostComposer.svelte';
 
-	afterNavigate(closeCompose);
+	afterPageChange(closeCompose);
+	overlayEntry('compose', () => compose.open, closeCompose);
 
 	let sheet: HTMLDialogElement | undefined = $state();
 

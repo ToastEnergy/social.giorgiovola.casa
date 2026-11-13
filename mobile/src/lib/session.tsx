@@ -25,6 +25,10 @@ const KEY = 'session';
 export type StoredAccount = { token: string; username: string };
 type Stored = { server: string; accounts: StoredAccount[]; current: number };
 
+/** a profile in use on this device: `account` is the signed-in account's username */
+type ProfileRef = { account: string; profile: string };
+const RECENT_KEY = 'recent_profiles';
+
 type SessionValue = {
 	/** false until the stored session was read (and /me answered) */
 	ready: boolean;
@@ -43,6 +47,12 @@ type SessionValue = {
 	selectAccount: (index: number) => Promise<void>;
 	/** POST /auth/switch: act as the account or one of its identities */
 	switchProfile: (username: string) => Promise<void>;
+	/** act as `username` (the account itself or one of its identities) with the account at `index` */
+	actAs: (index: number, username: string) => Promise<void>;
+	/** whether `switchBack` has somewhere to go */
+	canSwitchBack: boolean;
+	/** back to the profile used before this one (the double tap on the avatar); its username */
+	switchBack: () => Promise<string | null>;
 	reloadMe: () => Promise<void>;
 	setMe: (me: Me) => void;
 };
@@ -69,6 +79,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 	const [unread, setUnreadState] = useState({ notifications: 0, messages: 0 });
 	const storedRef = useRef(stored);
 	storedRef.current = stored;
+	// the profile in use and the one before it, newest first
+	const [recent, setRecent] = useState<ProfileRef[]>([]);
+	const recentRef = useRef(recent);
+	recentRef.current = recent;
 
 	const setMe = useCallback((next: Me | null) => {
 		setMeState(next);
@@ -123,18 +137,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			} catch {
 				// unreadable: start signed out
 			}
+			try {
+				const list = JSON.parse((await SecureStore.getItemAsync(RECENT_KEY)) ?? '[]');
+				if (Array.isArray(list)) setRecent(list);
+			} catch {
+				// unreadable: nothing to switch back to yet
+			}
 			if (initial?.accounts?.length) await apply(initial);
 			setReady(true);
 		})();
 	}, [apply, drop]);
 
-	// the instance's limits, message of the day and GIF settings
+	// the instance's limits, message of the day and GIF settings. with the token: a members-only
+	// instance hides its message of the day from signed-out callers
+	const token = stored.accounts[stored.current]?.token ?? null;
 	useEffect(() => {
 		if (!ready) return;
-		api<Instance>('instance', { server: stored.server, token: null })
+		api<Instance>('instance', { server: stored.server, token })
 			.then(setInstance)
 			.catch(() => {});
-	}, [ready, stored.server]);
+	}, [ready, stored.server, token]);
 
 	// the stream follows the profile in use: reopened when it changes, closed in the background
 	const profileKey = me ? `${stored.accounts[stored.current]?.token}:${me.user.username}` : '';
@@ -152,6 +174,57 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			stopStream();
 		};
 	}, [profileKey]);
+
+	// notes each profile used, whichever way it was switched to (the menu, a login, settings)
+	// both from /me, so an account change half applied doesn't count as a profile
+	const inUse = me ? me.account?.username ?? me.user.username : undefined;
+	const profileName = me?.user.username;
+	useEffect(() => {
+		if (!ready || !inUse || !profileName) return;
+		const now = recentRef.current;
+		if (now[0]?.account === inUse && now[0]?.profile === profileName) return;
+		const next = [
+			{ account: inUse, profile: profileName },
+			...now.filter((r) => r.account !== inUse || r.profile !== profileName)
+		].slice(0, 2);
+		setRecent(next);
+		SecureStore.setItemAsync(RECENT_KEY, JSON.stringify(next)).catch(() => {});
+	}, [ready, inUse, profileName]);
+
+	/** where switchBack goes: the profile before, else the account's own profile from an identity,
+	 * else another signed-in account */
+	const backTarget = useMemo(() => {
+		if (!me) return null;
+		const previous = recent
+			.slice(1)
+			.find((r) => stored.accounts.some((a) => a.username === r.account));
+		if (previous)
+			return {
+				index: stored.accounts.findIndex((a) => a.username === previous.account),
+				profile: previous.profile
+			};
+		if (me.user.identity && me.account)
+			return { index: stored.current, profile: me.account.username };
+		const other = stored.accounts.findIndex((_, i) => i !== stored.current);
+		return other >= 0 ? { index: other, profile: stored.accounts[other].username } : null;
+	}, [me, recent, stored]);
+
+	const actAs = useCallback(
+		async (index: number, username: string) => {
+			const now = storedRef.current;
+			const account = now.accounts[index];
+			if (!account) throw new Error('That account is no longer signed in here');
+			// a token keeps acting as the profile it last switched to
+			const next = await api<Me>('auth/switch', {
+				method: 'POST',
+				token: account.token,
+				body: { username }
+			});
+			if (index !== now.current) await apply({ ...now, current: index }, next);
+			else setMe(next);
+		},
+		[apply, setMe]
+	);
 
 	useBus('notifications', (e: { count: number }) =>
 		setUnreadState((u) => ({ ...u, notifications: e.count }))
@@ -198,12 +271,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			switchProfile: async (username) => {
 				setMe(await api<Me>('auth/switch', { method: 'POST', body: { username } }));
 			},
+			actAs,
+			canSwitchBack: !!backTarget,
+			switchBack: async () => {
+				if (!backTarget) return null;
+				await actAs(backTarget.index, backTarget.profile);
+				return backTarget.profile;
+			},
 			reloadMe: async () => {
 				if (auth.token) setMe(await api<Me>('me'));
 			},
 			setMe
 		}),
-		[ready, stored, me, instance, profileKey, unread, apply, setMe]
+		[ready, stored, me, instance, profileKey, unread, apply, setMe, actAs, backTarget]
 	);
 
 	return <Context.Provider value={value}>{children}</Context.Provider>;

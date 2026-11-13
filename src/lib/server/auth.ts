@@ -6,6 +6,7 @@ import { PUBLIC_URL } from '$app/env/public';
 import { db, identity_members, sessions, users } from './db/index.js';
 import { authenticateBot } from './bots.js';
 import { apiError } from './api.js';
+import { membersOnly } from './membersOnly.js';
 import {
 	SESSION_DAYS,
 	TOKEN_DAYS,
@@ -206,10 +207,17 @@ function foreignOrigin(event: RequestEvent) {
 
 /**
  * Where bearer tokens are read: the API, and uploads, since a message image is only served to
- * whoever can read its conversation. The bot API (`/api/bot/*`) authenticates on its own.
+ * whoever can read its conversation. On a members-only instance also avatars and link preview
+ * images, which apps (no cookies) can only load with their token there. The bot API
+ * (`/api/bot/*`) authenticates on its own.
  */
 const isUpload = (pathname: string) =>
-	pathname.startsWith('/uploads/') || pathname.startsWith('/dm-uploads/');
+	pathname.startsWith('/uploads/') ||
+	pathname.startsWith('/dm-uploads/') ||
+	(membersOnly() &&
+		(pathname.startsWith('/avatar/') ||
+			pathname.startsWith('/avatars/') ||
+			pathname.startsWith('/previews/')));
 const readsBearer = (pathname: string) =>
 	(pathname.startsWith('/api/') && !pathname.startsWith('/api/bot/')) || isUpload(pathname);
 
@@ -258,10 +266,10 @@ async function fromToken(locals: App.Locals, request: Request, header: string) {
  * Authenticates the request and fills `event.locals`. Returns an error response when a bearer
  * token was sent but is invalid (a wrong token never silently falls back to anonymous).
  *
- * Bearer tokens are only read where readsBearer says. On uploads an invalid token doesn't stop
- * the request: post images are public and always loaded whatever the header said, so the request
- * goes on anonymous with `locals.invalidToken` set, and only a message image answers the error
- * (tokenError).
+ * Bearer tokens are only read where readsBearer says. On uploads (and the other images read with
+ * a token) an invalid token doesn't stop the request: post images are public and always loaded
+ * whatever the header said, so the request goes on anonymous with `locals.invalidToken` set, and
+ * only a message image answers the error (tokenError).
  */
 export async function authenticate(event: RequestEvent): Promise<Response | null> {
 	const { locals, request, url, cookies } = event;

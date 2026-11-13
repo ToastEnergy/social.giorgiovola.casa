@@ -2,7 +2,7 @@ import { Image, type ImageSource } from 'expo-image';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Pressable, View } from 'react-native';
-import { assetUrl, privateImage } from '@/lib/api';
+import { instanceImage } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
 import type { Gif, LinkPreview, QuotedPost } from '@/lib/types';
@@ -46,20 +46,10 @@ export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: numbe
 }
 
 /** The images of a post or message: one large, or a grid of two columns. Tapping opens the viewer. */
-export function ImageGrid({
-	images,
-	isPrivate,
-	height = 220
-}: {
-	images: string[];
-	/** message images need the token */
-	isPrivate?: boolean;
-	height?: number;
-}) {
+export function ImageGrid({ images, height = 220 }: { images: string[]; height?: number }) {
 	if (!images.length) return null;
-	const sources: ImageSource[] = images.map((path) =>
-		isPrivate ? privateImage(path) : { uri: assetUrl(path) }
-	);
+	// with the token: message images need it, and on a members-only instance all of them
+	const sources: ImageSource[] = images.map(instanceImage);
 	const single = images.length === 1;
 	return (
 		<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
@@ -135,7 +125,7 @@ export function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
 		>
 			{preview.image ? (
 				<Image
-					source={{ uri: assetUrl(preview.image) }}
+					source={instanceImage(preview.image)}
 					style={{ height: 150, backgroundColor: '#111' }}
 					contentFit="cover"
 				/>

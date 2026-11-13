@@ -660,6 +660,24 @@ export const moderation_log = pgTable(
 	]
 );
 
+// GIFs a profile saved to find again in the GIF picker: a copy of the GIF object a post stores
+// (KLIPY's URLs, never the media), keyed by KLIPY's slug. Newest first.
+export const gif_favorites = pgTable(
+	'gif_favorites',
+	{
+		user_id: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		slug: text('slug').notNull(),
+		gif: jsonb('gif').$type<Gif>().notNull(),
+		created_at: timestamptz('created_at').notNull().defaultNow()
+	},
+	(t) => [
+		primaryKey({ columns: [t.user_id, t.slug] }),
+		index('gif_favorites_user_id_created_at').on(t.user_id, t.created_at)
+	]
+);
+
 // Single use codes that let someone sign up (src/lib/server/invites.ts). Admins give accounts a
 // number of invites (users.invites), which they turn into codes one at a time, or create codes
 // themselves. A code counts once it is used; one revoked or expired unused gives the invite back.

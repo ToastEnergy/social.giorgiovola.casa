@@ -14,7 +14,8 @@
 	import type { Post } from '#lib/types.js';
 	import Posts from './Posts.svelte';
 	import { page } from '$app/state';
-	import { afterNavigate, goto, invalidate } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
+	import { afterPageChange, goBack, overlayEntry } from '#lib/history.svelte.js';
 	import { api, allPages, ApiError, errorOf, messageOf, type Page } from '#lib/api.js';
 	import Likes from './Likes.svelte';
 	import Avatar from './Avatar.svelte';
@@ -154,7 +155,7 @@
 			if (quote && !('deleted' in quote) && quote.id === id) quote = { deleted: true };
 			if (linkedPost?.id === id) linkedPost = null;
 			// the open post vanished under the viewer
-			if (id === post.id && isPostOpen) goto('/');
+			if (id === post.id && isPostOpen) goBack();
 		});
 		return () => {
 			offCounts();
@@ -181,9 +182,8 @@
 			// staff can try to delete any post, the server refuses the ones they can't (a missing one is gone anyway)
 			if (!(e instanceof ApiError && e.status === 404)) return alert(messageOf(e));
 		}
-		if (page.route.id === '/@[username]/[post]') {
-			return await goto('/');
-		}
+		// back to where the post was opened from, so back doesn't lead to the deleted post again
+		if (isPostOpen) return await goBack();
 		onpostdeleted?.(post.id);
 	}
 
@@ -377,13 +377,25 @@
 
 	// moving from one post page to another reuses this component with the new post: whatever
 	// was open belonged to the old one
-	afterNavigate(() => {
+	afterPageChange(() => {
 		showing = null;
 		isModalOpen = false;
 		menuOpen = false;
 		shareOpen = false;
 		quoting = false;
 	});
+
+	// back closes the dialogs
+	overlayEntry(
+		'post-dialog',
+		() => isModalOpen,
+		() => (isModalOpen = false)
+	);
+	overlayEntry(
+		'post-likes',
+		() => showing !== null,
+		() => (showing = null)
+	);
 
 	// what the quote composer shows of this post
 	const asQuoted = $derived({

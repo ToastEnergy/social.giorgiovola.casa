@@ -6,8 +6,9 @@ import { readTimeCookies } from '#lib/time.svelte.js';
 import type { GifConfig } from '#lib/klipy.js';
 import { redirect } from '@sveltejs/kit';
 import { isPublicPage } from '#lib/membersOnly.js';
+import { rememberedFeed } from '#lib/feed.js';
 
-export const load = (async ({ fetch, cookies, request, route }) => {
+export const load = (async ({ fetch, cookies, request, route, url }) => {
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
 	const [me, accounts, instance] = await Promise.all([
 		fetch('/api/v1/me').then((res) => (res.ok ? (res.json() as Promise<Me>) : null)),
@@ -36,6 +37,8 @@ export const load = (async ({ fetch, cookies, request, route }) => {
 		// KLIPY's settings for the GIF pickers, null when GIFs are off
 		gifs: instance.gifs ?? null,
 		// the reader's zone and locale (UI preference cookies), so dates render as in the browser
-		time: readTimeCookies(cookies, request.headers.get('accept-language'))
+		time: readTimeCookies(cookies, request.headers.get('accept-language')),
+		// the home feed to open on (UI preference cookie, which the universal home load can't read)
+		feed: rememberedFeed(url, cookies)
 	};
 }) satisfies LayoutServerLoad;

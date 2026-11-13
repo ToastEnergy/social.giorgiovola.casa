@@ -25,7 +25,7 @@ Write all new and modified Svelte code with Svelte 5 runes. Do not introduce leg
 
 **Existing code is not fully migrated.** Many components and pages still use legacy syntax (`export let`, `on:`, `createEventDispatcher`, `$store` auto-subscriptions). When you touch such a file in a meaningful way, convert it to runes as part of the change; do not mix legacy and runes syntax within a single component (Svelte forbids it). Don't do drive-by migrations of files you aren't otherwise changing.
 
-SvelteKit conventions: `+server.ts` endpoints under `/api/v1` hold the server logic (see "API-first rule"), `+page.server.ts` / `+layout.server.ts` `load` functions only read from them; types come from `./$types`. There are no form actions.
+SvelteKit conventions: `+server.ts` endpoints under `/api/v1` hold the server logic (see "API-first rule"), `load` functions only read from them; types come from `./$types`. The reading pages (home, profile, post, hashtag, notifications, search) use universal `+page.ts` loads wrapped in `cachedPage` (`src/lib/pageCache.ts`) so back/forward can show them at once; the rest use `+page.server.ts`. Things only the server can read (httpOnly UI preference cookies such as the feed) come from `+layout.server.ts`. There are no form actions.
 
 ## Design guide
 
@@ -69,7 +69,7 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
   - Handlers are callback props (`onclick`), including from legacy components. Write `on:click|stopPropagation` as `onclick={(e) => { e.stopPropagation(); … }}`.
   - Icon-only controls (the composer, chat input, image viewer and like buttons) are plain unbordered buttons and stay that way. Give them an `aria-label` or `title`.
 - **Inputs:** the `.input` class (bottom border only, `p-2.5`) for standalone fields. Labelled form fields are a `flex flex-col` with a `text-[0.8em] opacity-80` label above an input that has only `border-b`.
-- **Popovers and dialogs:** `rounded-[5px] border border-accent bg-background p-2.5` (dialogs: `rounded-md … p-5`). For one shared overlay (image viewer, profile hover card), mount a single instance in `+layout.svelte`, drive it from a `.svelte.ts` state module and close it on `afterNavigate` and Escape.
+- **Popovers and dialogs:** `rounded-[5px] border border-accent bg-background p-2.5` (dialogs: `rounded-md … p-5`). For one shared overlay (image viewer, profile hover card), mount a single instance in `+layout.svelte`, drive it from a `.svelte.ts` state module and close it on `afterPageChange` (not `afterNavigate`, which also fires for an overlay's own history entry) and Escape. Full screen overlays and dialogs call `overlayEntry()` so the back button or gesture closes them (see "Navigation and history").
 - **Info panels:** `rounded-[10px] bg-black/70 p-2.5`.
 - **Errors:** `rounded-[5px] bg-danger p-[5px]` above the thing that failed.
 - **Tabs and filters:** an underline tab row (`border-b-2`, `border-accent` when active, `opacity-60` otherwise) or `Button`s with the active one `primary`. Mark the active one with `aria-current="page"`.
@@ -77,6 +77,19 @@ Colors are Tailwind theme tokens in `src/app.css` (`@theme`). Use them by name (
 - **Avatars:** always `src/lib/components/Avatar.svelte` (round). Common sizes are 24 (inline stacks), 45 (posts), 50 (header), 60–64 (profile and card).
 - **Numbers:** show large counts compactly with `Intl.NumberFormat(undefined, { notation: 'compact' })` (`49.4K`).
 - **Touch:** hover-only UI (such as the profile card) must only open for `pointerType === 'mouse'`, and tapping must still work without it.
+
+### Navigation and history
+
+The app should move like a native one; the helpers are in `src/lib/history.svelte.ts`, wired up by `NavHistory.svelte` in the root layout.
+
+- **Back arrows** call `goBack(fallback?)`: back through the history when the previous page is ours (the browser's Navigation API: `navigation.currentEntry.index`; SvelteKit has no public history position), else "up" (`parentOf`: a post to its author, a chat to `/messages`), replacing the current entry. Never a plain link to the parent, which piles a copy of it on top.
+- **Overlays** (image viewer, composer, dialogs) hold one shallow history entry each through `overlayEntry(name, isOpen, close)`, listed in `page.state.overlays`. Leaving the page from inside one first steps back over those entries.
+- **Tabs and filters** within a page use `data-sveltekit-replacestate` (and usually `data-sveltekit-noscroll`), so switching doesn't add entries to step back through.
+- **Redirects after an action** (a deleted post, a created group) replace the entry (`goto(url, { replace: true })`) or go back, so back never lands on a page that's gone.
+- The **bottom bar** returns to a section's last history entry (with its scroll and loaded posts), and tapping the current section goes to its start, then to the top, then refreshes.
+- Back/forward shows the reading pages from a short-lived cache of what their universal loads returned (`cachedPage` in `src/lib/pageCache.ts`, browser only, never on the server) and refreshes them in the background. Pages must not mutate their `data`, which comes back on the next back.
+- Touch devices slide pages in with view transitions (`app.css`), between bottom bar sections too: a section to the right of the current one slides in like an opened page, one to the left like a back; the installed app has pull-to-refresh (`PullToRefresh.svelte`).
+- The loading overlay (`LoadingOverlay.svelte`) only shows when a page change takes longer than a threshold, and leaves without a fade as the new page renders, so it never shows up in a page transition.
 
 ### Prettier caveat
 
@@ -96,7 +109,7 @@ The project is on Prettier 2 and `prettier-plugin-svelte` 2, which can't print S
 - `src/lib/server/db/schema.ts` — the database schema (source of truth).
 - `src/hooks.server.ts` — authentication, CORS for `/api/v1`, JSON 404s under `/api/v1`, security headers.
 - `docs/api-migration.md` — why the API looks the way it does.
-- `src/service-worker.ts` — service worker (web push).
+- `src/service-worker/` — service worker (web push), type-checked by its own `tsconfig.json` (WebWorker lib).
 - `drizzle/` — generated SQL migrations and snapshots (committed).
 - `migrate.ts` — migration runner, executed on every container start.
 - `scripts/seed.ts` — test data (accounts, posts, chats, identities) for an empty database, used by local development and run by every staging deploy. It writes SQL against the schema directly, so update it when a schema change breaks it. Self-contained: the Docker image has no `src/`.
@@ -154,6 +167,7 @@ There is no test suite (CI runs `bun run check` and `bun run lint`). Before fini
 
 - Prettier: tabs, single quotes, no trailing commas, print width 100 (`.prettierrc`).
 - Import local modules with the `.js` extension where the existing code does (e.g. `#lib/store.js`).
+- **Only public, documented APIs.** Build on what the Svelte / SvelteKit docs and web standards document. Never read framework internals (keys SvelteKit puts in `history.state`, its `__data.json` requests, private modules or `node_modules` source), patch globals such as `window.fetch` or `history`, or rely on undocumented behaviour, even when it works today: it breaks silently on an upgrade. Check the docs first; when they offer no way, use a platform API (the Navigation API, for example) or change the design, and say why in the PR.
 - Keep server-only logic in `src/lib/server/`; validate all user input on the server (`src/lib/server/validation.ts`) and apply rate limits (`rateLimit` in `src/lib/server/api.ts`, built on `src/lib/server/ratelimit.ts`) to new write endpoints.
 - Comments explain _why_, matching the existing terse lowercase style.
 

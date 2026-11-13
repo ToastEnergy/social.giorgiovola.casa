@@ -288,6 +288,7 @@ KLIPY's [integration requirements](https://docs.klipy.com/integration-requiremen
 - **Privacy: KLIPY sees the IP address (and browser) of everyone who searches for GIFs or views a post or message with a GIF**, including GIFs in private conversations. Because of the site's referrer policy KLIPY only learns this instance's address, not which page or conversation the GIF is on, and the app sends KLIPY no user ids. Tell your users if that matters to them, or leave `KLIPY_APP_KEY` empty.
 - The app key is public: it is in `/api/v1/instance` and in every search the browsers make.
 - When KLIPY removes a GIF, the posts and messages that used it show "This GIF is no longer available".
+- Favorite GIFs (the star in the picker, up to 200 per profile) are stored on the server the same way: only their KLIPY URLs.
 - GIFs don't appear in social cards (`…/image.png`) or push notifications, which would need the server to download them.
 
 To set it up: create an account on the [KLIPY partner panel](https://partner.klipy.com), create an app key, keep ads turned off (the app doesn't show them) and set any extra content filtering there. A new key is in testing mode, limited to 100 requests an hour for the whole instance; request production access in the partner panel before opening GIFs to everyone. Then set `KLIPY_APP_KEY` (and optionally `KLIPY_CONTENT_FILTER`) in `.env` and restart; no rebuild is needed.
@@ -432,6 +433,8 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `PUT` / `DELETE`          | `/api/v1/me/avatar`                               | signed in | set the picture (raw image body) / remove it                                          |
 | `PUT`                     | `/api/v1/me/password`                             | account   | `{ current_password, password }`; signs out every other session                       |
 | `GET`                     | `/api/v1/me/following`                            | signed in | usernames you follow                                                                  |
+| `GET` / `POST`            | `/api/v1/me/gifs/favorites`                       | signed in | your favorite GIFs, newest first / save one `{ gif }`                                 |
+| `DELETE`                  | `/api/v1/me/gifs/favorites/:slug`                 | signed in | remove a favorite GIF                                                                 |
 | `GET`                     | `/api/v1/me/passkeys`                             | account   | your passkeys                                                                         |
 | `POST`                    | `/api/v1/me/passkeys/options`                     | account   | `{ current_password }`: start registering a passkey                                   |
 | `POST`                    | `/api/v1/me/passkeys`                             | account   | `{ challenge_id, name?, response }`: finish registering it                            |

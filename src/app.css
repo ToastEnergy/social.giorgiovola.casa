@@ -172,3 +172,62 @@
 		}
 	}
 }
+
+/* page transitions on touch devices (NavHistory.svelte): the new page slides in over the old one
+   from the right, and back slides the top page away to the right. the bottom bar stays put */
+@media (pointer: coarse) and (prefers-reduced-motion: no-preference) {
+	::view-transition-group(bottom-bar) {
+		animation: none;
+	}
+
+	:root[data-nav]::view-transition-old(root),
+	:root[data-nav]::view-transition-new(root) {
+		animation-duration: 280ms;
+		animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+		animation-fill-mode: both;
+		mix-blend-mode: normal;
+	}
+
+	:root[data-nav='forward']::view-transition-old(root) {
+		animation-name: page-behind;
+	}
+
+	:root[data-nav='forward']::view-transition-new(root) {
+		animation-name: page-enter;
+	}
+
+	:root[data-nav='back']::view-transition-old(root) {
+		z-index: 1;
+		animation-name: page-leave;
+	}
+
+	:root[data-nav='back']::view-transition-new(root) {
+		animation-name: page-uncover;
+	}
+}
+
+@keyframes page-enter {
+	from {
+		transform: translateX(100%);
+	}
+}
+
+@keyframes page-leave {
+	to {
+		transform: translateX(100%);
+	}
+}
+
+@keyframes page-behind {
+	to {
+		transform: translateX(-25%);
+		opacity: 0.5;
+	}
+}
+
+@keyframes page-uncover {
+	from {
+		transform: translateX(-25%);
+		opacity: 0.5;
+	}
+}

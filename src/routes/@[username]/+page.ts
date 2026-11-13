@@ -1,6 +1,7 @@
-import type { PageServerLoad } from './$types';
+import type { PageLoad } from './$types';
 import type { Page } from '#lib/api.js';
 import { apiGet } from '#lib/apiLoad.js';
+import { cachedPage } from '#lib/pageCache.js';
 import type { FollowedBy, Post } from '#lib/types.js';
 
 const PAGE_SIZE = 10;
@@ -29,9 +30,14 @@ type Profile = {
 	} | null;
 };
 
+// universal, so back and forward can show it from the cache (#lib/pageCache.ts)
 export const load = (async ({ params, fetch, depends, url }) => {
 	depends('app:posts');
-	const name = encodeURIComponent(params.username.toLowerCase());
+	return cachedPage(url, () => loadProfile(params.username, url, fetch));
+}) satisfies PageLoad;
+
+async function loadProfile(username: string, url: URL, fetch: typeof globalThis.fetch) {
+	const name = encodeURIComponent(username.toLowerCase());
 	const asked = url.searchParams.get('tab');
 	const tab = asked === 'replies' || asked === 'regiorgs' ? asked : 'posts';
 	const source = `/api/v1/users/${name}/posts?tab=${tab}&limit=${PAGE_SIZE}`;
@@ -66,4 +72,4 @@ export const load = (async ({ params, fetch, depends, url }) => {
 		moderation: profile.moderation,
 		self: profile.self
 	};
-}) satisfies PageServerLoad;
+}

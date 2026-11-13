@@ -149,6 +149,8 @@ export type Instance = {
 	version: string;
 	motd: string;
 	registration_open: boolean;
+	/** everything but signing in needs the token (images too) */
+	members_only?: boolean;
 	/** false only before the instance's first account; missing on servers from before invites */
 	invite_required?: boolean;
 	limits: Record<string, number>;

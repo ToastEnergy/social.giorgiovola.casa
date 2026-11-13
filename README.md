@@ -146,7 +146,7 @@ When the assets live in an S3 / R2 bucket, set `S3_BUCKET` in `/etc/social-backu
 
 `.github/workflows/deploy.yml` deploys to two instances running on the same server with docker compose, each from its own checkout with its own `.env`, database and volumes:
 
-- **staging**: every push to `main` is checked (`bun run check`, `bun run lint`), built and deployed automatically. An empty staging database is filled with the test accounts of `scripts/seed.ts` (the same data as local development).
+- **staging**: every push to `main` is checked (`bun run check`, `bun run lint`), built and deployed automatically, except pushes that only change `mobile/` (the image doesn't contain the app). An empty staging database is filled with the test accounts of `scripts/seed.ts` (the same data as local development).
 - **production**: by hand, from _Actions → deploy → Run workflow_ with environment `production`. Leave _Commit_ empty to deploy the head of `main`, or paste the commit that is on staging. Only commits on `main` can be deployed. Before starting the new version the server dumps the database to `predeploy-dumps/` in the checkout (the last 5 are kept).
 
 `PUBLIC_URL` is compiled into the image, so the workflow builds one image per environment (`ghcr.io/<owner>/<repository>:<environment>-<commit>`) and pushes it to the GitHub container registry. It then joins the server's [Tailscale](https://tailscale.com) network (the server's SSH isn't reachable from the internet) and connects over SSH, where `scripts/deploy.sh` checks out the commit (so the compose file matches) and swaps the running version without downtime (blue-green):

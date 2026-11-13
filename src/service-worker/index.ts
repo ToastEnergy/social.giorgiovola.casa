@@ -1,8 +1,3 @@
-/// <reference types="@sveltejs/kit" />
-/// <reference no-default-lib="true"/>
-/// <reference lib="esnext" />
-/// <reference lib="webworker" />
-
 import { self } from '$app/service-worker';
 import { version } from '$app/env';
 import { immutable } from '$app/manifest';

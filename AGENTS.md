@@ -109,7 +109,7 @@ The project is on Prettier 2 and `prettier-plugin-svelte` 2, which can't print S
 - `src/lib/server/db/schema.ts` — the database schema (source of truth).
 - `src/hooks.server.ts` — authentication, CORS for `/api/v1`, JSON 404s under `/api/v1`, security headers.
 - `docs/api-migration.md` — why the API looks the way it does.
-- `src/service-worker.ts` — service worker (web push).
+- `src/service-worker/` — service worker (web push), type-checked by its own `tsconfig.json` (WebWorker lib).
 - `drizzle/` — generated SQL migrations and snapshots (committed).
 - `migrate.ts` — migration runner, executed on every container start.
 - `scripts/seed.ts` — test data (accounts, posts, chats, identities) for an empty database, used by local development and run by every staging deploy. It writes SQL against the schema directly, so update it when a schema change breaks it. Self-contained: the Docker image has no `src/`.

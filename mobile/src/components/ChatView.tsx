@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router/stack';
@@ -16,7 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { FlatList, KeyboardAvoidingView, Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api, errorMessage, getPage, uploadImage } from '@/lib/api';
+import { api, ApiError, errorMessage, getPage, uploadImage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
 import { clock, dayLabel, groupEventText, sameDay } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -35,6 +36,7 @@ import { GifPicker } from './GifPicker';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
 import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
 import { RichText } from './RichText';
+import { UploadProgress } from './UploadProgress';
 import { Avatar, ErrorBanner, IconButton, Loading, Notice, Txt } from './ui';
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
@@ -52,6 +54,20 @@ type DirectInfo = {
 };
 
 type Props = { kind: 'direct'; username: string } | { kind: 'group'; id: number };
+
+/** a message on its way: shown at once, replaced by the real one when it lands */
+type Pending = {
+	key: number;
+	/** what was typed, given back if it fails */
+	content: string;
+	/** what's sent */
+	text: string;
+	images: Picked[];
+	gif: { gif: Gif; sent: () => void } | null;
+	replyTo: Msg | null;
+	/** share of each image uploaded, 0 to 1; 2 once done */
+	progress: number[];
+};
 
 /** A conversation: with one profile (`direct`) or a group chat. */
 export function ChatView(props: Props) {
@@ -83,7 +99,17 @@ export function ChatView(props: Props) {
 	const [replyTo, setReplyTo] = useState<Msg | null>(null);
 	const bubbles = useRef(new Map<number, ComponentRef<typeof View>>());
 	const [editing, setEditing] = useState<Msg | null>(null);
-	const [sending, setSending] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [pending, setPending] = useState<Pending[]>([]);
+	const pendingRef = useRef(pending);
+	pendingRef.current = pending;
+	const pendingKey = useRef(0);
+	// messages go out one at a time, in order, while the input is already free for the next one
+	const outbox = useRef(Promise.resolve());
+	const imagesRef = useRef(images);
+	imagesRef.current = images;
+	const gifRef = useRef(gif);
+	gifRef.current = gif;
 	const [typing, setTyping] = useState<string | null>(null);
 	const typingTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const lastTyping = useRef(0);
@@ -203,6 +229,15 @@ export function ChatView(props: Props) {
 
 	// realtime
 	const add = (message: Msg) => {
+		// our own message echoed by the stream before the send's answer: it replaces its pending
+		// bubble (the oldest one with that text, they go out in order) right away
+		if (message.sender.username === myName && message.kind === 'message') {
+			const draft = pendingRef.current.find((p) => p.text === message.content.trim());
+			if (draft) {
+				pendingRef.current = pendingRef.current.filter((p) => p !== draft);
+				setPending((now) => now.filter((p) => p.key !== draft.key));
+			}
+		}
 		setMessages((now) => (now.some((m) => m.id === message.id) ? now : [...now, message]));
 		if (message.sender.username !== myName && message.kind === 'message') {
 			setTyping(null);
@@ -264,42 +299,104 @@ export function ChatView(props: Props) {
 		}
 	}
 
-	async function send() {
-		if (sending) return;
-		const content = text.trim();
-		setSending(true);
+	async function saveEdit(message: Msg) {
+		if (saving) return;
+		setSaving(true);
 		setError(null);
 		try {
-			if (editing) {
-				const res = await api<Message | GroupMessage>(`${base}/messages/${editing.id}`, {
-					method: 'PATCH',
-					body: { content }
-				});
-				replace(normalize(res));
-				setEditing(null);
-			} else {
-				if (!content && !images.length && !gif) return;
-				const uploads: string[] = [];
-				for (const image of images) uploads.push(await uploadImage(image));
-				const res = await api<Message | GroupMessage>(`${base}/messages`, {
-					method: 'POST',
-					body: { content, uploads, gif: gif?.gif ?? null, reply_to: replyTo?.id ?? null }
-				});
-				gif?.sent();
-				add(normalize(res));
-				setImages([]);
-				setGif(null);
-				setReplyTo(null);
-				setFirstUnread(null);
-				list.current?.scrollToOffset({ offset: 0, animated: true });
-			}
+			const res = await api<Message | GroupMessage>(`${base}/messages/${message.id}`, {
+				method: 'PATCH',
+				body: { content: text.trim() }
+			});
+			replace(normalize(res));
+			setEditing(null);
 			setText('');
-			emit('chats_changed');
 		} catch (e) {
 			setError(errorMessage(e));
 		} finally {
-			setSending(false);
+			setSaving(false);
 		}
+	}
+
+	function send() {
+		if (editing) return saveEdit(editing);
+		const content = text.trim();
+		if (!content && !images.length && !gif) return;
+		const draft: Pending = {
+			key: pendingKey.current++,
+			content: text,
+			text: content,
+			images,
+			gif,
+			replyTo,
+			progress: images.map(() => 0)
+		};
+		// cleared right away, so the next message can be typed while this one is on its way
+		setText('');
+		setImages([]);
+		setGif(null);
+		setReplyTo(null);
+		setError(null);
+		setFirstUnread(null);
+		pendingRef.current = [...pendingRef.current, draft];
+		setPending(pendingRef.current);
+		outbox.current = outbox.current.then(() => post(draft));
+		list.current?.scrollToOffset({ offset: 0, animated: true });
+	}
+
+	async function post(draft: Pending) {
+		const setProgress = (i: number, share: number) =>
+			setPending((now) =>
+				now.map((p) =>
+					p.key === draft.key
+						? { ...p, progress: p.progress.map((v, j) => (j === i ? share : v)) }
+						: p
+				)
+			);
+		const settle = () => {
+			pendingRef.current = pendingRef.current.filter((p) => p.key !== draft.key);
+			setPending((now) => now.filter((p) => p.key !== draft.key));
+		};
+		const sendOnce = async () => {
+			const uploads: string[] = [];
+			for (const [i, image] of draft.images.entries()) {
+				uploads.push(await uploadImage(image, { onProgress: (share) => setProgress(i, share) }));
+				setProgress(i, 2);
+			}
+			return api<Message | GroupMessage>(`${base}/messages`, {
+				method: 'POST',
+				body: {
+					content: draft.text,
+					uploads,
+					gif: draft.gif?.gif ?? null,
+					reply_to: draft.replyTo?.id ?? null
+				}
+			});
+		};
+		try {
+			let res: Message | GroupMessage;
+			try {
+				res = await sendOnce();
+			} catch (e) {
+				// the server let the images expire (kept for a day, or lost on a restart): upload again
+				if (!(e instanceof ApiError && e.status === 410 && draft.images.length)) throw e;
+				res = await sendOnce();
+			}
+			settle();
+			draft.gif?.sent();
+			add(normalize(res));
+			emit('chats_changed');
+			return;
+		} catch (e) {
+			setError(e instanceof ApiError && e.status === 413 ? 'Images are too big.' : errorMessage(e));
+		}
+		settle();
+		// give back what didn't go out, without overwriting what was typed since
+		setText((now) => (now.trim() ? now : draft.content));
+		if (draft.images.length && !gifRef.current)
+			setImages((now) => [...draft.images, ...now].slice(0, maxImages));
+		if (draft.gif && !imagesRef.current.length) setGif((now) => now ?? draft.gif);
+		if (draft.replyTo) setReplyTo((now) => now ?? draft.replyTo);
 	}
 
 	async function react(message: Msg, emoji: string) {
@@ -647,12 +744,24 @@ export function ChatView(props: Props) {
 					}}
 					contentContainerStyle={{ paddingHorizontal: 15, paddingVertical: 10 }}
 					keyboardShouldPersistTaps="handled"
+					// inverted: the header is at the bottom, under the newest message
+					ListHeaderComponent={
+						pending.length ? (
+							<View style={{ gap: 3, marginTop: 3 }}>
+								{pending.map((p) => (
+									<PendingBubble key={p.key} pending={p} />
+								))}
+							</View>
+						) : undefined
+					}
 					ListEmptyComponent={
-						<View style={{ transform: [{ scaleY: -1 }] }}>
-							<Txt muted style={{ textAlign: 'center', padding: 40 }}>
-								No messages yet. Say hi!
-							</Txt>
-						</View>
+						pending.length ? undefined : (
+							<View style={{ transform: [{ scaleY: -1 }] }}>
+								<Txt muted style={{ textAlign: 'center', padding: 40 }}>
+									No messages yet. Say hi!
+								</Txt>
+							</View>
+						)
 					}
 				/>
 			)}
@@ -770,7 +879,7 @@ export function ChatView(props: Props) {
 							/>
 							<IconButton
 								label={editing ? 'Save' : 'Send'}
-								style={{ paddingBottom: 8, opacity: sending ? 0.5 : 1 }}
+								style={{ paddingBottom: 8, opacity: saving ? 0.5 : 1 }}
 								onPress={send}
 							>
 								<SendHorizontal size={24} color={colors.accent} />
@@ -788,5 +897,82 @@ export function ChatView(props: Props) {
 				/>
 			) : null}
 		</KeyboardAvoidingView>
+	);
+}
+
+/** A message on its way: dimmed, with each image's upload, until the real one replaces it. */
+function PendingBubble({ pending: p }: { pending: Pending }) {
+	return (
+		<View
+			accessibilityLabel="Sending"
+			style={{ alignSelf: 'flex-end', maxWidth: '80%', alignItems: 'flex-end', opacity: 0.6 }}
+		>
+			<View
+				style={{
+					borderRadius: 10,
+					borderWidth: 1,
+					borderColor: colors.accent,
+					backgroundColor: 'rgba(121,154,116,0.15)',
+					paddingVertical: 7,
+					paddingHorizontal: 10,
+					gap: 6
+				}}
+			>
+				{p.replyTo ? (
+					<View style={{ borderLeftWidth: 2, borderLeftColor: colors.accent, paddingLeft: 8 }}>
+						<Txt size={13} bold accent>
+							{p.replyTo.sender.name}
+						</Txt>
+						<Txt size={13} muted numberOfLines={2}>
+							{p.replyTo.content || (p.replyTo.gif ? 'GIF' : 'Image')}
+						</Txt>
+					</View>
+				) : null}
+				{p.images.length ? (
+					<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, maxWidth: 230 }}>
+						{p.images.map((image, i) => (
+							<View key={image.uri} style={{ width: 70, height: 70 }}>
+								<Image
+									source={{ uri: image.uri }}
+									style={{ width: 70, height: 70, borderRadius: 5, backgroundColor: '#111' }}
+								/>
+								{(p.progress[i] ?? 0) < 2 ? (
+									<View
+										style={{
+											position: 'absolute',
+											top: 0,
+											left: 0,
+											right: 0,
+											bottom: 0,
+											borderRadius: 5,
+											backgroundColor: 'rgba(0,0,0,0.5)',
+											alignItems: 'center',
+											justifyContent: 'center'
+										}}
+									>
+										<UploadProgress progress={p.progress[i] ?? 0} size={24} />
+									</View>
+								) : null}
+							</View>
+						))}
+					</View>
+				) : null}
+				{p.gif ? (
+					<Image
+						source={{ uri: p.gif.gif.poster }}
+						style={{
+							width: 150,
+							aspectRatio: p.gif.gif.width / p.gif.gif.height || 1,
+							borderRadius: 5,
+							backgroundColor: '#111'
+						}}
+					/>
+				) : null}
+				{p.text ? <Txt>{p.text}</Txt> : null}
+				<Txt size={11} muted style={{ alignSelf: 'flex-end' }}>
+					Sending…
+				</Txt>
+			</View>
+		</View>
 	);
 }

@@ -33,3 +33,6 @@ src/routes/admin/+layout.svelte
 /mobile/android
 /mobile/.expo
 /mobile/dist
+
+# as downloaded from Firebase (README: push in the mobile app)
+mobile/google-services.json

@@ -1,4 +1,5 @@
-import type { User } from './types';
+import { assetUrl } from './api';
+import type { Invite, InviteStatus, User } from './types';
 
 /** GET /invites/:code. `bio` and `avatar_url` are missing on servers from before they existed */
 export type InviteCheck = {
@@ -53,3 +54,13 @@ export const usernameOf = (name: string, max = 32) =>
 		.replace(/[^a-z0-9]+/g, '_')
 		.replace(/^_+|_+$/g, '')
 		.slice(0, max);
+
+export const STATUS_LABELS: Record<InviteStatus, string> = {
+	pending: 'Pending',
+	used: 'Used',
+	expired: 'Expired',
+	revoked: 'Revoked'
+};
+
+/** The link to share (<server>/register?invite=<code>), absolute even if the server sent a path. */
+export const linkOf = (invite: Pick<Invite, 'url'>) => assetUrl(invite.url);

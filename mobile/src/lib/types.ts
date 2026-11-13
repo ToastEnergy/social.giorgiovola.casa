@@ -141,6 +141,8 @@ export type Me = {
 	auth: 'token' | 'bot' | 'cookie';
 	/** staff only: reports waiting for them (null for everyone else, missing on older servers) */
 	open_reports?: number | null;
+	/** the account's invites (null for bots, missing on servers from before invites) */
+	invites?: InviteBalance | null;
 };
 
 export type LoginResult = { token: string; expires_at: string; me: Me };
@@ -314,6 +316,40 @@ export type AdminAccount = AccountState & {
 		reports_made: number;
 		log_entries: number;
 	};
+	/** missing on servers from before invites */
+	invites?: InviteBalance & { used: number; invited_by: User | null };
+};
+
+export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';
+
+/** An invite code as GET /me/invites and GET /admin/invites list it. */
+export type Invite = {
+	id: number;
+	code: string;
+	/** the link to share; absolute, but resolved against the server in case it isn't */
+	url: string;
+	note: string;
+	status: InviteStatus;
+	by_staff: boolean;
+	created_at: string;
+	expires_at: string | null;
+	used_at: string | null;
+	used_by: User | null;
+	/** only in the admin list */
+	inviter?: User | null;
+};
+
+/** How many invites an account holds (codes out included), has out as codes, and can still give. */
+export type InviteBalance = { invites: number; pending: number; available: number };
+
+/** GET /admin/invites/summary */
+export type InviteSummary = {
+	held: number;
+	available: number;
+	pending: number;
+	pending_staff: number;
+	used: number;
+	accounts: (User & InviteBalance)[];
 };
 
 export type ReportStatus = 'open' | 'resolved' | 'dismissed';

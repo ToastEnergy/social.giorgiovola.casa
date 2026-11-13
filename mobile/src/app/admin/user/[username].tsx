@@ -10,6 +10,7 @@ import { api, errorMessage, withQuery } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
 import { fullDate, shortDate } from '@/lib/format';
 import { actionHref, moderate, relative, type ModerationAction } from '@/lib/moderation';
+import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { AdminAccount, LogEntry, Page, Report } from '@/lib/types';
 
@@ -31,6 +32,9 @@ export default function AccountCase() {
 	const [refreshing, setRefreshing] = useState(false);
 	const [tab, setTab] = useState<Tab>('history');
 	const [note, setNote] = useState('');
+	const { me } = useSession();
+	// the invites field, reset to the account's count whenever it loads
+	const [invitesValue, setInvitesValue] = useState('');
 
 	const load = useCallback(async () => {
 		try {
@@ -42,6 +46,7 @@ export default function AccountCase() {
 				)
 			]);
 			setAccount(a);
+			setInvitesValue(a.invites ? String(a.invites.invites) : '');
 			setLog(l);
 			setReports(r);
 			setError(null);
@@ -67,6 +72,41 @@ export default function AccountCase() {
 		setBusy(true);
 		try {
 			changed((await moderate(account.username, action, fields)).message);
+		} catch (e) {
+			changed(errorMessage(e), true);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	async function saveInvites() {
+		if (!account?.invites || busy) return;
+		const value = invitesValue.trim();
+		const count = Number(value);
+		if (!/^\d+$/.test(value) || count > 1000) {
+			changed('Invites held is a number from 0 to 1000.', true);
+			return;
+		}
+		const out = account.invites.pending;
+		if (
+			count < out &&
+			!(await confirm(
+				'Revoke invite links?',
+				`@${account.username} has ${out} invite ${
+					out === 1 ? 'link' : 'links'
+				} out. Going down to ${count} revokes the newest ${out - count}. Continue?`,
+				'Continue',
+				true
+			))
+		)
+			return;
+		setBusy(true);
+		try {
+			const res = await api<{ message: string }>(
+				`admin/users/${encodeURIComponent(account.username)}/invites`,
+				{ method: 'PUT', body: { invites: count } }
+			);
+			changed(res.message);
 		} catch (e) {
 			changed(errorMessage(e), true);
 		} finally {
@@ -164,6 +204,19 @@ export default function AccountCase() {
 						</View>
 						<Txt size={13} muted>
 							Joined {shortDate(a.created_at)}
+							{a.invites?.invited_by ? (
+								<>
+									{' · invited by '}
+									<Txt
+										size={13}
+										accent
+										onPress={() => router.push(`/admin/user/${a.invites!.invited_by!.username}`)}
+										suppressHighlighting
+									>
+										@{a.invites.invited_by.username}
+									</Txt>
+								</>
+							) : null}
 							{a.email ? ` · ${a.email}` : ''}
 						</Txt>
 						{a.via ? (
@@ -324,6 +377,67 @@ export default function AccountCase() {
 						</Txt>
 					</View>
 				)}
+
+				{me?.role === 'admin' && a.invites ? (
+					<View style={{ gap: 10 }}>
+						<Txt bold size={13} muted style={sectionTitle}>
+							Invites
+						</Txt>
+						<Txt size={14}>
+							{a.invites.invites === 0 ? (
+								'No invites to give.'
+							) : (
+								<>
+									<Txt bold size={14}>
+										{a.invites.available}
+									</Txt>{' '}
+									to give
+									{a.invites.pending > 0
+										? `, ${a.invites.pending} out as ${
+												a.invites.pending === 1 ? 'a link' : 'links'
+										  }`
+										: ''}
+									.
+								</>
+							)}
+							{a.invites.used > 0 ? (
+								<>
+									{' '}
+									<Txt
+										size={14}
+										accent
+										suppressHighlighting
+										onPress={() =>
+											router.push(`/admin?tab=invites&status=used&username=${a.username}`)
+										}
+									>
+										{a.invites.used} {a.invites.used === 1 ? 'person' : 'people'} joined with their
+										invites
+									</Txt>
+									.
+								</>
+							) : null}
+						</Txt>
+						<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+							<View style={{ width: 110 }}>
+								<Field
+									label="Invites held"
+									value={invitesValue}
+									onChangeText={setInvitesValue}
+									keyboardType="number-pad"
+									maxLength={4}
+									onSubmitEditing={saveInvites}
+								/>
+							</View>
+							<Button
+								size="sm"
+								label="Save"
+								disabled={busy || invitesValue.trim() === String(a.invites.invites)}
+								onPress={saveInvites}
+							/>
+						</View>
+					</View>
+				) : null}
 			</View>
 
 			<TabRow tabs={tabs} value={tab} onChange={setTab} />

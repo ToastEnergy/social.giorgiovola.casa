@@ -1,9 +1,11 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { Image, type ImageSource } from 'expo-image';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
-import { Share2, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, useWindowDimensions, View } from 'react-native';
+import { Check, Download, Share2, X } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, useWindowDimensions, View } from 'react-native';
 import {
 	GestureDetector,
 	GestureHandlerRootView,
@@ -54,6 +56,9 @@ export function ImageViewer({
 	const [index, setIndex] = useState(initial);
 	const [sizes, setSizes] = useState<Record<number, Size>>({});
 	const [sharing, setSharing] = useState(false);
+	const [saving, setSaving] = useState<'idle' | 'busy' | 'done'>('idle');
+	const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+	useEffect(() => () => clearTimeout(savedTimer.current), []);
 	const last = sources.length - 1;
 
 	// the page shown, fractional while sliding; the active image's zoom and pan (from the centre)
@@ -194,21 +199,38 @@ export function ImageViewer({
 		if (!source?.uri || sharing) return;
 		setSharing(true);
 		try {
-			let uri = source.uri;
-			if (/^https?:\/\//.test(uri)) {
-				const dir = new Directory(Paths.cache, 'shared-images');
-				dir.create({ idempotent: true, intermediates: true });
-				const file = await File.downloadFileAsync(uri, dir, {
-					headers: source.headers,
-					idempotent: true
-				});
-				uri = file.uri;
-			}
-			await Sharing.shareAsync(uri, { dialogTitle: 'Share image' });
+			await Sharing.shareAsync(await localCopy(source), { dialogTitle: 'Share image' });
 		} catch {
 			// cancelled, or the image couldn't be downloaded: nothing to do
 		} finally {
 			setSharing(false);
+		}
+	}
+
+	async function save() {
+		const source = sources[index];
+		if (!source?.uri || saving === 'busy') return;
+		setSaving('busy');
+		clearTimeout(savedTimer.current);
+		try {
+			// adding to the library only needs write access, not reading the user's photos
+			const { granted, canAskAgain } = await requestPermissionsAsync(true, ['photo']);
+			if (!granted) {
+				setSaving('idle');
+				Alert.alert(
+					'Allow access to your photos',
+					canAskAgain
+						? 'The image can only be saved with access to your photos.'
+						: 'Allow access to your photos in the system settings to save images.'
+				);
+				return;
+			}
+			await Asset.create(await galleryFile(await localCopy(source)));
+			setSaving('done');
+			savedTimer.current = setTimeout(() => setSaving('idle'), 2000);
+		} catch {
+			setSaving('idle');
+			Alert.alert("Couldn't save the image", 'Check your connection and try again.');
 		}
 	}
 
@@ -267,6 +289,15 @@ export function ImageViewer({
 				) : (
 					<View style={{ flex: 1 }} />
 				)}
+				<Pressable accessibilityLabel="Save image" onPress={save} hitSlop={10}>
+					{saving === 'busy' ? (
+						<ActivityIndicator color={colors.foreground} />
+					) : saving === 'done' ? (
+						<Check color={colors.accent} size={24} />
+					) : (
+						<Download color={colors.foreground} size={24} />
+					)}
+				</Pressable>
 				<Pressable accessibilityLabel="Share image" onPress={share} hitSlop={10}>
 					{sharing ? (
 						<ActivityIndicator color={colors.foreground} />
@@ -280,6 +311,30 @@ export function ImageViewer({
 			</View>
 		</GestureHandlerRootView>
 	);
+}
+
+/** a file on the device for an image, downloading it (with the session's headers) when remote */
+async function localCopy(source: ImageSource): Promise<string> {
+	const uri = source.uri!;
+	if (!/^https?:\/\//.test(uri)) return uri;
+	const dir = new Directory(Paths.cache, 'shared-images');
+	dir.create({ idempotent: true, intermediates: true });
+	const file = await File.downloadFileAsync(uri, dir, {
+		headers: source.headers,
+		idempotent: true
+	});
+	return file.uri;
+}
+
+/**
+ * The image in a format the photo library takes everywhere: uploads are WebP, which the iOS
+ * library doesn't accept, so anything but JPEG, PNG, GIF and HEIC is saved as a JPEG.
+ */
+async function galleryFile(uri: string): Promise<string> {
+	if (/\.(jpe?g|png|gif|heic)$/i.test(uri.split(/[?#]/)[0])) return uri;
+	const ref = await ImageManipulator.manipulate(uri).renderAsync();
+	const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: 0.95 });
+	return out.uri;
 }
 
 function clamp(value: number, max: number) {

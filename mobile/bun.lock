@@ -16,6 +16,7 @@
         "expo-image-manipulator": "~58.0.16",
         "expo-image-picker": "~58.0.10",
         "expo-linking": "~58.0.17",
+        "expo-media-library": "~58.0.14",
         "expo-notifications": "~58.1.9",
         "expo-router": "~58.0.31",
         "expo-secure-store": "~58.0.3",
@@ -577,6 +578,8 @@
     "expo-keep-awake": ["expo-keep-awake@58.0.4", "", { "peerDependencies": { "expo": "*", "react": "*" } }, "sha512-zXJJRBwMpWl2Q2Aj9rksMe1ncz6aphOPqYnG3rTkCFALZiM22xQCqpQqBloDcQ6g4RdGTy++lRnsDX7MWpK1qw=="],
 
     "expo-linking": ["expo-linking@58.0.17", "", { "dependencies": { "expo-constants": "~58.0.16", "invariant": "^2.2.4" }, "peerDependencies": { "expo": "*", "react": "*", "react-native": "*" } }, "sha512-NFOt1L+FdW1uwjnwvvW+1oZ8j0W1IpYydKKuqny7tCiDVmHLxDYiYgXbyuHNAMLdQYjCBknq4910DmTM1x/XGw=="],
+
+    "expo-media-library": ["expo-media-library@58.0.14", "", { "peerDependencies": { "expo": "*", "react-native": "*" } }, "sha512-7j96Q2DUsslfiYSGtW2kZv9HKxkpaujM5yoR+1WDhfY2Z4Rbphhv+ZbrJHRDmTCvzAhqn2duve4aqAW0tWsEhw=="],
 
     "expo-modules-autolinking": ["expo-modules-autolinking@58.1.0", "", { "dependencies": { "@expo/platforms": "^58.0.1", "@expo/require-utils": "^58.0.6", "@expo/spawn-async": "^1.8.0", "chalk": "^4.1.0", "commander": "^7.2.0" }, "bin": { "expo-modules-autolinking": "bin/expo-modules-autolinking.js" } }, "sha512-JAegkS+nC4LVEgKMHAnpWhUxs1BYHHaTJnncVW2EQION1bVz0y8/wEglAeGV+oq4BNS1V7s8zCMTZU0hMi28bA=="],
 

@@ -473,6 +473,22 @@ POST /push   { "endpoint", "keys": { "p256dh", "auth" } }  (PushSubscription.toJ
 DELETE /push   { "endpoint" } → 204
   (Also available at /api/push for older website versions.)
 
+### Push notifications (mobile app)
+
+POST /push/devices   { "platform": "android", "token" }                      account
+  Registers a phone of the mobile app for push notifications. "token" is its FCM registration
+  token (the native device token, not an Expo push token). Like a web push subscription, it
+  belongs to the token (or session) used: revoking it, or logging out, stops the pushes. A
+  token keeps its 5 newest devices. Pushes only go out when the instance has
+  FCM_SERVICE_ACCOUNT set. 204; 400 invalid platform or token; 429 after 20 in a minute.
+  Each push is an FCM data message with the string fields "title", "message" (the text),
+  "body" (JSON: { "url": the web path to open, e.g. "/@alice/123", "/messages/bob",
+  "/messages/groups/5", "/notifications"; "profile": the username of the profile it is for,
+  one of the account's identities or the account itself }), "tag" (a newer push with the same tag replaces
+  it) and "channelId" ("messages" for chats, "activity" for the rest): the format
+  expo-notifications shows on its own.
+DELETE /push/devices   { "token" } → 204
+
 ### Timeline and posts
 
 GET /timeline?feed=all|following                               public / signed in

@@ -20,3 +20,6 @@ static/uploads/*
 # scripts/deploy.sh on the server
 .deploy.lock
 predeploy-dumps
+
+# Firebase service account keys (FCM_SERVICE_ACCOUNT): secrets, never commit them
+*-firebase-adminsdk-*.json

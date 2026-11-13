@@ -302,6 +302,13 @@
       "when": 1794569918265,
       "tag": "0042_invite_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794575526782,
+      "tag": "0043_push_devices",
+      "breakpoints": true
     }
   ]
 }

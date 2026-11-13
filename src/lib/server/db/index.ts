@@ -30,6 +30,7 @@ export const {
 	identity_members,
 	settings,
 	push_subscriptions,
+	push_devices,
 	passkeys,
 	bots,
 	link_previews,

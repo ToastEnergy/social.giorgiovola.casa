@@ -54,6 +54,14 @@
 					"photosPermission": "Choose images for your posts, messages and profile picture."
 				}
 			],
+			[
+				"expo-notifications",
+				{
+					"icon": "./assets/notification-icon.png",
+					"color": "#799a74",
+					"enableRemoteNotifications": false
+				}
+			],
 			"./plugins/disable-script-sandboxing",
 			"./plugins/android-release-signing",
 			["./plugins/android-launcher-label", "SGC"],

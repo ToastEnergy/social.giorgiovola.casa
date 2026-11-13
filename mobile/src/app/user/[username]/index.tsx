@@ -144,8 +144,8 @@ export default function UserScreen() {
 			<View style={{ padding: 20, gap: 10 }}>
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
 					<Pressable
-						accessibilityLabel="Open profile picture"
-						onPress={() => viewImages([avatarImage(profile, 512)])}
+						accessibilityLabel={`Expand ${profile.name}'s avatar`}
+						onPress={() => viewImages([avatarImage(profile, 1024)])}
 					>
 						<Avatar user={profile} size={64} />
 					</Pressable>

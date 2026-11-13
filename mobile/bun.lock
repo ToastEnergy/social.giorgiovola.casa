@@ -9,7 +9,9 @@
         "expo": "~58.0.24",
         "expo-clipboard": "~58.0.4",
         "expo-constants": "~58.0.16",
+        "expo-file-system": "~58.0.13",
         "expo-font": "~58.0.12",
+        "expo-haptics": "~58.0.8",
         "expo-image": "~58.0.18",
         "expo-image-manipulator": "~58.0.16",
         "expo-image-picker": "~58.0.10",
@@ -26,11 +28,14 @@
         "lucide-react-native": "^1.70.0",
         "react": "19.3.0",
         "react-native": "0.88.1",
+        "react-native-gesture-handler": "~3.3.0",
         "react-native-passkeys": "^0.4.2",
+        "react-native-reanimated": "4.7.1",
         "react-native-safe-area-context": "~5.11.1",
         "react-native-screens": "~4.30.1",
         "react-native-svg": "15.16.0",
         "react-native-view-shot": "6.1.1",
+        "react-native-worklets": "0.13.0",
       },
       "devDependencies": {
         "@types/react": "~19.3.0",
@@ -559,6 +564,8 @@
 
     "expo-glass-effect": ["expo-glass-effect@58.0.5", "", { "peerDependencies": { "expo": "*", "react": "*", "react-native": "*" } }, "sha512-PkL1X/r0cTs6NG47Xp3TxRvtqSeRmPYhPOHp3GDmZB2oOxpjXge6qLi/bSSv0asFWqf+MLOlXZ+hq2Imuh0Z1g=="],
 
+    "expo-haptics": ["expo-haptics@58.0.8", "", { "peerDependencies": { "expo": "*" } }, "sha512-hxW9LoJQhAJ4hRlGx0DZ10ncs2NFqC/0nfKSnGy1PcpH6e8dJ4/oJO9eOcAG/vFg8k5oonbZkWL7RK9G3729Tg=="],
+
     "expo-image": ["expo-image@58.0.18", "", { "dependencies": { "sf-symbols-typescript": "^2.2.0" }, "peerDependencies": { "expo": "*", "react": "*", "react-native": "*", "react-native-web": "*" }, "optionalPeers": ["react-native-web"] }, "sha512-bWbFD8eBbZywr1WssV6KtcglRlpD5WpzVj+oA3hfjX1MJBN43IeB7A6EQAGXE0eGBVG93Mf2dRBmCRJ/e/Hw6g=="],
 
     "expo-image-loader": ["expo-image-loader@58.0.3", "", { "peerDependencies": { "expo": "*" } }, "sha512-zlHudxC8OObyqCHmvdxJqURI7886KJ0cUJyn7R/a8FOD9fP837xKDN+u4SIt7XsSSVPNXzMd4Y7mN0pmup8NGA=="],
@@ -725,7 +732,7 @@
 
     "loose-envify": ["loose-envify@1.4.0", "", { "dependencies": { "js-tokens": "^3.0.0 || ^4.0.0" }, "bin": { "loose-envify": "cli.js" } }, "sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q=="],
 
-    "lru-cache": ["lru-cache@10.4.3", "", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
+    "lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
 
     "lucide-react-native": ["lucide-react-native@1.70.0", "", { "peerDependencies": { "@types/react": "*", "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-native": "*", "react-native-svg": "^12.0.0 || ^13.0.0 || ^14.0.0 || ^15.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-bMzx3uFYTeylYdV9PNAzwfHxzzWEKP8FCiNcTTMwA4LsYMoRbtH2DiIjMHFuFCFXlVWumQjBNFG7/Stssn7Z7A=="],
 
@@ -857,7 +864,7 @@
 
     "react-native-drawer-layout": ["react-native-drawer-layout@4.2.12", "", { "dependencies": { "color": "^4.2.3", "use-latest-callback": "^0.2.4" }, "peerDependencies": { "react": ">= 18.2.0", "react-native": "*", "react-native-gesture-handler": ">= 2.0.0", "react-native-reanimated": ">= 2.0.0" } }, "sha512-qYmntEctkMSodN7pnC2llV21nswImLFPHJeT3PJXSJqZdU4jzDATR8iVi66sXkrtoOLJ2+EvXxgd7sMMpV4ViA=="],
 
-    "react-native-gesture-handler": ["react-native-gesture-handler@3.5.0", "", { "dependencies": { "@types/react-test-renderer": "^19.1.0", "invariant": "^2.2.4" }, "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-bm8yepwMBUhEOSeU7WQbNNrstD0Hbv6i+XsApARBJSlb+WlRvyaQsobi+tZ5Uyr5kDVgXzg6kPb+CWY9zvyfEw=="],
+    "react-native-gesture-handler": ["react-native-gesture-handler@3.3.0", "", { "dependencies": { "@types/react-test-renderer": "^19.1.0", "invariant": "^2.2.4" }, "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-ZCTlJ09nE3GPbm7J74lvwpxmx1TQ/7MDlHZNLARVYTN82k21mJUJ7BmI9eWjEi8eevHiAudI5O1Cpnt0rJfoJA=="],
 
     "react-native-is-edge-to-edge": ["react-native-is-edge-to-edge@1.3.1", "", { "peerDependencies": { "react": "*", "react-native": "*" } }, "sha512-NIXU/iT5+ORyCc7p0z2nnlkouYKX425vuU1OEm6bMMtWWR9yvb+Xg5AZmImTKoF9abxCPqrKC3rOZsKzUYgYZA=="],
 
@@ -873,7 +880,7 @@
 
     "react-native-view-shot": ["react-native-view-shot@6.1.1", "", { "peerDependencies": { "html2canvas-pro": "^2.0.0", "react": ">=18.0.0", "react-native": ">=0.80.0" }, "optionalPeers": ["html2canvas-pro", "react-native"] }, "sha512-eMoNXNgADlcMT5mbquHqueE55bUuJA6vpUj650ZiresuorgdRrhDCfaxI2QGL6TN1UT+76EgQMjDO6Vx/H0ZLA=="],
 
-    "react-native-worklets": ["react-native-worklets@0.13.1", "", { "dependencies": { "@babel/generator": "^7.27.1", "@babel/plugin-transform-arrow-functions": "^7.27.1", "@babel/plugin-transform-class-properties": "^7.28.6", "@babel/plugin-transform-classes": "^7.28.6", "@babel/plugin-transform-nullish-coalescing-operator": "^7.28.6", "@babel/plugin-transform-optional-chaining": "^7.28.6", "@babel/plugin-transform-shorthand-properties": "^7.27.1", "@babel/plugin-transform-template-literals": "^7.27.1", "@babel/plugin-transform-unicode-regex": "^7.27.1", "@babel/preset-typescript": "^7.28.5", "@babel/traverse": "^7.27.1", "@babel/types": "^7.27.1", "@jridgewell/remapping": "^2.3.5", "convert-source-map": "^2.0.0", "semver": "^7.7.4", "whatwg-fetch": "^3.6.20" }, "peerDependencies": { "@babel/core": "*", "@react-native/metro-config": "*", "react": "*", "react-native": "0.86 - 0.88" } }, "sha512-sX55Vx89/Y9uJmvAbAGoHXBZvCWXtYPGWPJ9Z9yl0h76mP9A10ULlSrixzGqBFLXeQMBpIpyJEhWpzXP7GG6YA=="],
+    "react-native-worklets": ["react-native-worklets@0.13.0", "", { "dependencies": { "@babel/generator": "^7.27.1", "@babel/plugin-transform-arrow-functions": "^7.27.1", "@babel/plugin-transform-class-properties": "^7.28.6", "@babel/plugin-transform-classes": "^7.28.6", "@babel/plugin-transform-nullish-coalescing-operator": "^7.28.6", "@babel/plugin-transform-optional-chaining": "^7.28.6", "@babel/plugin-transform-shorthand-properties": "^7.27.1", "@babel/plugin-transform-template-literals": "^7.27.1", "@babel/plugin-transform-unicode-regex": "^7.27.1", "@babel/preset-typescript": "^7.28.5", "@babel/traverse": "^7.27.1", "@babel/types": "^7.27.1", "@jridgewell/remapping": "^2.3.5", "convert-source-map": "^2.0.0", "semver": "^7.7.4", "whatwg-fetch": "^3.6.20" }, "peerDependencies": { "@babel/core": "*", "@react-native/metro-config": "*", "react": "*", "react-native": "0.86 - 0.88" } }, "sha512-1OrhAeAKaZF4XrBa4YbPQbKzNOpjh52HDlId8e6ete1OCHNdAlrQHzG4gznJ225EAj3dgQXHViJvK51M9B52jQ=="],
 
     "react-refresh": ["react-refresh@0.14.2", "", {}, "sha512-jCvmsr+1IUSMUyzOkRcvnVbX3ZYC6g9TDrDbFuFmRDq7PD4yaGbLKNQL6k2jnArV8hjYxh7hVhAZB6s9HDGpZA=="],
 
@@ -1041,8 +1048,6 @@
 
     "@babel/core/semver": ["semver@6.3.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-GYrCADwpu6yV5OAvchkQ27Z5wwMxWAEMg5NNWjyHh/5DboFFqbdbvYNIvZouQpxXyeMPoTOh0vdPYKlf0ZswdQ=="],
 
-    "@babel/helper-compilation-targets/lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
-
     "@babel/helper-compilation-targets/semver": ["semver@6.3.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-GYrCADwpu6yV5OAvchkQ27Z5wwMxWAEMg5NNWjyHh/5DboFFqbdbvYNIvZouQpxXyeMPoTOh0vdPYKlf0ZswdQ=="],
 
     "@babel/helper-create-class-features-plugin/semver": ["semver@6.3.2", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-GYrCADwpu6yV5OAvchkQ27Z5wwMxWAEMg5NNWjyHh/5DboFFqbdbvYNIvZouQpxXyeMPoTOh0vdPYKlf0ZswdQ=="],
@@ -1088,6 +1093,8 @@
     "finalhandler/on-finished": ["on-finished@2.3.0", "", { "dependencies": { "ee-first": "1.1.1" } }, "sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww=="],
 
     "finalhandler/statuses": ["statuses@1.5.0", "", {}, "sha512-OpZ3zP+jT1PI7I8nemJX4AKmAX070ZkYPVWV/AaKTJl+tXCTGyVdC1a4SL8RUQYEwk/f34ZX8UTykN68FwrqAA=="],
+
+    "hosted-git-info/lru-cache": ["lru-cache@10.4.3", "", {}, "sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ=="],
 
     "jest-util/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 

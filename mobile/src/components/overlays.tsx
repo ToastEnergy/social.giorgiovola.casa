@@ -1,9 +1,9 @@
-import { Image, type ImageSource } from 'expo-image';
-import { X } from 'lucide-react-native';
+import type { ImageSource } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Alert, Dimensions, FlatList, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Alert, Dimensions, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/lib/theme';
+import { ImageViewer } from './ImageViewer';
 import { Button, Input, Txt } from './ui';
 
 // the overlays every screen shares, mounted once in the root layout and driven from anywhere:
@@ -38,7 +38,8 @@ type PromptOptions = {
 type State = {
 	menu: MenuState | null;
 	prompt: (PromptOptions & { resolve: (value: string | null) => void }) | null;
-	images: { sources: ImageSource[]; index: number } | null;
+	/** `key` is new on every open, so the viewer starts over */
+	images: { sources: ImageSource[]; index: number; key: number } | null;
 	toast: string | null;
 };
 
@@ -59,8 +60,9 @@ export const showMenu = (
 export const ask = (options: PromptOptions) =>
 	new Promise<string | null>((resolve) => set({ prompt: { ...options, resolve } }));
 
+let viewerKey = 0;
 export const viewImages = (sources: ImageSource[], index = 0) =>
-	set({ images: { sources, index } });
+	set({ images: { sources, index, key: viewerKey++ } });
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function toast(text: string) {
@@ -154,38 +156,14 @@ export function Overlays() {
 				navigationBarTranslucent
 				onRequestClose={() => set({ images: null })}
 			>
-				<View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
-					{images ? (
-						<FlatList
-							data={images.sources}
-							horizontal
-							pagingEnabled
-							initialScrollIndex={images.index}
-							getItemLayout={(_, index) => {
-								const width = Dimensions.get('window').width;
-								return { length: width, offset: width * index, index };
-							}}
-							keyExtractor={(_, index) => String(index)}
-							showsHorizontalScrollIndicator={false}
-							renderItem={({ item }) => (
-								<Pressable
-									onPress={() => set({ images: null })}
-									style={{ width: Dimensions.get('window').width }}
-								>
-									<Image source={item} style={{ flex: 1 }} contentFit="contain" />
-								</Pressable>
-							)}
-						/>
-					) : null}
-					<Pressable
-						accessibilityLabel="Close"
-						onPress={() => set({ images: null })}
-						hitSlop={10}
-						style={{ position: 'absolute', top: insets.top + 10, right: 15 }}
-					>
-						<X color={colors.foreground} size={28} />
-					</Pressable>
-				</View>
+				{images ? (
+					<ImageViewer
+						key={images.key}
+						sources={images.sources}
+						initial={images.index}
+						onClose={() => set({ images: null })}
+					/>
+				) : null}
 			</Modal>
 
 			{toastText ? (

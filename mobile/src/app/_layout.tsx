@@ -9,8 +9,10 @@ import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Overlays } from '@/components/overlays';
+import { PostingStatus } from '@/components/PostingStatus';
 import { Button, Txt } from '@/components/ui';
 import { PushNotifications } from '@/lib/push';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -115,15 +117,18 @@ export default function RootLayout() {
 	const [loaded] = useFonts({ Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold });
 	if (!loaded) return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 	return (
-		<SafeAreaProvider>
-			<ThemeProvider value={theme}>
-				<SessionProvider>
-					<StatusBar style="light" />
-					<Navigation />
-					<Overlays />
-					<PushNotifications />
-				</SessionProvider>
-			</ThemeProvider>
-		</SafeAreaProvider>
+		<GestureHandlerRootView style={{ flex: 1 }}>
+			<SafeAreaProvider>
+				<ThemeProvider value={theme}>
+					<SessionProvider>
+						<StatusBar style="light" />
+						<Navigation />
+						<PostingStatus />
+						<Overlays />
+						<PushNotifications />
+					</SessionProvider>
+				</ThemeProvider>
+			</SafeAreaProvider>
+		</GestureHandlerRootView>
 	);
 }

@@ -32,3 +32,4 @@ export function useBus(type: string, handler: Handler) {
 //   post_created  <Post>              a post written here
 //   stream_open                       the stream (re)connected: reload what is shown
 //   chats_changed                     something that changes the conversation list happened
+//   draft_returned { owner, composer } a post that failed is back as that composer's draft

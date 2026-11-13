@@ -1,8 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { ChartNoAxesColumn, ImagePlus, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, ScrollView, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, KeyboardAvoidingView, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
 	AttachmentStrip,
@@ -14,8 +14,16 @@ import {
 import { GifPicker } from '@/components/GifPicker';
 import { QuoteCard } from '@/components/media';
 import { Avatar, Button, ErrorBanner, IconButton, Input, Loading, Txt } from '@/components/ui';
-import { api, errorMessage, uploadImage } from '@/lib/api';
-import { emit } from '@/lib/bus';
+import { api, auth, errorMessage } from '@/lib/api';
+import { emit, useBus } from '@/lib/bus';
+import {
+	isEmptyDraft,
+	loadDraft,
+	saveDraft,
+	type ComposerDraft,
+	type DraftOwner
+} from '@/lib/drafts';
+import { isSending, startPost } from '@/lib/posting';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import type { Gif, Post } from '@/lib/types';
@@ -27,10 +35,13 @@ const DURATIONS = [
 	{ label: '7 days', minutes: 10080 }
 ];
 
+/** how long typing pauses before the draft is saved */
+const SAVE_DELAY_MS = 800;
+
 /** Writing a post, a reply (?reply=id), a quote (?quote=id) or editing one (?edit=id). */
 export default function Compose() {
 	const params = useLocalSearchParams<{ reply?: string; quote?: string; edit?: string }>();
-	const { me, instance } = useSession();
+	const { me, instance, server } = useSession();
 	const insets = useSafeAreaInsets();
 	const limits = instance?.limits ?? {};
 	const maxLength = limits.postContent ?? 2000;
@@ -63,6 +74,79 @@ export default function Compose() {
 	}, [targetId, params.edit]);
 
 	const editing = !!params.edit;
+
+	// drafts: kept per profile and composer, never for edits
+	const composer = editing
+		? null
+		: params.reply
+		? `reply:${params.reply}`
+		: params.quote
+		? `quote:${params.quote}`
+		: 'post';
+	const userId = me?.user.id;
+	const owner = useRef<DraftOwner | null>(null);
+	owner.current = userId === undefined ? null : { server, id: userId };
+	const current: ComposerDraft = { content: text, images, gif: gif?.gif ?? null, poll };
+	const latest = useRef(current);
+	latest.current = current;
+	/** false until the saved draft was looked at: saving before would overwrite it */
+	const loaded = useRef(false);
+	/** the profile whose draft the form holds */
+	const loadedFor = useRef<number | null>(null);
+	/** sent: the saved draft is exactly what went out, and must stay so */
+	const submitted = useRef(false);
+
+	const persist = useCallback(() => {
+		if (!composer || !owner.current || !loaded.current || submitted.current) return;
+		// another profile meanwhile: what's written isn't its draft
+		if (owner.current.id !== loadedFor.current) return;
+		const draft = latest.current;
+		// a post from this composer on its way keeps its saved draft until it lands
+		if (isEmptyDraft(draft) && isSending(owner.current, composer)) return;
+		saveDraft(owner.current, composer, draft);
+	}, [composer]);
+
+	const restore = useCallback(async () => {
+		if (!composer || !owner.current) return;
+		const who = owner.current;
+		// the saved draft is the post on its way: it would be sent twice
+		const draft = isSending(who, composer) ? null : await loadDraft(who, composer);
+		if (owner.current?.id !== who.id) return;
+		loaded.current = true;
+		loadedFor.current = who.id;
+		if (!draft || !isEmptyDraft(latest.current)) return;
+		setText(draft.content);
+		setCursor(draft.content.length);
+		setImages(draft.images);
+		setGif(draft.gif ? { gif: draft.gif, sent: () => {} } : null);
+		setPoll(draft.poll);
+		setError(draft.error ?? null);
+	}, [composer]);
+
+	useEffect(() => {
+		restore();
+		// the app may be killed in the background without unmounting anything
+		const sub = AppState.addEventListener('change', (state) => state !== 'active' && persist());
+		return () => {
+			sub.remove();
+			persist();
+		};
+	}, [restore, persist, userId]);
+
+	// saved as it's typed
+	useEffect(() => {
+		if (!loaded.current) return;
+		const timer = setTimeout(persist, SAVE_DELAY_MS);
+		return () => clearTimeout(timer);
+	}, [text, images, gif, poll, persist]);
+
+	// a post from this composer failed while it's open: it comes back here if nothing new is written
+	useBus('draft_returned', (e: { owner: DraftOwner; composer: string }) => {
+		const who = owner.current;
+		if (e.composer === composer && who && e.owner.id === who.id && e.owner.server === who.server)
+			restore();
+	});
+
 	const title = editing
 		? 'Edit post'
 		: params.reply
@@ -78,43 +162,38 @@ export default function Compose() {
 		(!poll || poll.options.filter((o) => o.trim()).length >= (limits.pollOptionsMin ?? 2));
 
 	async function submit() {
-		setBusy(true);
 		setError(null);
-		try {
-			if (editing) {
+		if (editing) {
+			setBusy(true);
+			try {
 				const post = await api<Post>(`posts/${params.edit}`, {
 					method: 'PATCH',
 					body: { content: text }
 				});
 				emit('post_patch', post);
-			} else {
-				const uploads: string[] = [];
-				for (const image of images) uploads.push(await uploadImage(image));
-				const post = await api<Post>('posts', {
-					method: 'POST',
-					body: {
-						content: text,
-						uploads,
-						gif: gif?.gif ?? null,
-						reply_to: params.reply ? Number(params.reply) : null,
-						quote_of: params.quote ? Number(params.quote) : null,
-						poll: poll
-							? {
-									options: poll.options.map((o) => o.trim()).filter(Boolean),
-									duration_minutes: poll.minutes
-							  }
-							: null
-					}
-				});
-				gif?.sent();
-				emit('post_created', post);
+				router.back();
+			} catch (e) {
+				setError(errorMessage(e));
+			} finally {
+				setBusy(false);
 			}
-			router.back();
-		} catch (e) {
-			setError(errorMessage(e));
-		} finally {
-			setBusy(false);
+			return;
 		}
+		if (!composer || !owner.current) return;
+		// the saved draft is exactly what's sent, and stays until the post lands
+		const draft: ComposerDraft = { ...current, error: null };
+		submitted.current = true;
+		const savedAt = await saveDraft(owner.current, composer, draft);
+		// sent in the background (src/lib/posting.ts): the composer closes at once
+		startPost({
+			composer,
+			owner: owner.current,
+			draft,
+			savedAt,
+			token: auth.token,
+			onSent: gif?.sent
+		});
+		router.back();
 	}
 
 	if (!me) return null;

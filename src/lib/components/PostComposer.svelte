@@ -595,7 +595,7 @@
 			config={gifConfig}
 			onpick={pickGif}
 			onclose={() => (pickingGif = false)}
-			height={docked ? 'h-[min(18rem,35vh)]' : 'h-72'}
+			height={docked ? 'h-[min(18rem,35vh,calc(var(--vv-height,100dvh)*0.3))]' : undefined}
 		/>
 	{/if}
 	{#if gif}

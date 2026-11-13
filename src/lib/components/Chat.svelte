@@ -1852,7 +1852,7 @@
 			config={gifConfig}
 			onpick={sendGif}
 			onclose={() => (pickingGif = false)}
-			height="h-[min(18rem,40vh)]"
+			height="h-[min(18rem,40vh,calc(var(--vv-height,100dvh)*0.35))]"
 		/>
 	{/if}
 

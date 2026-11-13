@@ -656,3 +656,21 @@ export const moderation_log = pgTable(
 		index('moderation_log_actor_id').on(t.actor_id, t.id)
 	]
 );
+
+// GIFs a profile saved to find again in the GIF picker: a copy of the GIF object a post stores
+// (KLIPY's URLs, never the media), keyed by KLIPY's slug. Newest first.
+export const gif_favorites = pgTable(
+	'gif_favorites',
+	{
+		user_id: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		slug: text('slug').notNull(),
+		gif: jsonb('gif').$type<Gif>().notNull(),
+		created_at: timestamptz('created_at').notNull().defaultNow()
+	},
+	(t) => [
+		primaryKey({ columns: [t.user_id, t.slug] }),
+		index('gif_favorites_user_id_created_at').on(t.user_id, t.created_at)
+	]
+);

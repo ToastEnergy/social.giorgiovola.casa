@@ -1,6 +1,8 @@
 import { KLIPY_APP_KEY, KLIPY_CONTENT_FILTER } from '$app/env/private';
 import type { Gif } from '#lib/types.js';
-import { fail } from './api.js';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { fail, offsetPage, type Page } from './api.js';
+import { db, gif_favorites } from './db/index.js';
 
 /**
  * GIFs come from KLIPY (https://docs.klipy.com). Its terms decide the shape of this feature:
@@ -82,4 +84,82 @@ export function parseGif(raw: unknown): Gif | undefined {
 		width,
 		height
 	};
+}
+
+// ---------------------------------------------------------------------------------------------
+// favorites: GIFs a profile saved in the picker, to find them again
+
+/** How many GIFs a profile can keep as favorites. */
+export const MAX_GIF_FAVORITES = 200;
+
+// saves and removals together, per profile: the picker toggles a star, so allow a burst of taps
+export const GIF_FAVORITE_WRITES_PER_MINUTE = 60;
+
+/** A saved GIF: the GIF object, as posts store it, with when it was saved. */
+export type GifFavorite = Gif & { favorited_at: Date };
+
+/** A page of `userId`'s favorite GIFs, newest first. */
+export async function listGifFavorites(
+	userId: number,
+	limit: number,
+	offset: number
+): Promise<Page<GifFavorite>> {
+	const rows = await db
+		.select({ gif: gif_favorites.gif, created_at: gif_favorites.created_at })
+		.from(gif_favorites)
+		.where(eq(gif_favorites.user_id, userId))
+		.orderBy(desc(gif_favorites.created_at), asc(gif_favorites.slug))
+		.limit(limit + 1)
+		.offset(offset);
+	return offsetPage(
+		rows.map((r) => ({ ...r.gif, favorited_at: r.created_at })),
+		limit,
+		offset
+	);
+}
+
+/**
+ * Saves a GIF (already checked by parseGif) as one of `userId`'s favorites. Saving one again
+ * refreshes its URLs and keeps its place. True when it is new.
+ */
+export async function addGifFavorite(
+	userId: number,
+	gif: Gif
+): Promise<{
+	created: boolean;
+	favorite: GifFavorite;
+}> {
+	return db.transaction(async (tx) => {
+		// one at a time per profile, so two saves at once can't both pass the count
+		await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('gif_favorites'), ${userId}::int)`);
+		const [existing] = await tx
+			.select({ created_at: gif_favorites.created_at })
+			.from(gif_favorites)
+			.where(and(eq(gif_favorites.user_id, userId), eq(gif_favorites.slug, gif.slug)));
+		if (existing) {
+			await tx
+				.update(gif_favorites)
+				.set({ gif })
+				.where(and(eq(gif_favorites.user_id, userId), eq(gif_favorites.slug, gif.slug)));
+			return { created: false, favorite: { ...gif, favorited_at: existing.created_at } };
+		}
+		const count = await tx.$count(gif_favorites, eq(gif_favorites.user_id, userId));
+		if (count >= MAX_GIF_FAVORITES)
+			fail(400, `You can keep at most ${MAX_GIF_FAVORITES} favorite GIFs, remove some first`);
+		const [row] = await tx
+			.insert(gif_favorites)
+			.values({ user_id: userId, slug: gif.slug, gif })
+			.returning({ created_at: gif_favorites.created_at });
+		return { created: true, favorite: { ...gif, favorited_at: row.created_at } };
+	});
+}
+
+/** Removes a GIF from `userId`'s favorites. False when it wasn't one. */
+export async function removeGifFavorite(userId: number, slug: string): Promise<boolean> {
+	if (!SLUG_RE.test(slug)) return false;
+	const deleted = await db
+		.delete(gif_favorites)
+		.where(and(eq(gif_favorites.user_id, userId), eq(gif_favorites.slug, slug)))
+		.returning({ slug: gif_favorites.slug });
+	return deleted.length > 0;
 }

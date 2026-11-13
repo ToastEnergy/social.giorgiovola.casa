@@ -620,6 +620,19 @@ export const v1Groups: V1Group[] = [
 				auth: 'signed in',
 				summary: 'usernames you follow'
 			},
+			{
+				method: 'GET / POST',
+				path: '/api/v1/me/gifs/favorites',
+				auth: 'signed in',
+				summary:
+					'your favorite GIFs, newest first / save one `{ gif }` (the object a post takes; at most 200, 60 saves or removals a minute)'
+			},
+			{
+				method: 'DELETE',
+				path: '/api/v1/me/gifs/favorites/:slug',
+				auth: 'signed in',
+				summary: 'remove a favorite GIF'
+			},
 			{ method: 'GET', path: '/api/v1/me/passkeys', auth: 'account', summary: 'your passkeys' },
 			{
 				method: 'POST',

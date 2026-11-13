@@ -13,7 +13,10 @@
 				"CFBundleDisplayName": "SGC"
 			},
 			"appleTeamId": "A7DPA4RJ43",
-			"associatedDomains": ["webcredentials:social.giorgiovola.casa"]
+			"associatedDomains": [
+				"webcredentials:social.giorgiovola.casa",
+				"applinks:social.giorgiovola.casa"
+			]
 		},
 		"android": {
 			"adaptiveIcon": {
@@ -23,7 +26,21 @@
 				"monochromeImage": "./assets/android-icon-monochrome.png"
 			},
 			"predictiveBackGestureEnabled": false,
-			"package": "casa.giorgiovola.social"
+			"package": "casa.giorgiovola.social",
+			"intentFilters": [
+				{
+					"action": "VIEW",
+					"autoVerify": true,
+					"data": [
+						{
+							"scheme": "https",
+							"host": "social.giorgiovola.casa",
+							"pathPrefix": "/register"
+						}
+					],
+					"category": ["BROWSABLE", "DEFAULT"]
+				}
+			]
 		},
 		"plugins": [
 			"expo-router",
@@ -42,7 +59,7 @@
 			"./plugins/android-release-signing",
 			"expo-status-bar"
 		],
-		"scheme": "social",
+		"scheme": "sgc-app",
 		"backgroundColor": "#0c0b0b"
 	}
 }

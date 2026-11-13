@@ -57,8 +57,8 @@ export const variables = defineEnvVars({
 		}
 	},
 	ADDRESS_HEADER: { schema: optional },
-	// the mobile apps allowed to use this instance's passkeys (src/lib/server/appLinks.ts), served
-	// in /.well-known. Apple: TEAMID.bundle ids. Android: the package and its signing certificates'
+	// the mobile apps allowed to use this instance's passkeys and open its invite links
+	// (src/lib/server/appLinks.ts), served in /.well-known. Apple: TEAMID.bundle ids. Android: the package and its signing certificates'
 	// SHA-256 fingerprints (AA:BB:…), all comma separated
 	APPLE_APP_IDS: {
 		schema: (input: string | undefined) => input ?? 'A7DPA4RJ43.casa.giorgiovola.social'

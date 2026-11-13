@@ -1,9 +1,9 @@
 import { ANDROID_APP_FINGERPRINTS, ANDROID_APP_PACKAGE, APPLE_APP_IDS } from '$app/env/private';
 
 /**
- * The mobile apps allowed to use this instance's passkeys. iOS and Android only let an app use a
- * site's passkeys when the site lists the app in /.well-known (apple-app-site-association,
- * assetlinks.json).
+ * The mobile apps allowed to use this instance's passkeys and open its invite links. iOS and
+ * Android only let an app use a site's passkeys, or open its links, when the site lists the app in
+ * /.well-known (apple-app-site-association, assetlinks.json).
  */
 
 const list = (value: string) =>

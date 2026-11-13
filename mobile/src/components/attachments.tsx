@@ -17,7 +17,9 @@ export async function pickImages(limit: number): Promise<Picked[]> {
 		mediaTypes: ['images'],
 		allowsMultipleSelection: limit > 1,
 		selectionLimit: limit,
-		quality: 0.9
+		// the original file, untouched: below 1 Android compresses every pick and keeps only the
+		// first frame of a GIF. The server re-encodes uploads to WebP anyway
+		quality: 1
 	});
 	if (result.canceled) return [];
 	return result.assets.slice(0, limit).map((a) => ({ uri: a.uri, mimeType: a.mimeType }));

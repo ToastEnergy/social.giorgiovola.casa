@@ -34,6 +34,8 @@ export type RealtimeEvents = {
 	typing: { group_id: number | null; user: { username: string; name: string } };
 	/** the server's heartbeat, every 8 seconds: the stream is alive */
 	ping: Record<string, never>;
+	/** the build the server runs, sent on connect */
+	version: { version: string };
 	/** the stream (re)connected: anything sent while it was down was missed */
 	open: undefined;
 };
@@ -108,7 +110,8 @@ const events: (keyof RealtimeEvents)[] = [
 	'group_message_reactions',
 	'group_updated',
 	'typing',
-	'ping'
+	'ping',
+	'version'
 ];
 
 function open() {

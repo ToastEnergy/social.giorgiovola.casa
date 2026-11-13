@@ -30,6 +30,7 @@
 	import { syncPush } from '#lib/push.js';
 	import { syncTimeCookies } from '#lib/time.svelte.js';
 	import { watchKeyboard } from '#lib/keyboard.svelte.js';
+	import { watchAppUpdates } from '#lib/appUpdate.js';
 
 	export let data: LayoutData;
 
@@ -131,6 +132,7 @@
 	});
 
 	onMount(watchKeyboard);
+	onMount(watchAppUpdates);
 
 	onMount(async () => {
 		if ('ontouchstart' in document.documentElement || navigator.maxTouchPoints > 0) {

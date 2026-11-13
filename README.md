@@ -252,7 +252,7 @@ If the new version doesn't answer, the job fails with its logs and the live vers
 
 ### setting up GitHub
 
-In _Settings → Environments_ create `staging` and `production`, each with a `PUBLIC_URL` variable (the instance's public URL). For `production`, add yourself under _Required reviewers_ and restrict _Deployment branches_ to `main`. Then add these repository secrets (_Settings → Secrets and variables → Actions_):
+In _Settings → Environments_ create `staging` and `production`, each with a `PUBLIC_URL` variable (the instance's public URL). For `production`, restrict _Deployment branches_ to `main`. Then add these repository secrets (_Settings → Secrets and variables → Actions_):
 
 | secret                   | value                                                                                                              |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------ |

@@ -10,9 +10,17 @@
 		maxWidth?: string;
 		/** layout only */
 		class?: string;
+		/** a tap plays or pauses it; off, the tap goes to what's under it (a post in a list) */
+		toggleable?: boolean;
 	};
 
-	let { gif, maxHeight = 500, maxWidth = '100%', class: className = '' }: Props = $props();
+	let {
+		gif,
+		maxHeight = 500,
+		maxWidth = '100%',
+		class: className = '',
+		toggleable = true
+	}: Props = $props();
 
 	// loaded straight from KLIPY (its terms): it never touches our server. The page's referrer
 	// policy only lets KLIPY see this instance's origin, not which page it is on.
@@ -57,12 +65,21 @@
 		This GIF is no longer available.
 	</div>
 {:else}
-	<button
-		type="button"
-		class="relative block cursor-pointer overflow-hidden rounded-[5px] bg-black/40 outline-none focus-visible:outline-2 focus-visible:outline-accent {className}"
+	<svelte:element
+		this={toggleable ? 'button' : 'div'}
+		type={toggleable ? 'button' : undefined}
+		role={toggleable ? undefined : 'presentation'}
+		class="relative block overflow-hidden rounded-[5px] bg-black/40 outline-none focus-visible:outline-2 focus-visible:outline-accent {toggleable
+			? 'cursor-pointer'
+			: ''} {className}"
 		style="width: {width}; aspect-ratio: {gif.width} / {gif.height}"
-		aria-label={paused ? `Play GIF${gif.title ? `: ${gif.title}` : ''}` : 'Pause GIF'}
-		onclick={(e) => {
+		aria-label={toggleable
+			? paused
+				? `Play GIF${gif.title ? `: ${gif.title}` : ''}`
+				: 'Pause GIF'
+			: undefined}
+		onclick={(e: MouseEvent) => {
+			if (!toggleable) return;
 			// a post or message under it would open
 			e.stopPropagation();
 			e.preventDefault();
@@ -95,5 +112,5 @@
 			class="absolute bottom-[5px] left-[5px] rounded-full bg-black/70 px-[5px] text-[0.75em] font-bold"
 			>GIF</span
 		>
-	</button>
+	</svelte:element>
 {/if}

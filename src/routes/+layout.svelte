@@ -72,10 +72,11 @@
 	// the stream is tied to the active profile (unread count), so reconnect when it changes
 	let mounted = false;
 	$: userId = data.user?.id ?? null;
+	// signed out on a members-only instance the stream answers 401, and retrying it would only
+	// show "Reconnecting…" on the login page
 	$: if (mounted) {
-		// eslint-disable-next-line @typescript-eslint/no-unused-expressions -- reruns on profile change
-		userId;
-		connectRealtime();
+		if (userId === null && data.membersOnly) disconnectRealtime();
+		else connectRealtime();
 	}
 
 	// push subscriptions belong to a session: bind this browser's one to the profile now in use

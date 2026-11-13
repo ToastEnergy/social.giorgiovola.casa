@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
+import { TabSwipe } from '@/components/TabSwipe';
 import { Notice, TabRow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useBus } from '@/lib/bus';
@@ -87,8 +88,9 @@ export default function Home() {
 		</View>
 	);
 
+	// swiping left opens the messages, like the next tab over
 	return (
-		<View style={{ flex: 1 }}>
+		<TabSwipe left="/messages">
 			<PostList
 				path={`timeline?feed=${feed}`}
 				list={{ ...list, items: list.items.filter((p) => !pinnedIds.has(p.id)) }}
@@ -119,6 +121,6 @@ export default function Home() {
 			>
 				<Plus size={28} strokeWidth={2.5} color={colors.background} />
 			</Pressable>
-		</View>
+		</TabSwipe>
 	);
 }

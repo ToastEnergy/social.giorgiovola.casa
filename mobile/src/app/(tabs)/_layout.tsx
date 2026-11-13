@@ -70,7 +70,9 @@ export default function TabsLayout() {
 					fontFamily: fonts.bold,
 					fontSize: 11
 				},
-				sceneStyle: { backgroundColor: colors.background }
+				sceneStyle: { backgroundColor: colors.background },
+				// tabs slide in from the side they sit on, which also makes swiping between them read right
+				animation: 'shift'
 			}}
 		>
 			<Tabs.Screen
@@ -84,16 +86,6 @@ export default function TabsLayout() {
 				}}
 			/>
 			<Tabs.Screen
-				name="search"
-				options={{
-					title: 'Search',
-					tabBarAccessibilityLabel: 'Search',
-					tabBarIcon: ({ color, focused }) => (
-						<Search size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-					)
-				}}
-			/>
-			<Tabs.Screen
 				name="messages"
 				options={{
 					title: 'Messages',
@@ -101,6 +93,16 @@ export default function TabsLayout() {
 					tabBarBadge: badge(unread.messages),
 					tabBarIcon: ({ color, focused }) => (
 						<MessageCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
+					)
+				}}
+			/>
+			<Tabs.Screen
+				name="search"
+				options={{
+					title: 'Search',
+					tabBarAccessibilityLabel: 'Search',
+					tabBarIcon: ({ color, focused }) => (
+						<Search size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
 					)
 				}}
 			/>

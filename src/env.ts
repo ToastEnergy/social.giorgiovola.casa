@@ -67,6 +67,24 @@ export const variables = defineEnvVars({
 		schema: (input: string | undefined) => input || 'casa.giorgiovola.social'
 	},
 	ANDROID_APP_FINGERPRINTS: { schema: optional },
+	// the Firebase service account key (its JSON, on one line) that sends push notifications to the
+	// Android app through FCM (src/lib/server/fcm.ts). Empty: the app gets no push
+	FCM_SERVICE_ACCOUNT: {
+		schema: (input: string | undefined) => {
+			const value = input?.trim() ?? '';
+			if (!value) return '';
+			let key: Record<string, unknown>;
+			try {
+				key = JSON.parse(value);
+			} catch {
+				throw new Error('FCM_SERVICE_ACCOUNT must be the JSON of a Firebase service account key');
+			}
+			for (const field of ['project_id', 'client_email', 'private_key'])
+				if (typeof key[field] !== 'string')
+					throw new Error(`FCM_SERVICE_ACCOUNT is missing "${field}"`);
+			return value;
+		}
+	},
 	// the bucket for avatars and images, the local disk when empty. The schemas can't see each
 	// other, so checkStorageConfig (src/lib/server/storage.ts) refuses an incomplete set at startup
 	S3_BUCKET: { schema: optional },

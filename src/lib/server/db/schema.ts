@@ -549,6 +549,25 @@ export const push_subscriptions = pgTable(
 	]
 );
 
+// A phone of the mobile app, registered with its push service token (FCM on Android). Like a
+// browser subscription it hangs off the session or token that registered it, so logging out of
+// the app stops the notifications for that account on that phone.
+export const push_devices = pgTable(
+	'push_devices',
+	{
+		session_token: text('session_token')
+			.notNull()
+			.references(() => sessions.token, { onDelete: 'cascade' }),
+		platform: text('platform', { enum: ['android'] }).notNull(),
+		token: text('token').notNull(),
+		created_at: timestamptz('created_at').notNull().defaultNow()
+	},
+	(t) => [
+		primaryKey({ columns: [t.session_token, t.token] }),
+		index('push_devices_token').on(t.token)
+	]
+);
+
 // WebAuthn credentials, an optional way to sign in to an account next to its password.
 // Identities have no passkeys of their own, like they have no password.
 export const passkeys = pgTable(

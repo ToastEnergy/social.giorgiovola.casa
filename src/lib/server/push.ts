@@ -1,5 +1,5 @@
 import * as webpush from 'web-push';
-import { and, desc, eq, gt, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
 	db,
@@ -7,6 +7,7 @@ import {
 	group_members,
 	inbox,
 	posts,
+	push_devices,
 	push_subscriptions,
 	sessions,
 	settings,
@@ -15,8 +16,12 @@ import {
 import { PUBLIC_URL } from '$app/env/public';
 import type { ChatMessage, GroupMessage, NotificationType } from '#lib/types.js';
 import { mentions } from '#lib/mentions.js';
+import { fcmConfigured, sendFcm } from './fcm.js';
 
-/** Web push: sends a system notification to the browsers subscribed by the recipient's account(s). */
+/**
+ * Push notifications: web push to the browsers subscribed by the recipient's account(s), and FCM
+ * to the phones of the Android app they are signed in on.
+ */
 
 type Vapid = { publicKey: string; privateKey: string };
 
@@ -146,11 +151,25 @@ function payloadFor(row: Row) {
 	};
 }
 
+type Payload = { title: string; body: string; url: string; tag: string };
+
 /**
- * Sends a notification to every browser subscribed by an account that can use this profile:
+ * Sends a notification to every browser and phone of an account that can use this profile:
  * the account itself, or the owner of an identity and the accounts it is shared with.
  */
-async function deliver(profileId: number, payload: object) {
+async function deliver(profileId: number, payload: Payload) {
+	// bots notify nobody: their owner would get a push for everything the bot receives
+	const sessionsOfProfile = sql`${sessions.user_id} IN (
+		SELECT COALESCE(owner_id, id) FROM users WHERE id = ${profileId} AND NOT bot
+		UNION SELECT account_id FROM identity_members WHERE identity_id = ${profileId}
+	)`;
+	await Promise.all([
+		deliverWeb(sessionsOfProfile, payload),
+		deliverApp(profileId, sessionsOfProfile, payload)
+	]);
+}
+
+async function deliverWeb(sessionsOfProfile: SQL, payload: Payload) {
 	const keys = await getVapid();
 	const options = {
 		vapidDetails: { subject: subject(), ...keys },
@@ -165,13 +184,7 @@ async function deliver(profileId: number, payload: object) {
 		})
 		.from(push_subscriptions)
 		.innerJoin(sessions, eq(sessions.token, push_subscriptions.session_token))
-		// bots notify nobody: their owner would get a push for everything the bot receives
-		.where(
-			sql`${sessions.user_id} IN (
-				SELECT COALESCE(owner_id, id) FROM users WHERE id = ${profileId} AND NOT bot
-				UNION SELECT account_id FROM identity_members WHERE identity_id = ${profileId}
-			)`
-		);
+		.where(sessionsOfProfile);
 	const message = JSON.stringify(payload);
 	await Promise.all(
 		subs.map(async (sub) => {
@@ -187,6 +200,36 @@ async function deliver(profileId: number, payload: object) {
 				if (status === 404 || status === 410)
 					await db.delete(push_subscriptions).where(eq(push_subscriptions.endpoint, sub.endpoint));
 				else console.error('push: send failed', status ?? e);
+			}
+		})
+	);
+}
+
+async function deliverApp(profileId: number, sessionsOfProfile: SQL, payload: Payload) {
+	if (!fcmConfigured()) return;
+	// one per phone, even when several of its accounts can use the profile
+	const devices = await db
+		.selectDistinct({ token: push_devices.token })
+		.from(push_devices)
+		.innerJoin(sessions, eq(sessions.token, push_devices.session_token))
+		.where(and(eq(push_devices.platform, 'android'), sessionsOfProfile));
+	if (devices.length === 0) return;
+	// the app switches to the profile the notification is for before opening it
+	const [profile] = await db
+		.select({ username: users.username })
+		.from(users)
+		.where(eq(users.id, profileId));
+	const channel =
+		payload.tag.startsWith('message:') || payload.tag.startsWith('group:')
+			? 'messages'
+			: 'activity';
+	await Promise.all(
+		devices.map(async ({ token }) => {
+			try {
+				if (!(await sendFcm(token, { ...payload, channel, profile: profile?.username })))
+					await db.delete(push_devices).where(eq(push_devices.token, token));
+			} catch (e) {
+				console.error('push: fcm send failed', e);
 			}
 		})
 	);
@@ -473,3 +516,39 @@ export const unsubscribePush = (sessionKey: string, endpoint: string) =>
 				eq(push_subscriptions.endpoint, endpoint)
 			)
 		);
+
+const MAX_DEVICES_PER_SESSION = 5;
+// FCM registration tokens: letters, digits and - _ : (about 160 characters today)
+const DEVICE_TOKEN = /^[A-Za-z0-9_:.-]{20,4096}$/;
+
+/**
+ * Registers a phone of the mobile app for the session or token in use (`sessionKey`), so logging
+ * out stops it. Returns false when the platform or token isn't valid.
+ */
+export async function registerPushDevice(sessionKey: string, body: Record<string, unknown>) {
+	const platform = body.platform;
+	const token = body.token;
+	if (platform !== 'android' || typeof token !== 'string' || !DEVICE_TOKEN.test(token))
+		return false;
+	await db.transaction(async (tx) => {
+		await tx
+			.insert(push_devices)
+			.values({ session_token: sessionKey, platform, token })
+			.onConflictDoNothing();
+		const keep = tx
+			.select({ token: push_devices.token })
+			.from(push_devices)
+			.where(eq(push_devices.session_token, sessionKey))
+			.orderBy(desc(push_devices.created_at))
+			.limit(MAX_DEVICES_PER_SESSION);
+		await tx
+			.delete(push_devices)
+			.where(and(eq(push_devices.session_token, sessionKey), notInArray(push_devices.token, keep)));
+	});
+	return true;
+}
+
+export const unregisterPushDevice = (sessionKey: string, token: string) =>
+	db
+		.delete(push_devices)
+		.where(and(eq(push_devices.session_token, sessionKey), eq(push_devices.token, token)));

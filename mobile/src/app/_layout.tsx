@@ -12,6 +12,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Overlays } from '@/components/overlays';
 import { Button, Txt } from '@/components/ui';
+import { PushNotifications } from '@/lib/push';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 
@@ -120,6 +121,7 @@ export default function RootLayout() {
 					<StatusBar style="light" />
 					<Navigation />
 					<Overlays />
+					<PushNotifications />
 				</SessionProvider>
 			</ThemeProvider>
 		</SafeAreaProvider>

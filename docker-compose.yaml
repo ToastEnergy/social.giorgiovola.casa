@@ -23,6 +23,8 @@ x-web: &web
     APPLE_APP_IDS: ${APPLE_APP_IDS-A7DPA4RJ43.casa.giorgiovola.social}
     ANDROID_APP_PACKAGE: ${ANDROID_APP_PACKAGE:-}
     ANDROID_APP_FINGERPRINTS: ${ANDROID_APP_FINGERPRINTS:-}
+    # push for the Android app (README: push in the mobile app)
+    FCM_SERVICE_ACCOUNT: ${FCM_SERVICE_ACCOUNT:-}
     # optional bucket for avatars and images (README: storing assets in S3 / R2)
     S3_BUCKET: ${S3_BUCKET:-}
     S3_ENDPOINT: ${S3_ENDPOINT:-}

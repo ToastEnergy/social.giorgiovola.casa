@@ -739,6 +739,13 @@ export const v1Groups: V1Group[] = [
 				auth: 'account',
 				summary:
 					'VAPID key / save `{ endpoint, keys }` / remove `{ endpoint }` a web push subscription'
+			},
+			{
+				method: 'POST / DELETE',
+				path: '/api/v1/push/devices',
+				auth: 'account',
+				summary:
+					'register `{ platform: "android", token }` / remove `{ token }` a phone of the mobile app (FCM)'
 			}
 		]
 	},

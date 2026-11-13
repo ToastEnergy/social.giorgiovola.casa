@@ -1,11 +1,13 @@
 import { Image } from 'expo-image';
-import { X } from 'lucide-react-native';
+import { Star, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { errorMessage } from '@/lib/api';
+import { plainGif, useGifFavorites } from '@/lib/gifFavorites';
 import { colors } from '@/lib/theme';
 import type { Gif, GifConfig } from '@/lib/types';
-import { ErrorBanner, Input, Loading, Txt } from './ui';
+import { ErrorBanner, Input, Loading, TabRow, Txt } from './ui';
 
 // searching KLIPY straight from the device, as its terms want (see "GIFs" in /api.txt)
 
@@ -88,6 +90,64 @@ export function GifPicker({
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const page = useRef({ next: 1, hasNext: false, busy: false });
+	/** KLIPY's results (trending or a search), or the saved GIFs: never mixed (KLIPY's terms) */
+	const [tab, setTab] = useState<'klipy' | 'favorites'>('klipy');
+	const favorites = useGifFavorites(visible);
+	/** a star that couldn't be saved */
+	const [favoriteError, setFavoriteError] = useState<string | null>(null);
+	/** favorites whose poster no longer loads (KLIPY removed the GIF) */
+	const [gone, setGone] = useState<Set<string>>(new Set());
+
+	function pick(gif: Gif, found: string) {
+		onPick(gif, () => shareGif(config, gif.slug, found));
+		onClose();
+	}
+
+	async function toggleFavorite(gif: Gif) {
+		setFavoriteError(null);
+		try {
+			await favorites.toggle(gif);
+		} catch (e) {
+			setFavoriteError(errorMessage(e));
+		}
+	}
+
+	/** the corner of a tile: the hit area is bigger than the star, for fingers */
+	function star(gif: Gif) {
+		const saved = favorites.has(gif.slug);
+		return (
+			<Pressable
+				accessibilityRole="button"
+				accessibilityLabel={saved ? 'Remove from favorites' : 'Add to favorites'}
+				accessibilityState={{ selected: saved }}
+				onPress={() => toggleFavorite(gif)}
+				style={({ pressed }) => ({
+					position: 'absolute',
+					top: 0,
+					right: 0,
+					padding: 5,
+					opacity: pressed ? 0.6 : 1
+				})}
+			>
+				<View
+					style={{
+						width: 32,
+						height: 32,
+						borderRadius: 16,
+						alignItems: 'center',
+						justifyContent: 'center',
+						backgroundColor: 'rgba(12, 11, 11, 0.8)'
+					}}
+				>
+					<Star
+						size={17}
+						color={saved ? colors.accent : colors.foreground}
+						fill={saved ? colors.accent : 'transparent'}
+					/>
+				</View>
+			</Pressable>
+		);
+	}
 
 	useEffect(() => {
 		if (!visible) return;
@@ -140,7 +200,11 @@ export function GifPicker({
 				>
 					<Input
 						value={query}
-						onChangeText={setQuery}
+						onChangeText={(next) => {
+							setQuery(next);
+							// a search is always KLIPY's
+							setTab('klipy');
+						}}
 						placeholder="Search KLIPY"
 						autoCorrect={false}
 						style={{ flex: 1 }}
@@ -149,50 +213,129 @@ export function GifPicker({
 						<X size={24} color={colors.foreground} />
 					</Pressable>
 				</View>
-				{error ? (
-					<View style={{ padding: 20 }}>
-						<ErrorBanner message={error} />
+				<View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+					<TabRow
+						tabs={[
+							{ value: 'klipy', label: query.trim() ? 'Results' : 'Trending' },
+							{
+								value: 'favorites',
+								label: favorites.loaded ? `Favorites ${favorites.items.length}` : 'Favorites'
+							}
+						]}
+						value={tab}
+						onChange={setTab}
+					/>
+				</View>
+				{favoriteError ? (
+					<View style={{ paddingHorizontal: 20, paddingTop: 10 }}>
+						<ErrorBanner message={favoriteError} />
 					</View>
 				) : null}
-				<FlatList
-					data={items.filter((item) => toGif(item) && thumbnailOf(item))}
-					keyExtractor={(item, index) => `${item.slug}:${index}`}
-					numColumns={2}
-					onEndReached={more}
-					contentContainerStyle={{ padding: 15 }}
-					ListEmptyComponent={
-						loading ? (
-							<Loading />
-						) : (
-							<Txt muted style={{ textAlign: 'center', padding: 40 }}>
-								No GIFs found.
-							</Txt>
-						)
-					}
-					renderItem={({ item }) => {
-						const thumbnail = thumbnailOf(item)!;
-						return (
-							<Pressable
-								accessibilityLabel={item.title || 'GIF'}
-								style={{ flex: 1, margin: 5 }}
-								onPress={() => {
-									const gif = toGif(item);
-									if (gif) onPick(gif, () => shareGif(config, gif.slug, query));
-									onClose();
-								}}
-							>
-								<Image
-									source={{ uri: thumbnail.url }}
-									style={{
-										aspectRatio: thumbnail.width / thumbnail.height || 1,
-										borderRadius: 5,
-										backgroundColor: '#111'
-									}}
-								/>
-							</Pressable>
-						);
-					}}
-				/>
+				{tab === 'favorites' ? (
+					<FlatList
+						key="favorites"
+						data={favorites.items}
+						keyExtractor={(gif) => gif.slug}
+						numColumns={2}
+						contentContainerStyle={{ padding: 15 }}
+						ListEmptyComponent={
+							favorites.error && !favorites.loaded ? (
+								<Txt muted style={{ textAlign: 'center', padding: 40 }}>
+									{favorites.error}
+								</Txt>
+							) : !favorites.loaded ? (
+								<Loading />
+							) : (
+								<Txt muted style={{ textAlign: 'center', padding: 40 }}>
+									No favorites yet. Tap the star on a GIF to save it here.
+								</Txt>
+							)
+						}
+						renderItem={({ item: gif }) => (
+							<View style={{ flex: 1, margin: 5, maxWidth: '50%' }}>
+								{gone.has(gif.slug) ? (
+									<View
+										style={{
+											aspectRatio: 1,
+											borderRadius: 5,
+											backgroundColor: '#111',
+											alignItems: 'center',
+											justifyContent: 'center',
+											padding: 5
+										}}
+									>
+										<Txt muted size={13} style={{ textAlign: 'center' }}>
+											No longer available
+										</Txt>
+									</View>
+								) : (
+									<Pressable
+										accessibilityLabel={gif.title || 'GIF'}
+										onPress={() => pick(plainGif(gif), '')}
+									>
+										<Image
+											source={{ uri: gif.poster }}
+											onError={() => setGone((now) => new Set(now).add(gif.slug))}
+											style={{
+												aspectRatio: gif.width / gif.height || 1,
+												borderRadius: 5,
+												backgroundColor: '#111'
+											}}
+										/>
+									</Pressable>
+								)}
+								{star(gif)}
+							</View>
+						)}
+					/>
+				) : (
+					<>
+						{error ? (
+							<View style={{ padding: 20 }}>
+								<ErrorBanner message={error} />
+							</View>
+						) : null}
+						<FlatList
+							key="klipy"
+							data={items.filter((item) => toGif(item) && thumbnailOf(item))}
+							keyExtractor={(item, index) => `${item.slug}:${index}`}
+							numColumns={2}
+							onEndReached={more}
+							contentContainerStyle={{ padding: 15 }}
+							ListEmptyComponent={
+								loading ? (
+									<Loading />
+								) : (
+									<Txt muted style={{ textAlign: 'center', padding: 40 }}>
+										No GIFs found.
+									</Txt>
+								)
+							}
+							renderItem={({ item }) => {
+								const thumbnail = thumbnailOf(item)!;
+								const gif = toGif(item)!;
+								return (
+									<View style={{ flex: 1, margin: 5, maxWidth: '50%' }}>
+										<Pressable
+											accessibilityLabel={item.title || 'GIF'}
+											onPress={() => pick(gif, query)}
+										>
+											<Image
+												source={{ uri: thumbnail.url }}
+												style={{
+													aspectRatio: thumbnail.width / thumbnail.height || 1,
+													borderRadius: 5,
+													backgroundColor: '#111'
+												}}
+											/>
+										</Pressable>
+										{favorites.loaded ? star(gif) : null}
+									</View>
+								);
+							}}
+						/>
+					</>
+				)}
 			</View>
 		</Modal>
 	);

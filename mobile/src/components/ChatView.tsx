@@ -15,7 +15,16 @@ import {
 	Copy
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { FlatList, KeyboardAvoidingView, Pressable, TextInput, View } from 'react-native';
+import {
+	Dimensions,
+	FlatList,
+	KeyboardAvoidingView,
+	Modal,
+	Pressable,
+	ScrollView,
+	TextInput,
+	View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, ApiError, errorMessage, getPage, uploadImage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
@@ -99,6 +108,9 @@ export function ChatView(props: Props) {
 	const [picking, setPicking] = useState(false);
 	const [replyTo, setReplyTo] = useState<Msg | null>(null);
 	const bubbles = useRef(new Map<number, ComponentRef<typeof View>>());
+	const pills = useRef(new Map<number, ComponentRef<typeof View>>());
+	/** the message whose reactions list (who reacted with what) is open, and where */
+	const [reactors, setReactors] = useState<{ id: number; anchor: MenuAnchor } | null>(null);
 	const [editing, setEditing] = useState<Msg | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [pending, setPending] = useState<Pending[]>([]);
@@ -413,6 +425,16 @@ export function ChatView(props: Props) {
 		}
 	}
 
+	/** shows who reacted to the message with what, next to its reactions */
+	function openReactors(message: Msg) {
+		const mine = message.sender.username === myName;
+		const row = pills.current.get(message.id);
+		if (!row) return;
+		row.measureInWindow((x, y, width, height) =>
+			setReactors({ id: message.id, anchor: { x, y, width, height, mine } })
+		);
+	}
+
 	/** opens the message's menu next to its bubble */
 	function messageMenu(message: Msg) {
 		const bubble = bubbles.current.get(message.id);
@@ -656,21 +678,19 @@ export function ChatView(props: Props) {
 									</Txt>
 								</Pressable>
 								{grouped.length ? (
-									<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+									<View
+										ref={(node) => {
+											if (node) pills.current.set(item.id, node);
+											else pills.current.delete(item.id);
+										}}
+										style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3 }}
+									>
 										{grouped.map((reaction) => (
 											<Pressable
 												key={reaction.emoji}
 												accessibilityLabel={`${reaction.emoji} ${reaction.by.length}`}
-												onPress={() =>
-													reaction.mine
-														? react(item, reaction.emoji)
-														: toast(
-																`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`
-														  )
-												}
-												onLongPress={() =>
-													toast(`${reaction.emoji} ${reaction.by.map((r) => r.name).join(', ')}`)
-												}
+												accessibilityHint="Shows who reacted"
+												onPress={() => openReactors(item)}
 												style={{
 													flexDirection: 'row',
 													gap: 3,
@@ -906,6 +926,18 @@ export function ChatView(props: Props) {
 					</>
 				)}
 			</View>
+			<ReactorsPopover
+				anchor={reactors?.anchor ?? null}
+				// follows the live reactions, so the list updates while it's open
+				message={reactors ? messages.find((m) => m.id === reactors.id) ?? null : null}
+				myName={myName}
+				canRemove={canWrite}
+				onRemove={(message, emoji) => {
+					setReactors(null);
+					react(message, emoji);
+				}}
+				onClose={() => setReactors(null)}
+			/>
 			{instance?.gifs ? (
 				<GifPicker
 					config={instance.gifs}
@@ -992,5 +1024,117 @@ function PendingBubble({ pending: p }: { pending: Pending }) {
 				</Txt>
 			</View>
 		</View>
+	);
+}
+
+/**
+ * Who reacted to a message with which emoji, like the web chat's reactions list: a small box next
+ * to the reactions, above them when there is room. Your own row removes your reaction; the others
+ * open the profile.
+ */
+function ReactorsPopover({
+	anchor,
+	message,
+	myName,
+	canRemove,
+	onRemove,
+	onClose
+}: {
+	anchor: MenuAnchor | null;
+	message: Msg | null;
+	myName: string;
+	canRemove: boolean;
+	onRemove: (message: Msg, emoji: string) => void;
+	onClose: () => void;
+}) {
+	const reactions = message?.reactions ?? [];
+	const open = !!anchor && !!message && reactions.length > 0;
+	// every reaction removed meanwhile: nothing left to show
+	useEffect(() => {
+		if (anchor && message && reactions.length === 0) onClose();
+	}, [anchor, message, reactions.length, onClose]);
+	const { width, height } = Dimensions.get('window');
+	const above = (anchor?.y ?? 0) > 260;
+	return (
+		<Modal
+			visible={open}
+			transparent
+			animationType="fade"
+			statusBarTranslucent
+			navigationBarTranslucent
+			onRequestClose={onClose}
+		>
+			<Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Close">
+				{anchor && message ? (
+					<Pressable
+						accessibilityViewIsModal
+						accessibilityLabel="Reactions"
+						style={{
+							position: 'absolute',
+							top: above ? undefined : anchor.y + anchor.height + 5,
+							bottom: above ? height - anchor.y + 5 : undefined,
+							left: anchor.mine ? undefined : Math.max(10, anchor.x),
+							right: anchor.mine ? Math.max(10, width - anchor.x - anchor.width) : undefined,
+							width: 256,
+							maxWidth: width - 20,
+							maxHeight: 240,
+							padding: 5,
+							borderRadius: 5,
+							borderWidth: 1,
+							borderColor: colors.accent,
+							backgroundColor: colors.background
+						}}
+					>
+						<ScrollView>
+							{reactions.map((reaction) => {
+								const yours = reaction.username === myName;
+								return (
+									<Pressable
+										key={reaction.username}
+										accessibilityRole="button"
+										accessibilityLabel={
+											yours
+												? `Remove your ${reaction.emoji}`
+												: `${reaction.name} reacted ${reaction.emoji}`
+										}
+										disabled={yours && !canRemove}
+										onPress={() => {
+											if (yours) onRemove(message, reaction.emoji);
+											else {
+												onClose();
+												router.push(`/user/${reaction.username}`);
+											}
+										}}
+										style={({ pressed }) => ({
+											flexDirection: 'row',
+											alignItems: 'center',
+											gap: 10,
+											padding: 5,
+											borderRadius: 5,
+											backgroundColor: pressed ? colors.hover : 'transparent'
+										})}
+									>
+										<Avatar user={reaction} size={32} />
+										<View style={{ flex: 1 }}>
+											<Txt bold numberOfLines={1}>
+												{yours ? 'You' : reaction.name}
+											</Txt>
+											<Txt size={13} muted numberOfLines={1}>
+												{yours
+													? canRemove
+														? 'Tap to remove'
+														: `@${reaction.username}`
+													: `@${reaction.username}`}
+											</Txt>
+										</View>
+										<Txt size={21}>{reaction.emoji}</Txt>
+									</Pressable>
+								);
+							})}
+						</ScrollView>
+					</Pressable>
+				) : null}
+			</Pressable>
+		</Modal>
 	);
 }

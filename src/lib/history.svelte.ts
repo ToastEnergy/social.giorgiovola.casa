@@ -36,8 +36,8 @@ export function parentOf(url: { pathname: string }) {
 	return parent;
 }
 
-/** how the next page change should animate: `up` slides like a back, `tab` doesn't slide */
-export const motion = { up: false, tab: false };
+/** set while going "up" (to a parent, a section's start), so the transition slides like a back */
+export const motion = { up: false };
 
 /** Back to the previous page if it's ours, else up to `fallback` (the parent by default). */
 export async function goBack(fallback?: string) {

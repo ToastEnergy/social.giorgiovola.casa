@@ -45,15 +45,14 @@
 	function tap(e: MouseEvent, item: NavItem, count: number) {
 		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
 		const path = page.url.pathname;
-		motion.tab = true;
 		if (isActive(path, item.href)) {
 			e.preventDefault();
-			if (path !== item.href) goto(item.href);
-			else if (scrollY > 0) scrollTo({ top: 0, behavior: 'smooth' });
-			else {
-				motion.tab = false;
-				refreshAll();
-			}
+			if (path !== item.href) {
+				// up to the section's start: slides like a back
+				motion.up = true;
+				goto(item.href).finally(() => (motion.up = false));
+			} else if (scrollY > 0) scrollTo({ top: 0, behavior: 'smooth' });
+			else refreshAll();
 			return;
 		}
 		// unread items are at the section's start: the link goes there

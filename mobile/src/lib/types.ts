@@ -107,7 +107,8 @@ export type NotificationType =
 	| 'ratioed_by_you'
 	| 'follow'
 	| 'regiorg'
-	| 'quote';
+	| 'quote'
+	| 'invites';
 
 export type NotificationGroup = {
 	key: string;
@@ -116,6 +117,8 @@ export type NotificationGroup = {
 	count: number;
 	unread: number;
 	post: { id: number; content: string } | null;
+	/** invites: how many the sender (an admin) gave, null for the other types */
+	invites?: number | null;
 	created_at: string;
 	read_at: string | null;
 };

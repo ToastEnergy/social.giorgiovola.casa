@@ -1,6 +1,8 @@
 import { router, useFocusEffect } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import {
 	AtSign,
+	Gift,
 	Heart,
 	MessageCircle,
 	Quote,
@@ -27,8 +29,15 @@ const verbs: Record<NotificationType, string> = {
 	quote: 'quoted your post',
 	follow: 'followed you',
 	ratio: 'ratioed your post',
-	ratioed_by_you: 'got ratioed by your reply'
+	ratioed_by_you: 'got ratioed by your reply',
+	invites: 'gave you invites'
 };
+
+/** What follows the senders' names: an invites notification says how many. */
+function verbOf(group: NotificationGroup) {
+	if (group.type !== 'invites' || !group.invites) return verbs[group.type] ?? '';
+	return `gave you ${count(group.invites)} ${group.invites === 1 ? 'invite' : 'invites'}`;
+}
 
 function TypeIcon({ type }: { type: NotificationType }) {
 	const props = { size: 16, color: colors.accent };
@@ -45,6 +54,8 @@ function TypeIcon({ type }: { type: NotificationType }) {
 			return <Quote {...props} />;
 		case 'follow':
 			return <UserPlus {...props} />;
+		case 'invites':
+			return <Gift {...props} />;
 		default:
 			return <TrendingUp {...props} />;
 	}
@@ -61,7 +72,7 @@ function people(group: NotificationGroup) {
 }
 
 export default function Notifications() {
-	const { me, unread, setUnread } = useSession();
+	const { me, server, unread, setUnread } = useSession();
 	const list = usePaged<NotificationGroup>('notifications/grouped', (g) => g.key);
 	const { items, setItems, reload } = list;
 
@@ -91,7 +102,10 @@ export default function Notifications() {
 			);
 		}
 		const sender = group.senders[0];
-		if (group.type === 'follow')
+		// the app has no invites screen yet: codes are made on the website
+		if (group.type === 'invites')
+			WebBrowser.openBrowserAsync(`${server}/settings/invites`).catch(() => {});
+		else if (group.type === 'follow')
 			router.push(
 				group.count > 1 ? `/user/${me?.user.username}/followers` : `/user/${sender?.username}`
 			);
@@ -161,8 +175,13 @@ export default function Notifications() {
 							<Txt bold size={15}>
 								{people(item)}
 							</Txt>{' '}
-							{verbs[item.type]}
+							{verbOf(item)}
 						</Txt>
+						{item.type === 'invites' ? (
+							<Txt size={14} muted>
+								Invite someone to join
+							</Txt>
+						) : null}
 						{item.post?.content ? (
 							<Txt size={14} muted numberOfLines={2}>
 								{item.post.content}

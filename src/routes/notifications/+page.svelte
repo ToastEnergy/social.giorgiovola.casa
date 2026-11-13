@@ -50,6 +50,7 @@
 	/** Where clicking the group goes. */
 	function target(group: NotificationGroup) {
 		const sender = group.senders[0];
+		if (group.type === 'invites') return '/settings/invites';
 		if (group.type === 'follow')
 			return group.count > 1 ? `/@${$user?.username}/followers` : `/@${sender?.username}`;
 		if (!group.post) return `/@${sender?.username}`;
@@ -159,6 +160,16 @@
 							<!-- which post, in one line: several groups can be about different posts -->
 							<p class="truncate text-[0.9em] text-muted">{group.post.content}</p>
 						{/if}
+					{:else if group.type === 'invites'}
+						{@const n = group.invites ?? 0}
+						<p>
+							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							gave you {n}
+							{n === 1 ? 'invite' : 'invites'}
+						</p>
+						<p class="text-[0.9em] text-muted">
+							<a href="/settings/invites">Invite someone</a> to join
+						</p>
 					{:else if !group.post}
 						<!-- the post was deleted along with the notification, so this can't happen -->
 					{:else if group.type === 'quote'}

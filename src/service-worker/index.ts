@@ -26,7 +26,10 @@ self.addEventListener('activate', (event) => {
 	event.waitUntil(
 		caches
 			.keys()
-			.then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+			// the previous version's cache stays (keys come oldest first): tabs still running that build
+			// lazy-load its pages from it, as the server only has the new build's files
+			.then((keys) => keys.filter((k) => k !== CACHE).slice(0, -1))
+			.then((old) => Promise.all(old.map((k) => caches.delete(k))))
 			.then(() => self.clients.claim())
 	);
 });
@@ -48,8 +51,13 @@ self.addEventListener('fetch', (event) => {
 		return;
 	}
 
-	// build assets are content hashed, so a cached copy is always valid
-	if (IMMUTABLE.has(url.pathname) || PRECACHE.includes(url.pathname)) {
+	// build assets are content hashed, so a cached copy is always valid. an older build's are looked
+	// up too: they're in the previous version's cache
+	if (
+		IMMUTABLE.has(url.pathname) ||
+		PRECACHE.includes(url.pathname) ||
+		url.pathname.startsWith('/_app/immutable/')
+	) {
 		event.respondWith(caches.match(request).then((cached) => cached ?? fetch(request)));
 	}
 });

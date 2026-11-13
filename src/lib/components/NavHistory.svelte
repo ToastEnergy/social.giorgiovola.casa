@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { afterNavigate, beforeNavigate, onNavigate, refreshAll } from '$app/navigation';
-	import { page } from '$app/state';
+	import { page, updated } from '$app/state';
 	import { user } from '#lib/store.js';
 	import { isActive } from '#lib/nav.js';
 	import { leaveOverlays, motion, trackSections } from '#lib/history.svelte.js';
@@ -24,6 +24,15 @@
 	beforeNavigate((nav) => {
 		if (nav.shallow) return;
 		leaveOverlays(nav);
+		// a new build is out (#lib/appUpdate.ts): a clicked link loads the page in full instead of
+		// rendering it with this old code (SvelteKit's `version` docs). with overlays open,
+		// leaveOverlays has taken over and goes on with a goto, reloaded below
+		if (updated.current && nav.type === 'link' && !nav.willUnload && nav.to) {
+			if (page.state.overlays?.length) return;
+			nav.cancel();
+			location.href = nav.to.url.href;
+			return;
+		}
 		if (nav.type !== 'popstate') return;
 		startTraversal();
 		// a page shown from the cache refreshes behind the scenes once it's up
@@ -37,6 +46,12 @@
 
 	afterNavigate((nav) => {
 		if (nav.shallow) return;
+		// back/forward and goto (redirects that replace the entry) can't be redone as a full load
+		// beforehand without adding a history entry: the page reloads where it landed
+		if (updated.current && (nav.type === 'popstate' || nav.type === 'goto')) {
+			location.reload();
+			return;
+		}
 		trackSections(sections.filter((href) => isActive(page.url.pathname, href)));
 	});
 

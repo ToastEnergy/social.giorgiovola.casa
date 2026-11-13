@@ -10,7 +10,7 @@ Self-hosted social network (posts, replies, likes, mentions, notifications, dire
 - **Styling:** Tailwind CSS 4 (via `@tailwindcss/vite`), global styles in `src/app.css`.
 - **Database:** PostgreSQL 17 with [Drizzle ORM](https://orm.drizzle.team) (`drizzle-orm/postgres-js`, `postgres` driver).
 - **Other libs:** `sharp` and `@napi-rs/canvas` (image processing, social cards), `web-push` (push notifications).
-- **Deployment:** Docker (`Dockerfile`, `docker-compose.yaml`); `docker-compose.dev.yaml` runs only Postgres for local development. GitHub Actions (`.github/workflows/`) checks pull requests, deploys every push to `main` to staging and production by hand (README "deploying").
+- **Deployment:** Docker (`Dockerfile`, `docker-compose.yaml`); `docker-compose.dev.yaml` runs only Postgres for local development. GitHub Actions (`.github/workflows/`) checks pull requests, deploys every push to `main` to staging and production by hand (README "deploying"). `mobile-ios.yml` / `mobile-android.yml` build the mobile app for sideloading, by hand or on a `mobile-v*` tag (README "mobile app builds").
 
 ## Svelte: use runes
 

@@ -1227,7 +1227,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/stream',
 				auth: 'public / signed in',
 				summary:
-					'server-sent events: posts, counts, notifications, messages, typing, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show). At most 30 open per account, 10 per bot, 30 per IP when anonymous (429 beyond)'
+					'server-sent events: posts, counts, notifications, messages, typing, the server `version` on connect, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show). At most 30 open per account, 10 per bot, 30 per IP when anonymous (429 beyond)'
 			},
 			{
 				method: 'GET',

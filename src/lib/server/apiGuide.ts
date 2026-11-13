@@ -916,6 +916,9 @@ GET /stream                           public or signed in
     counts          { "id", "likes"? , "replies_count"?, "regiorgs"?, "quotes"? } absolute
     regiorg         <Post> with "regiorged_by": { "username", "name" }
     poll            { "id": post id, "votes": [..] }
+    version         { "version" }   the server's build, sent on connect. It changes when the
+                         server is updated (the stream reconnects then); apps can compare it
+                         with their own to know they're out of date. Bots can ignore it
   Signed in, also (for the profile in use):
     notifications   { "count" }   unread notifications, sent on connect and on change
     messages_unread { "count", "reactions" }   unread messages, and unread reactions to your

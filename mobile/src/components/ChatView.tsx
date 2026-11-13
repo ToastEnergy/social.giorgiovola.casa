@@ -98,6 +98,7 @@ export function ChatView(props: Props) {
 	const older = useRef<string | null>(null);
 	const loadingOlder = useRef(false);
 	const list = useRef<FlatList<Msg>>(null);
+	const input = useRef<ComponentRef<typeof TextInput>>(null);
 	const focused = useRef(false);
 	const scrollTries = useRef(0);
 
@@ -462,6 +463,7 @@ export function ChatView(props: Props) {
 					onPress: () => {
 						setEditing(null);
 						setReplyTo(message);
+						input.current?.focus();
 					}
 				},
 				!!message.content && {
@@ -592,6 +594,7 @@ export function ChatView(props: Props) {
 						onReply={() => {
 							setEditing(null);
 							setReplyTo(item);
+							input.current?.focus();
 						}}
 						onDoubleTap={() => {
 							// like the web (and Instagram), a double tap only ever adds the heart
@@ -896,6 +899,7 @@ export function ChatView(props: Props) {
 								</>
 							)}
 							<TextInput
+								ref={input}
 								multiline
 								value={text}
 								onChangeText={onChangeText}

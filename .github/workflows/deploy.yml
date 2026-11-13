@@ -1,4 +1,4 @@
-# every push to main goes to staging; production is deployed by hand: Actions → deploy →
+# every push to main goes to staging (except mobile-only ones); production is deployed by hand: Actions → deploy →
 # Run workflow, environment "production", optionally the commit already tested on staging.
 # The image is built here (PUBLIC_URL is compiled in, so one image per environment), pushed to
 # ghcr.io and started on the server by scripts/deploy.sh over SSH through Tailscale. See "deploying" in README.md.
@@ -7,6 +7,9 @@ name: deploy
 on:
   push:
     branches: [main]
+    # the image doesn't contain the mobile app (.dockerignore), so a mobile-only push would only
+    # restart staging on an identical image
+    paths-ignore: ['mobile/**']
   workflow_dispatch:
     inputs:
       environment:

@@ -1,10 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
-import { SIGNUP_PASSWORD } from '$app/env/private';
 import type { User } from '#lib/types.js';
 import { db, users } from './db/index.js';
 import { fail, rateLimit } from './api.js';
-import { dummyVerify, hashPassword, secretsEqual, verifyPassword } from './password.js';
+import { dummyVerify, hashPassword, verifyPassword } from './password.js';
+import { inviteRequired, lookupInvite, redeemInvite } from './invites.js';
 import { clear, clientIp, hit, isLimited } from './ratelimit.js';
 import { TOKEN_DAYS, createSession, createToken, revokeOtherSessions } from './session.js';
 import { profileColumns, updateProfile } from './profile.js';
@@ -83,32 +83,13 @@ export async function passwordLogin(
 	return res[0].id;
 }
 
-// wrong signup passwords allowed per IP, and across everyone (covers the no-ADDRESS_HEADER case)
+// wrong invite codes allowed per IP, and across everyone (covers the no-ADDRESS_HEADER case)
 const MAX_SIGNUP_FAILS_PER_IP = 10;
 const MAX_SIGNUP_FAILS_GLOBAL = 50;
+const INVALID_INVITE = 'This invite code is not valid: it may have been used, revoked or expired.';
 
-export const registrationOpen = () => !!SIGNUP_PASSWORD;
-
-/** Creates an account. Returns its id, or throws the errors (joined in one message). */
-export async function registerAccount(
-	fields: {
-		signupPassword: string;
-		email: string;
-		name: string;
-		username: string;
-		password: string;
-	},
-	getClientAddress: () => string
-) {
-	if (!SIGNUP_PASSWORD) fail(403, 'Registration is closed.');
-	const email = fields.email.trim();
-	const name = fields.name.trim();
-	const username = fields.username.trim().toLowerCase();
-	const { signupPassword, password } = fields;
-	if (!signupPassword || !email || !name || !username || !password)
-		fail(400, 'Please fill out all fields.');
-
-	// checked before anything else so the form can't be used to probe for existing accounts
+/** Counts a wrong invite code, or throws a 429 once there were too many. */
+function inviteAttempts(getClientAddress: () => string) {
 	const ip = clientIp(getClientAddress);
 	const ipKey = ip ? `signup:ip:${ip}` : null;
 	if (
@@ -116,10 +97,53 @@ export async function registerAccount(
 		(ipKey && isLimited(ipKey, MAX_SIGNUP_FAILS_PER_IP))
 	)
 		fail(429, 'Too many attempts, try again later.');
-	if (!secretsEqual(signupPassword, SIGNUP_PASSWORD)) {
+	return () => {
 		hit('signup:global', WINDOW_MS);
 		if (ipKey) hit(ipKey, WINDOW_MS);
-		fail(403, 'Wrong signup password.');
+	};
+}
+
+/**
+ * Who invited, for the sign up page: null when the code can't be used. Wrong codes count
+ * against the same limits as signing up with them, so this can't be used to guess codes.
+ */
+export async function checkInvite(code: string, getClientAddress: () => string) {
+	const failed = inviteAttempts(getClientAddress);
+	const invite = await lookupInvite(code);
+	if (!invite) {
+		failed();
+		fail(404, INVALID_INVITE);
+	}
+	return invite;
+}
+
+/**
+ * Creates an account with an invite code (the very first account needs none). Returns its id,
+ * or throws the errors (joined in one message).
+ */
+export async function registerAccount(
+	fields: {
+		inviteCode: string;
+		email: string;
+		name: string;
+		username: string;
+		password: string;
+	},
+	getClientAddress: () => string
+) {
+	const email = fields.email.trim();
+	const name = fields.name.trim();
+	const username = fields.username.trim().toLowerCase();
+	const { inviteCode, password } = fields;
+	const needsInvite = await inviteRequired();
+	if (needsInvite && !inviteCode) fail(400, 'You need an invite code to sign up.');
+	if (!email || !name || !username || !password) fail(400, 'Please fill out all fields.');
+
+	// checked before anything else so the form can't be used to probe for existing accounts
+	const failed = inviteAttempts(getClientAddress);
+	if (needsInvite && !(await lookupInvite(inviteCode))) {
+		failed();
+		fail(403, INVALID_INVITE);
 	}
 
 	const errors = [
@@ -141,11 +165,17 @@ export async function registerAccount(
 
 	const { salt, hash } = await hashPassword(password);
 	try {
-		const [created] = await db
-			.insert(users)
-			.values({ email, name, username, password: hash, salt })
-			.returning({ id: users.id });
-		return created.id;
+		return await db.transaction(async (tx) => {
+			const [created] = await tx
+				.insert(users)
+				.values({ email, name, username, password: hash, salt })
+				.returning({ id: users.id });
+			// redeemed with the account, so a code is never used up by a sign up that failed, nor
+			// used twice by two at once (the second one rolls back here)
+			if (needsInvite && !(await redeemInvite(tx, inviteCode, created.id)))
+				fail(403, INVALID_INVITE);
+			return created.id;
+		});
 	} catch (e) {
 		// lost a race with a concurrent registration
 		if (isUniqueViolation(e)) fail(400, 'Username or email already in use.');

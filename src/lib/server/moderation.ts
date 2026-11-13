@@ -97,7 +97,9 @@ export type LogAction =
 	| 'note'
 	| 'report_resolved'
 	| 'report_dismissed'
-	| 'report_reopened';
+	| 'report_reopened'
+	| 'invites'
+	| 'invites_everyone';
 
 /** Writes a moderation log entry. `actor` null is the system (a ban that ran out). */
 export async function logAction(entry: {

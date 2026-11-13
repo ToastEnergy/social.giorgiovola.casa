@@ -6,7 +6,7 @@ self-hosted social network
 docker compose up -d
 ```
 
-That's it: the database is created and migrated automatically on every start. The app listens on port `7777` at http://localhost:7777 (only on localhost by default, see `BIND_ADDRESS`). Set `SIGNUP_PASSWORD` to allow registrations.
+That's it: the database is created and migrated automatically on every start. The app listens on port `7777` at http://localhost:7777 (only on localhost by default, see `BIND_ADDRESS`). The first account signs up without an invite; everyone after that needs one (see [invites](#invites)).
 
 To customize settings, copy `.env.example` to `.env` (docker compose picks it up automatically) and edit it:
 
@@ -18,7 +18,6 @@ To customize settings, copy `.env.example` to `.env` (docker compose picks it up
 | `PUBLIC_REPLY_PLACEHOLDER`           | `Giorgia un commento`             | placeholder of the reply bar on an open post (touch devices)                                                                                                                    |
 | `PUBLIC_NO_REPLIES_MESSAGE`          | `Nessuno ha ancora giorgiato qui` | shown under an open post that has no replies yet                                                                                                                                |
 | `DISCORD_WEBHOOK_URL`                | empty                             | optional, new posts are announced to this webhook                                                                                                                               |
-| `SIGNUP_PASSWORD`                    | empty                             | password required to register; registration is closed if empty                                                                                                                  |
 | `MEMBERS_ONLY`                       | `false`                           | `true` gates the whole instance to signed-in users: posts, profiles, images and the API need a session or token; signed-out visitors only see the login and registration pages  |
 | `ADDRESS_HEADER`                     | empty                             | header with the client IP behind a proxy (enables per-IP rate limits)                                                                                                           |
 | `APPLE_APP_IDS`                      | the official app                  | comma-separated `TEAMID.bundle` ids of the iOS apps that may use passkeys here (see [accounts and identities](#accounts-and-identities)); empty for none                        |
@@ -170,7 +169,7 @@ If the new version doesn't answer, the job fails with its logs and the live vers
 
    Being in the `docker` group is as good as root, so the SSH key below is restricted to the deploy script.
 
-2. Clone the staging checkout and give it its own `.env`. `COMPOSE_PROJECT_NAME` keeps its containers and volumes apart from production's. Don't copy production's Discord webhook, bucket or signup password:
+2. Clone the staging checkout and give it its own `.env`. `COMPOSE_PROJECT_NAME` keeps its containers and volumes apart from production's. Don't copy production's Discord webhook or bucket:
 
    ```
    sudo -u deploy git clone https://github.com/ToastEnergy/social.giorgiovola.casa.git /opt/social-staging
@@ -183,7 +182,6 @@ If the new version doesn't answer, the job fails with its logs and the live vers
    GREEN_PORT=7780
    PUBLIC_URL=https://staging.social.giorgiovola.casa
    POSTGRES_PASSWORD=<another password>
-   SIGNUP_PASSWORD=<another password>
    ```
 
    The staging site in caddy is set up like production's (next step), with `X-Robots-Tag: noindex` so search engines don't index it.
@@ -410,19 +408,20 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **Instance and signing in**
 
-| method   | path                            | who       |                                                                                |
-| -------- | ------------------------------- | --------- | ------------------------------------------------------------------------------ |
-| `GET`    | `/api/v1/instance`              | public    | message of the day, whether registration is open or members only, limits, GIFs |
-| `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`       |
-| `POST`   | `/api/v1/auth/register`         | public    | `{ signup_password, email, name, username, password }` → a token, like login   |
-| `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`                 |
-| `POST`   | `/api/v1/auth/passkeys/login`   | public    | `{ challenge_id, response }` → a token, like login                             |
-| `POST`   | `/api/v1/auth/logout`           | signed in | revoke the token in use                                                        |
-| `GET`    | `/api/v1/auth/sessions`         | account   | browser sessions, app tokens and personal access tokens                        |
-| `DELETE` | `/api/v1/auth/sessions/:id`     | account   | revoke one of them                                                             |
-| `POST`   | `/api/v1/auth/tokens`           | account   | `{ name, current_password, expires_in_days? }` → a personal access token       |
-| `GET`    | `/api/v1/auth/accounts`         | account   | the account with its identities and unread counts                              |
-| `POST`   | `/api/v1/auth/switch`           | account   | `{ username }`: act as the account or one of its identities                    |
+| method   | path                            | who       |                                                                               |
+| -------- | ------------------------------- | --------- | ----------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/instance`              | public    | message of the day, whether an invite is needed or members only, limits, GIFs |
+| `POST`   | `/api/v1/auth/login`            | public    | `{ username, password, client_name? }` → a `sgu_…` bearer token and `me`      |
+| `POST`   | `/api/v1/auth/register`         | public    | `{ invite_code, email, name, username, password }` → a token, like login      |
+| `GET`    | `/api/v1/invites/:code`         | public    | whether an invite code works, and who it is from (404 when it doesn't)        |
+| `POST`   | `/api/v1/auth/passkeys/options` | public    | start a passkey sign-in: WebAuthn options and a `challenge_id`                |
+| `POST`   | `/api/v1/auth/passkeys/login`   | public    | `{ challenge_id, response }` → a token, like login                            |
+| `POST`   | `/api/v1/auth/logout`           | signed in | revoke the token in use                                                       |
+| `GET`    | `/api/v1/auth/sessions`         | account   | browser sessions, app tokens and personal access tokens                       |
+| `DELETE` | `/api/v1/auth/sessions/:id`     | account   | revoke one of them                                                            |
+| `POST`   | `/api/v1/auth/tokens`           | account   | `{ name, current_password, expires_in_days? }` → a personal access token      |
+| `GET`    | `/api/v1/auth/accounts`         | account   | the account with its identities and unread counts                             |
+| `POST`   | `/api/v1/auth/switch`           | account   | `{ username }`: act as the account or one of its identities                   |
 
 **You**
 
@@ -443,6 +442,8 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `DELETE`                  | `/api/v1/me/identities/:username/members/:member` | account   | stop sharing it                                                                       |
 | `POST`                    | `/api/v1/me/identities/:username/leave`           | account   | give back an identity shared with you                                                 |
 | `GET` / `POST`            | `/api/v1/me/bots`                                 | account   | your bots / create one `{ name, username }` (token shown once)                        |
+| `GET` / `POST`            | `/api/v1/me/invites`                              | account   | your invites (held, out, available) and codes / turn one into a code `{ note? }`      |
+| `DELETE`                  | `/api/v1/me/invites/:id`                          | account   | revoke a pending code; the invite comes back                                          |
 | `PATCH` / `DELETE`        | `/api/v1/me/bots/:username`                       | account   | edit a bot `{ name, username, bio, website }` / delete it                             |
 | `PUT` / `DELETE`          | `/api/v1/me/bots/:username/avatar`                | account   | set / remove a bot's picture                                                          |
 | `POST`                    | `/api/v1/me/bots/:username/token`                 | account   | a new token for the bot, the old one stops working                                    |
@@ -539,6 +540,11 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/admin/log?username=&actor=&action=` | staff              | the moderation log, newest first                                                                                         |
 | `GET` / `PUT`    | `/api/v1/admin/motd`                         | admin              | message of the day / set `{ motd }`                                                                                      |
 | `GET` / `DELETE` | `/api/v1/admin/groups/:id`                   | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                              |
+| `GET` / `POST`   | `/api/v1/admin/invites?status=&username=`    | admin              | every invite code / create codes of your own `{ note?, count?, days? }`                                                  |
+| `DELETE`         | `/api/v1/admin/invites/:id`                  | admin              | revoke any pending code                                                                                                  |
+| `GET`            | `/api/v1/admin/invites/summary`              | admin              | invites held, available, out as codes and used, and who holds them                                                       |
+| `POST`           | `/api/v1/admin/invites/grant`                | admin              | give every account that isn't banned `{ count }` more invites                                                            |
+| `PUT`            | `/api/v1/admin/users/:username/invites`      | admin              | set how many invites an account holds `{ invites }`                                                                      |
 | `GET`            | `/api/v1/stream`                             | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `ping` every 8 s; at most 30 open per account        |
 | `GET`            | `/api/v1/stream/bot`                         | bot                | the bot stream (same as /api/bot/stream)                                                                                 |
 
@@ -557,14 +563,15 @@ The `dm-uploads` volume isn't in `scripts/backup.sh` yet.
 There are three roles: users, mods and admins.
 
 - **Mods** work from the panel at `/admin`: they handle reports, delete posts and replies, ban and mute users (for an hour up to 30 days, or for good) and lift bans and mutes. Banned users are signed out and can't sign in; muted users can't post, reply or send messages. Bans and mutes apply to the whole account, identities included: a muted owner's shared identities are muted for everyone using them, and a banned owner's ones stop working. Temporary ones are lifted by themselves within a minute of their end.
-- **Admins** can do everything a mod can, and also reset passwords, make users mods (or remove them) and set the message of the day.
+- **Admins** can do everything a mod can, and also reset passwords, make users mods (or remove them), hand out invites and set the message of the day.
 - Staff only act on people ranked below them: mods on users, admins on users and mods. Nobody moderates themselves.
 
-The panel has four parts:
+The panel has five parts:
 
 - **Reports**: what people reported (from a post's share menu, or the flag button on a profile), newest first. Reports of the same post or profile are counted together and can be resolved or dismissed at once, with a note. Deleting a reported post resolves its reports; the report keeps a copy of the text.
 - **Accounts**: every account, searchable (identities and bots find their owner), filtered by reported, banned, muted or staff. Each opens a case page with the account's state, counts, actions, staff notes, history, the reports against it and its identities. Profiles have a short version of it with a link to the case.
 - **Log**: everything staff did and every ban or mute that ran out, filterable by account, staff member and action.
+- **Invites** (admins): how many invites there are, giving everyone more, links of your own and every code with who made and used it (see [invites](#invites)).
 - **Settings** (admins): the message of the day.
 
 The sidebar shows the number of open reports next to Moderation.
@@ -574,8 +581,21 @@ Admins are created from the command line, so there is always a way in:
 ```
 bun admin.ts <username>             # make an account an admin
 bun admin.ts <username> --revoke    # back to a regular user
+bun admin.ts --invite               # print an invite link (a code of no one's, expires in 14 days)
 docker compose exec web bun admin.ts <username>
 ```
+
+## invites
+
+Signing up needs an invite, except for the very first account. Invites are handed out by hand:
+
+- Admins give accounts invites, one person at a time from their case page (Moderation → Accounts → the account), or a number to everyone at once from Moderation → Invites. Banned accounts don't get any.
+- People turn an invite into a link (`/register?invite=<code>`) under Settings → Invites, with an optional note of who it is for. A link works once and expires after 14 days.
+- An invite is only used up when someone signs up with it: revoking a link, or letting it expire, gives it back. Lowering an account's invites below the links it has out revokes the newest ones. Links of a banned account stop working.
+- Admins can also create links of their own (any number, with any expiry) that don't come out of anyone's invites, and `bun admin.ts --invite` prints one from the command line.
+- Moderation → Invites shows how many invites are held, still to give, out as links and used, who holds them, and every code with who made and used it. The case page says who invited an account. Changes are in the moderation log.
+
+Wrong codes count against the same limits as the old signup password did (10 per IP and 50 overall every 15 minutes). `SIGNUP_PASSWORD` is gone: when upgrading, remove it from `.env` and give the first invites with `bun admin.ts --invite` or from the panel.
 
 ## development
 

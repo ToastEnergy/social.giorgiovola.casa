@@ -12,7 +12,7 @@ export default function Register() {
 	const session = useSession();
 	const [instance, setInstance] = useState<Instance | null>(null);
 	const [form, setForm] = useState({
-		signup_password: '',
+		invite_code: '',
 		email: '',
 		name: '',
 		username: '',
@@ -37,7 +37,8 @@ export default function Register() {
 				method: 'POST',
 				server,
 				token: null,
-				body: { ...form, client_name: CLIENT_NAME }
+				// servers from before invites read the code as their signup password
+				body: { ...form, signup_password: form.invite_code, client_name: CLIENT_NAME }
 			});
 			await session.signIn(server, result);
 			if (router.canDismiss()) router.dismissAll();
@@ -60,13 +61,16 @@ export default function Register() {
 					<Notice>Registration is closed on {server.replace(/^https?:\/\//, '')}.</Notice>
 				) : null}
 				<ErrorBanner message={error} />
-				<Field
-					label="Signup password"
-					hint="The invite password of this instance."
-					value={form.signup_password}
-					onChangeText={set('signup_password')}
-					secureTextEntry
-				/>
+				{instance?.invite_required === false ? null : (
+					<Field
+						label="Invite code"
+						hint="From the invite link someone sent you."
+						value={form.invite_code}
+						onChangeText={set('invite_code')}
+						autoCapitalize="none"
+						autoCorrect={false}
+					/>
+				)}
 				<Field
 					label="Email"
 					value={form.email}

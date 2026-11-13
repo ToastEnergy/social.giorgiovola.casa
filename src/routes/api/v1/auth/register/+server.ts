@@ -4,14 +4,15 @@ import { registerAccount, startSession } from '#lib/server/login.js';
 import { getMe } from '#lib/server/me.js';
 
 /**
- * Creates an account and signs it in: `{ signup_password, email, name, username, password,
- * session?, client_name? }`. Answers like POST /auth/login, with 201.
+ * Creates an account and signs it in: `{ invite_code, email, name, username, password,
+ * session?, client_name? }`. Answers like POST /auth/login, with 201. `signup_password` is the old
+ * name of `invite_code`, still accepted for clients made before invites.
  */
 export const POST: RequestHandler = v1(async (event) => {
 	const body = await readJson(event.request);
 	const accountId = await registerAccount(
 		{
-			signupPassword: stringField(body, 'signup_password'),
+			inviteCode: stringField(body, 'invite_code') || stringField(body, 'signup_password'),
 			email: stringField(body, 'email'),
 			name: stringField(body, 'name'),
 			username: stringField(body, 'username'),

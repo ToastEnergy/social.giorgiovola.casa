@@ -2,7 +2,7 @@ import { defineEnvVars } from '@sveltejs/kit/env';
 import { building } from '$app/env';
 
 // All runtime (dynamic) variables. Optional ones become '' when unset, which every caller
-// already treats as "not configured" (registration closed, no webhook, no proxy header).
+// already treats as "not configured" (no webhook, no proxy header).
 const optional = (input: string | undefined) => input ?? '';
 
 export const variables = defineEnvVars({
@@ -22,7 +22,6 @@ export const variables = defineEnvVars({
 		public: true,
 		schema: (input: string | undefined) => input || 'Nessuno ha ancora giorgiato qui'
 	},
-	SIGNUP_PASSWORD: { schema: optional },
 	// true: nothing can be read without signing in (src/lib/server/membersOnly.ts)
 	MEMBERS_ONLY: {
 		schema: (input: string | undefined) => {

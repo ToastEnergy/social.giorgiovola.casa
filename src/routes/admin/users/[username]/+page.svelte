@@ -22,6 +22,35 @@
 	let dialog = $state<'ban' | 'mute' | 'password' | null>(null);
 	let tab = $state<'history' | 'reports' | 'identities'>('history');
 	let note = $state('');
+	// the invites field, reset to the account's count whenever the page data changes
+	let invitesValue = $derived(data.account.invites.invites);
+
+	async function saveInvites(e: SubmitEvent) {
+		e.preventDefault();
+		const count = invitesValue;
+		const out = a.invites.pending;
+		if (
+			count < out &&
+			!confirm(
+				`@${a.username} has ${out} invite ${
+					out === 1 ? 'link' : 'links'
+				} out. Going down to ${count} revokes the newest ${out - count}. Continue?`
+			)
+		)
+			return;
+		busy = true;
+		try {
+			const res = await api<{ message: string }>(
+				`admin/users/${encodeURIComponent(a.username)}/invites`,
+				{ method: 'PUT', json: { invites: count } }
+			);
+			await changed(res.message);
+		} catch (err) {
+			await changed(messageOf(err), true);
+		} finally {
+			busy = false;
+		}
+	}
 
 	async function changed(message: string, failed = false) {
 		flash = { message, failed };
@@ -129,6 +158,11 @@
 			</p>
 			<p class="text-[0.8em] text-muted">
 				Joined <LocalTime date={a.created_at} options={DATE} />
+				{#if a.invites.invited_by}
+					· invited by
+					<a href="/admin/users/{a.invites.invited_by.username}">@{a.invites.invited_by.username}</a
+					>
+				{/if}
 				{#if a.email}· {a.email}{/if}
 			</p>
 			{#if a.via}
@@ -231,6 +265,43 @@
 						a.role === 'admin' ? 'an admin' : 'a mod'
 				  }: only someone ranked higher can act on them.`}
 		</p>
+	{/if}
+
+	{#if data.role === 'admin'}
+		<section class="flex flex-col gap-2.5" aria-labelledby="invites-title">
+			<h3 id="invites-title" class={sectionTitle}>Invites</h3>
+			<p class="text-[0.9em]">
+				{#if a.invites.invites === 0}
+					No invites to give.
+				{:else}
+					<b>{a.invites.available}</b> to give{#if a.invites.pending > 0}, {a.invites.pending}
+						out as {a.invites.pending === 1 ? 'a link' : 'links'}{/if}.
+				{/if}
+				{#if a.invites.used > 0}
+					<a href="/admin/invites?status=used&username={a.username}"
+						>{a.invites.used}
+						{a.invites.used === 1 ? 'person' : 'people'} joined with their invites</a
+					>.
+				{/if}
+			</p>
+			<form class="flex items-end gap-2.5" onsubmit={saveInvites}>
+				<label class="flex w-28 flex-col" for="invites-count">
+					<span class="text-[0.8em] opacity-80">Invites held</span>
+					<input
+						id="invites-count"
+						class="border-b bg-transparent py-[5px] outline-none focus:border-accent"
+						type="number"
+						min="0"
+						max="1000"
+						required
+						bind:value={invitesValue}
+					/>
+				</label>
+				<Button size="sm" type="submit" disabled={busy || invitesValue === a.invites.invites}
+					>Save</Button
+				>
+			</form>
+		</section>
 	{/if}
 
 	<div class="flex flex-col">

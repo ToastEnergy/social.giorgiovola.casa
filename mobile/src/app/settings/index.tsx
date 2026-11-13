@@ -14,6 +14,11 @@ const sections = [
 		hint: 'Extra profiles and who shares them'
 	},
 	{
+		href: '/settings/notifications',
+		label: 'Notifications',
+		hint: 'Push notifications on this phone'
+	},
+	{
 		href: '/settings/security',
 		label: 'Security',
 		hint: 'Password, passkeys, where you are signed in'
@@ -45,12 +50,7 @@ export default function Settings() {
 					<ChevronRight size={20} color={colors.muted} />
 				</Pressable>
 			))}
-			<View style={{ padding: 20, gap: 10 }}>
-				<Txt bold>Notifications</Txt>
-				<Hint>
-					Unread counts and new messages arrive live while the app is open. Push notifications when
-					it is closed are web push only for now: turn them on in the website’s settings.
-				</Hint>
+			<View style={{ padding: 20 }}>
 				<Hint>
 					Signed in to {server.replace(/^https?:\/\//, '')} as @
 					{me?.account?.username ?? me?.user.username}.

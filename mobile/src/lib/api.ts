@@ -96,14 +96,54 @@ export const getPage = <T>(path: string, cursor?: string | null, limit?: number)
 export const errorMessage = (e: unknown) =>
 	e instanceof Error ? e.message : 'Something went wrong.';
 
-/** Uploads a picked image (POST /uploads, raw bytes) and answers its upload id. */
-export async function uploadImage(image: { uri: string; mimeType?: string | null }) {
-	const data = await (await fetch(image.uri)).blob();
-	const { id } = await api<{ id: string }>('uploads', {
-		method: 'POST',
-		raw: { data, type: image.mimeType || data.type || 'image/jpeg' }
+/**
+ * Uploads a picked image (POST /uploads, raw bytes) and answers its upload id. Through
+ * XMLHttpRequest rather than fetch, which can't report how much of the body went out.
+ */
+export async function uploadImage(
+	image: { uri: string; mimeType?: string | null },
+	options: {
+		/** share uploaded, 0 to 1 */
+		onProgress?: (share: number) => void;
+		server?: string;
+		token?: string | null;
+	} = {}
+) {
+	let data: Blob;
+	try {
+		data = await (await fetch(image.uri)).blob();
+	} catch {
+		throw new ApiError(0, 'The image is no longer on this device.');
+	}
+	const server = options.server ?? auth.server;
+	const token = options.token === undefined ? auth.token : options.token;
+	return new Promise<string>((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open('POST', `${server}/api/v1/uploads`);
+		xhr.setRequestHeader('Accept', 'application/json');
+		xhr.setRequestHeader('Content-Type', image.mimeType || data.type || 'image/jpeg');
+		if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+		xhr.timeout = 120_000;
+		xhr.upload.onprogress = (e) => {
+			if (e.lengthComputable && e.total > 0) options.onProgress?.(e.loaded / e.total);
+		};
+		xhr.onload = () => {
+			let body: Record<string, unknown> = {};
+			try {
+				body = JSON.parse(xhr.responseText) ?? {};
+			} catch {
+				// a proxy's error page
+			}
+			if (xhr.status >= 200 && xhr.status < 300 && typeof body.id === 'string')
+				return resolve(body.id);
+			if (xhr.status === 401 && token && token === auth.token) onUnauthorized?.(token);
+			const message =
+				typeof body.error === 'string' ? body.error : `Request failed (${xhr.status}).`;
+			reject(new ApiError(xhr.status, message, body));
+		};
+		xhr.onerror = xhr.ontimeout = () => reject(new ApiError(0, 'Could not reach the server.'));
+		xhr.send(data);
 	});
-	return id;
 }
 
 /** The body of PUT /me/avatar and the like: the raw image. */

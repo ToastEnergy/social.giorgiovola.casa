@@ -18,7 +18,7 @@ import {
 	TabRow,
 	Txt
 } from '@/components/ui';
-import { api, auth, avatarUrl, errorMessage } from '@/lib/api';
+import { api, auth, avatarImage, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
 import { count, shortDate, websiteLabel } from '@/lib/format';
 import { actionHref, moderate, untilLabel } from '@/lib/moderation';
@@ -145,7 +145,7 @@ export default function UserScreen() {
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
 					<Pressable
 						accessibilityLabel="Open profile picture"
-						onPress={() => viewImages([{ uri: avatarUrl(profile, 512) }])}
+						onPress={() => viewImages([avatarImage(profile, 512)])}
 					>
 						<Avatar user={profile} size={64} />
 					</Pressable>

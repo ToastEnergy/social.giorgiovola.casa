@@ -12,7 +12,7 @@ import {
 	type TextStyle,
 	type ViewStyle
 } from 'react-native';
-import { avatarUrl } from '@/lib/api';
+import { avatarImage } from '@/lib/api';
 import { colors, fonts } from '@/lib/theme';
 import type { User } from '@/lib/types';
 
@@ -221,7 +221,7 @@ export function Avatar({
 }) {
 	const image = (
 		<Image
-			source={{ uri: avatarUrl(user, size * 3) }}
+			source={avatarImage(user, size * 3)}
 			style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#222' }}
 			contentFit="cover"
 			transition={100}

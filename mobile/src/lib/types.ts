@@ -149,6 +149,8 @@ export type Instance = {
 	version: string;
 	motd: string;
 	registration_open: boolean;
+	/** everything but signing in needs the token (images too) */
+	members_only?: boolean;
 	limits: Record<string, number>;
 	gifs: GifConfig | null;
 };

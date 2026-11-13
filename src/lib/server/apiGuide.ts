@@ -281,8 +281,10 @@ GET /instance                                                  public
   endpoint except GET /instance and the sign-in ones below (/auth/login, /auth/register,
   /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
   instance is members only: sign in first" } without a token or the session cookie, and so
-  do images, avatars and social cards outside the API. "motd" is "" for signed-out callers
-  there. Bot tokens count as signed in.
+  do images, avatars and social cards outside the API. Load those with the same
+  \`Authorization: Bearer …\` header: on a members-only instance it is read on /uploads/,
+  /avatar/, /avatars/ and /previews/ too. "motd" is "" for signed-out callers there. Bot
+  tokens count as signed in.
 
 ### Signing in
 

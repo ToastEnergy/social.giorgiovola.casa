@@ -524,7 +524,7 @@ export function ChatView(props: Props) {
 								) : null}
 								{item.images.length ? (
 									<View style={{ width: 230 }}>
-										<ImageGrid images={item.images} isPrivate height={200} />
+										<ImageGrid images={item.images} height={200} />
 									</View>
 								) : null}
 								{item.gif ? (

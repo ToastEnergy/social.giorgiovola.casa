@@ -60,7 +60,9 @@ export const users = pgTable(
 		mute_reason: text('mute_reason'),
 		// when a temporary ban or mute is lifted (src/lib/server/moderation.ts); null is for good
 		banned_until: timestamptz('banned_until'),
-		muted_until: timestamptz('muted_until')
+		muted_until: timestamptz('muted_until'),
+		// invites an admin gave the account that it hasn't turned into codes yet (see invites)
+		invites: integer('invites').notNull().default(0)
 	},
 	(t) => [
 		index('users_owner_id').on(t.owner_id),
@@ -72,6 +74,7 @@ export const users = pgTable(
 			.on(t.muted_until)
 			.where(sql`${t.muted_until} IS NOT NULL`),
 		check('users_role_check', sql`${t.role} IN ('user', 'mod', 'admin')`),
+		check('users_invites_check', sql`${t.invites} >= 0`),
 		check(
 			'users_identity_check',
 			sql`(${t.owner_id} IS NULL AND ${t.email} IS NOT NULL AND ${t.password} IS NOT NULL AND ${t.salt} IS NOT NULL)
@@ -673,4 +676,32 @@ export const gif_favorites = pgTable(
 		primaryKey({ columns: [t.user_id, t.slug] }),
 		index('gif_favorites_user_id_created_at').on(t.user_id, t.created_at)
 	]
+);
+
+// Single use codes that let someone sign up (src/lib/server/invites.ts). Admins give accounts a
+// number of invites (users.invites), which they turn into codes one at a time, or create codes
+// themselves. A code counts once it is used; one revoked or expired unused gives the invite back.
+export const invites = pgTable(
+	'invites',
+	{
+		id: serial('id').primaryKey(),
+		// kept readable so the person who made it can copy it again; single use and short lived
+		code: text('code').notNull().unique(),
+		// the account that created it; null once that account is deleted
+		inviter_id: integer('inviter_id').references(() => users.id, { onDelete: 'set null' }),
+		// made by an admin outside any balance, so revoking it gives nothing back
+		by_staff: boolean('by_staff').notNull().default(false),
+		// who it is for, only shown to the person who made it and to admins
+		note: text('note').notNull().default(''),
+		created_at: timestamptz('created_at').notNull().defaultNow(),
+		// null never expires
+		expires_at: timestamptz('expires_at'),
+		used_at: timestamptz('used_at'),
+		// the account that signed up with it
+		used_by: integer('used_by')
+			.unique()
+			.references(() => users.id, { onDelete: 'set null' }),
+		revoked_at: timestamptz('revoked_at')
+	},
+	(t) => [index('invites_inviter_id').on(t.inviter_id, t.id)]
 );

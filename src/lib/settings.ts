@@ -8,6 +8,7 @@ export const settingsSections: SettingsSection[] = [
 	{ slug: 'accounts', label: 'Accounts', title: 'Accounts & identities' },
 	{ slug: 'notifications', label: 'Notifications', title: 'Notifications' },
 	{ slug: 'security', label: 'Security', title: 'Security' },
+	{ slug: 'invites', label: 'Invites', title: 'Invites' },
 	{ slug: 'developers', label: 'Developers', title: 'Developers' }
 ];
 

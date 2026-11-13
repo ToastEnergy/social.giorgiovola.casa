@@ -519,7 +519,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/instance',
 				auth: 'public',
 				summary:
-					'message of the day, whether registration is open, `members_only`, limits, and `gifs` (the KLIPY app key for GIF search, null when off)'
+					'message of the day, whether an invite is needed (`invite_required`), `members_only`, limits, and `gifs` (the KLIPY app key for GIF search, null when off)'
 			},
 			{
 				method: 'POST',
@@ -532,7 +532,13 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/auth/register',
 				auth: 'public',
-				summary: '`{ signup_password, email, name, username, password }` → a token, like login'
+				summary: '`{ invite_code, email, name, username, password }` → a token, like login'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/invites/:code',
+				auth: 'public',
+				summary: "whether an invite code works, and who it is from (404 when it doesn't)"
 			},
 			{
 				method: 'POST',
@@ -705,6 +711,19 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/me/bots/:username/token',
 				auth: 'account',
 				summary: 'a new token for the bot, the old one stops working'
+			},
+			{
+				method: 'GET / POST',
+				path: '/api/v1/me/invites',
+				auth: 'account',
+				summary:
+					'your invites (held, out, available) and codes / turn one into a single use code `{ note? }`'
+			},
+			{
+				method: 'DELETE',
+				path: '/api/v1/me/invites/:id',
+				auth: 'account',
+				summary: 'revoke a pending code; the invite comes back'
 			},
 			{
 				method: 'GET / POST / DELETE',
@@ -1148,6 +1167,36 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/admin/motd',
 				auth: 'admin',
 				summary: 'message of the day / set `{ motd }`'
+			},
+			{
+				method: 'GET / POST',
+				path: '/api/v1/admin/invites?status=&username=',
+				auth: 'admin',
+				summary: 'every invite code / create codes of your own `{ note?, count?, days? }`'
+			},
+			{
+				method: 'DELETE',
+				path: '/api/v1/admin/invites/:id',
+				auth: 'admin',
+				summary: 'revoke any pending code'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/admin/invites/summary',
+				auth: 'admin',
+				summary: 'invites held, available, out as codes and used, and who holds them'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/admin/invites/grant',
+				auth: 'admin',
+				summary: "give every account that isn't banned `{ count }` more invites"
+			},
+			{
+				method: 'PUT',
+				path: '/api/v1/admin/users/:username/invites',
+				auth: 'admin',
+				summary: 'set how many invites an account holds `{ invites }`'
 			},
 			{
 				method: 'GET / DELETE',

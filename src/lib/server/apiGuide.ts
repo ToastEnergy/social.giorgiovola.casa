@@ -267,7 +267,7 @@ a bot). Rate limits are per profile per minute unless stated.
 
 GET /instance                                                  public
   { "api_version": 1, "version": "<build>", "motd": "message of the day",
-    "registration_open": true, "members_only": false, "limits": { "postContent": ${LIMITS.postContent},
+    "registration_open": true, "invite_required": true, "members_only": false, "limits": { "postContent": ${LIMITS.postContent},
     "messageContent": ${LIMITS.messageContent}, "name": ${LIMITS.name}, "bio": ${LIMITS.bio},
     "username": ${LIMITS.username}, "postImages": ${LIMITS.postImages}, "messageImages": ${LIMITS.messageImages}, "imageBytes": ${LIMITS.imageBytes},
     "pollOptionsMin": ${LIMITS.pollOptionsMin}, "pollOptionsMax": ${LIMITS.pollOptionsMax},
@@ -277,9 +277,12 @@ GET /instance                                                  public
     "gifs": { "provider": "klipy", "app_key": "…", "content_filter": "medium" } | null }
   "gifs" is null when GIFs are off on this instance; otherwise what you need to search KLIPY
   yourself (see GIFs).
+  "invite_required": signing up needs an invite code (see POST /auth/register). Only the very
+  first account of an instance signs up without one. "registration_open" is always true:
+  anyone with an invite can sign up.
   "members_only": true when the instance is closed to signed-out readers. Then every
   endpoint except GET /instance and the sign-in ones below (/auth/login, /auth/register,
-  /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
+  GET /invites/:code, /auth/passkeys/options, /auth/passkeys/login, /auth/logout) answers 401 { "error": "This
   instance is members only: sign in first" } without a token or the session cookie, and so
   do images, avatars and social cards outside the API. Load those with the same
   \`Authorization: Bearer …\` header: on a members-only instance it is read on /uploads/,
@@ -300,11 +303,25 @@ POST /auth/login                                               public
   (The website sends "session": "cookie" to get a cookie instead of a token.)
 
 POST /auth/register                                            public
-  Body: { "signup_password": "the instance's invite password", "email", "name",
+  Body: { "invite_code": "the code someone gave you", "email", "name",
           "username", "password" (${LIMITS.passwordMin}-${LIMITS.passwordMax} characters), "client_name"? }
-  201: like /auth/login. 403 "Registration is closed." when GET /instance says
-  registration_open is false, or a wrong signup password (rate limited per IP); 400 with
-  every validation problem in one message ("Email already in use. Username already in use.").
+  Signing up needs an invite: a single use code from someone already here (an invite link is
+  ${origin}/register?invite=<code>; the whole link is accepted as the code too, and so are
+  upper case letters, spaces and dashes). Not needed when GET /instance says
+  "invite_required": false (the instance has no account yet). "signup_password" is accepted
+  as an old name of "invite_code".
+  201: like /auth/login. 400 "You need an invite code to sign up." when it is missing; 403
+  "This invite code is not valid: …" when it is wrong, used, revoked or expired, or the
+  person who made it was banned or no longer has the invite; 429 after 10 wrong codes from
+  one IP, or 50 overall, in 15 minutes (shared with GET /invites/:code); 400 with every
+  validation problem in one message ("Email already in use. Username already in use.").
+  The code is only used up when the account is created.
+
+GET /invites/:code                                             public
+  Checks an invite code before signing up (the sign up page shows who invited you).
+  200: { "code": "normalized code", "inviter": User | null, "expires_at": "…" | null }.
+  404 { "error": "This invite code is not valid: …" } when it can't be used. Wrong codes
+  count against the same limits as POST /auth/register (429).
 
 POST /auth/passkeys/options                                    public
   Starts a passkey (WebAuthn) sign-in. 200: the WebAuthn PublicKeyCredentialRequestOptions
@@ -405,6 +422,26 @@ PUT /me/bots/:username/avatar  (raw image body) / DELETE /me/bots/:username/avat
 POST /me/bots/:username/token  → { "username", "token" }: a new token, the old one stops
 DELETE /me/bots/:username      → 204, deletes the bot and its posts
   All bot management: 10 actions a minute.
+
+GET /me/invites                                                account, paginated (default 50)
+  Admins give accounts invites; each one becomes a single use code (an invite link) when the
+  account creates it. A code only uses up the invite when someone signs up with it, so
+  revoking it or letting it expire gives the invite back.
+  200: { "invites": 3,     // held, codes out included
+         "pending": 1,     // codes out, waiting to be used
+         "available": 2,   // invites - pending: codes you can still create
+         "items": [Invite], "next_cursor" }   newest first
+  Invite: { "id", "code", "url": "${origin}/register?invite=<code>", "note",
+            "status": "pending" | "used" | "expired" | "revoked", "by_staff": false,
+            "created_at", "expires_at": "…" | null, "used_at": "…" | null,
+            "used_by": User | null }   // the account that signed up with it
+POST /me/invites   { "note"? (max 100, who it is for; only you and admins see it) }   account
+  Creates a code from one of your invites. It expires after 14 days. 201: Invite plus
+  "balance": { "invites", "pending", "available" }. 403 when you have no invite left to give
+  (none at all, or all out as codes), 429 after 20 in an hour.
+DELETE /me/invites/:id → { "message" }                         account
+  Revokes one of your pending codes; the invite comes back. 404 not yours, 409 already used,
+  revoked or expired.
 
 ### Push notifications (web push)
 
@@ -730,7 +767,9 @@ GET /admin/users/:username   staff
   The account behind :username: the fields above (without open_reports), plus
   "email" (admins only, null for mods), "via" (the identity you asked for, or null),
   "stats": { "posts", "followers", "open_reports", "reports" (all reports against it),
-             "reports_made", "log_entries" }. 404 unknown user.
+             "reports_made", "log_entries" },
+  "invites": { "invites", "pending", "available" (as in GET /me/invites), "used" (people who
+               signed up with its codes), "invited_by": User | null }. 404 unknown user.
 PUT /admin/users/:username/ban   staff
   Body: { "reason"? (max 200, shown to them), "duration"? }. duration: seconds, a whole
   number from 60 to 31536000 (a year); null or missing bans for good. Signs the account out
@@ -741,6 +780,10 @@ PUT /admin/users/:username/mute   { "reason"?, "duration"? } like ban → { "mes
 DELETE /admin/users/:username/mute → { "message" }                           staff
 PUT /admin/users/:username/role   { "role": "mod" | "user" } → { "message" }   admin
 PUT /admin/users/:username/password   { "password" } → { "message" }  admin; signs them out
+PUT /admin/users/:username/invites   { "invites": 0-1000 } → { "invites", "message" }   admin
+  Sets how many invites the account holds (codes out included). Going below the codes it
+  has out revokes the newest of them. Works on any account, staff included. Logged as
+  action "invites" with details { "from", "to", "revoked" }.
 POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" }   staff
   A note for the other staff, kept in the moderation log of the account. Works on any
   account, also ones you can't act on.
@@ -748,7 +791,8 @@ POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" } 
 GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest first
   ?username= one account's entries (an identity finds its owner), ?actor= one staff
   member's, ?action= one of: ban, unban, mute, unmute, role, password, delete_post,
-  delete_group, note, report_resolved, report_dismissed, report_reopened (400 for another).
+  delete_group, note, report_resolved, report_dismissed, report_reopened, invites,
+  invites_everyone (400 for another).
   Items:
   { "id", "action", "actor": "username" | null, "target": "username" | null,
     "target_profile": User | null,   // null once the account is gone
@@ -759,11 +803,34 @@ GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest 
                                       //   "to" }; report_*: { "reports": [ids], "kind",
                                       //   "post_id" }; delete_group: { "group_id", "name",
                                       //   "owner", "members": [usernames], "messages" }
-                                      //   (target null); expired unban/unmute: { "expired": true }
+                                      //   (target null); invites: { "from", "to",
+                                      //   "revoked" }; invites_everyone: { "count",
+                                      //   "accounts" } (target null); expired
+                                      //   unban/unmute: { "expired": true }
     "created_at", "system": false }   // system: no staff member (a ban that ran out)
 
 GET /admin/motd → { "motd", "custom", "default", "max" }                     admin
 PUT /admin/motd   { "motd": "one line" ("" resets) } → { "motd", "message" }   admin
+
+GET /admin/invites?status=all|pending|used|expired|revoked&username=   admin, paginated (default 50)
+  Every invite code, newest first: Invite (see GET /me/invites) plus "inviter": User | null
+  (who made it; null once deleted). ?username= codes made or used by that account.
+POST /admin/invites   admin
+  Body: { "note"? (max 100), "count"? (1-50, default 1), "days"? (1-365, default 14; null
+  never expires) }. Codes of your own that don't come out of anyone's invites
+  ("by_staff": true). 201: { "items": [Invite] }.
+DELETE /admin/invites/:id → { "message" }   admin
+  Revokes any pending code (one from an account's invites goes back to it). 404, 409 as
+  DELETE /me/invites/:id.
+GET /admin/invites/summary   admin
+  { "held" (invites accounts hold), "available" (still to turn into codes), "pending" (codes
+    out from accounts' invites), "pending_staff" (admin codes out), "used" (codes ever used),
+    "accounts": [ { "username", "name", "avatar", "invites", "pending", "available" } ] }
+  accounts: every account holding invites, most first.
+POST /admin/invites/grant   { "count": 1-100 }   admin
+  Gives every account that isn't banned count more invites (at most 1000 each). 200:
+  { "accounts": number given to, "message" }. Logged as "invites_everyone".
+  Invite admin actions share the moderation rate limit (429 slow down).
 
 GET /admin/groups/:id   admin
   Any group chat by its id (the number in /messages/groups/:id), whether you are in it or

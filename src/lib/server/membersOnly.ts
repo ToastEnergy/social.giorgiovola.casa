@@ -25,6 +25,8 @@ function isPublic(event: RequestEvent) {
 	const path = event.url.pathname.replace(/\/$/, '') || '/';
 	// the bot API authenticates every request itself (a bot token), so it is never anonymous
 	if (path.startsWith('/api/bot/')) return true;
+	// the sign up page checks the invite code it was opened with (who invited, nothing else)
+	if (/^\/api\/v1\/invites\/[^/]+$/.test(path)) return true;
 	if (path.startsWith('/api/')) return PUBLIC_API.has(path);
 	// the API reference, which holds no user content
 	if (path === '/api.txt') return true;

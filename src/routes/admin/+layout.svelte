@@ -10,7 +10,12 @@
 		{ href: '/admin', label: 'Reports', count: data.overview.open_reports },
 		{ href: '/admin/users', label: 'Accounts', count: 0 },
 		{ href: '/admin/log', label: 'Log', count: 0 },
-		...(data.role === 'admin' ? [{ href: '/admin/settings', label: 'Settings', count: 0 }] : [])
+		...(data.role === 'admin'
+			? [
+					{ href: '/admin/invites', label: 'Invites', count: 0 },
+					{ href: '/admin/settings', label: 'Settings', count: 0 }
+			  ]
+			: [])
 	]);
 
 	// the reports tab is the panel's root, the others own everything under them

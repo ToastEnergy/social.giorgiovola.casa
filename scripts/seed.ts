@@ -55,6 +55,12 @@
 //     mallory_hidden   owned by banned mallory, shared with dev: must NOT show up
 //   mallory: a banned account (can't log in), member of dev_with_banned
 //
+// invites (Settings → Invites, Moderation → Invites):
+//   every account holds 2, dev 5. alice has one code out ("for my cousin") and brought in judy;
+//   bob has a revoked and an expired code (both given back). dev has an admin code that never
+//   expires, printed at the end: sign up a new account with it (fixed locally, random on a
+//   public server)
+//
 // generated messages start with "#n" (their position in the thread) so you can see where the
 // chat opened.
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -93,6 +99,13 @@ async function hashPassword(password: string) {
 	);
 	return { salt, hash: 'scrypt$' + key.toString('hex') };
 }
+
+// invite codes: 12 of a-z and 2-9 (see src/lib/server/invites.ts)
+const inviteCode = (fixed: string) =>
+	local
+		? fixed
+		: Array.from(randomBytes(12), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+const SEED_INVITE = inviteCode('devinvite234');
 
 const q = (s: string) => `'${s.replaceAll("'", "''")}'`;
 const uid = (username: string) => `(SELECT id FROM users WHERE username = ${q(username)})`;
@@ -602,6 +615,29 @@ async function seed(db: postgres.Sql) {
 		`DELETE FROM group_members WHERE group_id = ${gid(R)} AND user_id = ${uid('alice')};`,
 		groupRun(R, ['erin'], { from: 21, to: 23, every: 20, endAgo: 60 }),
 
+		// --- invites ---
+		`UPDATE users SET invites = 2 WHERE owner_id IS NULL AND banned_at IS NULL;`,
+		`UPDATE users SET invites = 5 WHERE username = 'dev';`,
+		`INSERT INTO invites (code, inviter_id, note, created_at, expires_at) VALUES (${q(
+			inviteCode('alicecousin2')
+		)}, ${uid('alice')}, 'for my cousin', ${ago(60)}, now() + interval '13 days');`,
+		// judy came in with one of alice's invites, which is used up
+		`INSERT INTO invites (code, inviter_id, note, created_at, expires_at, used_at, used_by) VALUES (${q(
+			inviteCode('alicejudy234')
+		)}, ${uid('alice')}, 'judy', ${ago(3000)}, ${ago(3000 - 14 * 24 * 60)}, ${ago(2900)}, ${uid(
+			'judy'
+		)});`,
+		`UPDATE users SET invites = 3 WHERE username = 'alice';`,
+		`INSERT INTO invites (code, inviter_id, created_at, expires_at, revoked_at) VALUES (${q(
+			inviteCode('bobrevoked23')
+		)}, ${uid('bob')}, ${ago(500)}, now() + interval '13 days', ${ago(400)});`,
+		`INSERT INTO invites (code, inviter_id, created_at, expires_at) VALUES (${q(
+			inviteCode('bobexpired23')
+		)}, ${uid('bob')}, ${ago(30 * 24 * 60)}, ${ago(16 * 24 * 60)});`,
+		`INSERT INTO invites (code, inviter_id, by_staff, note) VALUES (${q(SEED_INVITE)}, ${uid(
+			'dev'
+		)}, true, 'seed: sign up with this');`,
+
 		'COMMIT;'
 	].join('\n');
 
@@ -615,6 +651,7 @@ try {
 	if (await seed(db)) {
 		console.log('> seeded: dev + alice..judy, chat and identity test cases (see scripts/seed.ts)');
 		if (local) console.log(`> login: dev / ${SEED_PASSWORD}, dev_bot token: ${SEED_BOT_TOKEN}`);
+		console.log(`> invite: ${publicUrl ?? 'http://localhost:5173'}/register?invite=${SEED_INVITE}`);
 	} else {
 		console.log('> seed: the database already has accounts, nothing to do');
 	}

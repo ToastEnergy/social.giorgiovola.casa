@@ -37,6 +37,7 @@ import { MAX_MOTD, setMotd } from './motd.js';
 import { deleteGroup, groupSummary } from './groups.js';
 import { removeUploads } from './images.js';
 import { publishGroupUpdated } from './realtime.js';
+import { accountInvites } from './invites.js';
 
 export const ADMIN_FILTERS = ['all', 'banned', 'muted', 'staff', 'reported'] as const;
 export type AdminFilter = (typeof ADMIN_FILTERS)[number];
@@ -58,7 +59,9 @@ export const LOG_ACTIONS: LogAction[] = [
 	'note',
 	'report_resolved',
 	'report_dismissed',
-	'report_reopened'
+	'report_reopened',
+	'invites',
+	'invites_everyone'
 ];
 
 /** open reports against the account or any of its identities */
@@ -249,7 +252,8 @@ export async function getAccount(locals: App.Locals, username: string) {
 		via: target.username !== username.toLowerCase() ? username.toLowerCase() : null,
 		...(await loadIdentities([id]))(id),
 		...permissions(locals, target),
-		stats: counts
+		stats: counts,
+		invites: await accountInvites(target.id)
 	};
 }
 

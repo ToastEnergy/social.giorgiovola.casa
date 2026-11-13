@@ -134,6 +134,15 @@ export type Account = AccountState & {
 		reports_made: number;
 		log_entries: number;
 	};
+	invites: {
+		/** held, codes out included */
+		invites: number;
+		pending: number;
+		available: number;
+		/** people who signed up with its codes */
+		used: number;
+		invited_by: Profile | null;
+	};
 };
 
 /** GET /api/v1/admin/overview */
@@ -161,7 +170,9 @@ export const LOG_ACTIONS: Record<string, string> = {
 	note: 'Note',
 	report_resolved: 'Report resolved',
 	report_dismissed: 'Report dismissed',
-	report_reopened: 'Report reopened'
+	report_reopened: 'Report reopened',
+	invites: 'Invites changed',
+	invites_everyone: 'Invites given to everyone'
 };
 
 /** "in 3 days", "2 hours ago": for when a ban ends. */

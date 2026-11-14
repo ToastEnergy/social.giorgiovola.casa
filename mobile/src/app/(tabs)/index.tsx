@@ -1,13 +1,15 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
-import { TabSwipe } from '@/components/TabSwipe';
+import { HomePager } from '@/components/HomePager';
+import { Inbox } from '@/components/Inbox';
 import { Notice, TabRow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useBus } from '@/lib/bus';
+import { setHomeFocused, useHomePage } from '@/lib/homePage';
 import { usePostSync } from '@/lib/posts';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -17,7 +19,24 @@ import * as SecureStore from 'expo-secure-store';
 
 type Feed = 'all' | 'following';
 
+// the feed, and a swipe to the left away (like Instagram), the messages
 export default function Home() {
+	const { page } = useHomePage();
+	const navigation = useNavigation();
+	useEffect(() => {
+		navigation.setOptions({ title: page === 1 ? 'Messages' : 'Home' });
+	}, [navigation, page]);
+	// the tab bar lights up the messages icon while they show here
+	useFocusEffect(
+		useCallback(() => {
+			setHomeFocused(true);
+			return () => setHomeFocused(false);
+		}, [])
+	);
+	return <HomePager pages={[<Feed key="feed" />, <Inbox key="inbox" active={page === 1} />]} />;
+}
+
+function Feed() {
 	const { me, profileKey } = useSession();
 	const [feed, setFeedState] = useState<Feed>('all');
 	const [pinned, setPinned] = useState<Post[]>([]);
@@ -88,9 +107,8 @@ export default function Home() {
 		</View>
 	);
 
-	// swiping left opens the messages, like the next tab over
 	return (
-		<TabSwipe left="/messages">
+		<View style={{ flex: 1 }}>
 			<PostList
 				path={`timeline?feed=${feed}`}
 				list={{ ...list, items: list.items.filter((p) => !pinnedIds.has(p.id)) }}
@@ -121,6 +139,6 @@ export default function Home() {
 			>
 				<Plus size={28} strokeWidth={2.5} color={colors.background} />
 			</Pressable>
-		</TabSwipe>
+		</View>
 	);
 }

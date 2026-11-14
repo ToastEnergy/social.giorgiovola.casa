@@ -23,8 +23,16 @@ const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 export const updatesSupported =
 	Platform.OS === 'android' && !isRunningInExpoGo() && !__DEV__ && !!repo;
 
-/** the version this build was made with: app.config.js sets it from the mobile-v* tag */
-export const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
+/**
+ * The installed app's versionName, which prebuild sets from the mobile-v* tag (app.config.js).
+ * Not Constants.expoConfig.version: that is the config Gradle embeds, which isn't guaranteed to be
+ * evaluated with the tag's version (1.0.3 shipped with 1.0.0 in it and kept offering itself).
+ * Required, not imported: Expo Go lacks expo-application's native module (see push.tsx).
+ */
+export const currentVersion: string = updatesSupported
+	? (require('expo-application') as typeof import('expo-application')).nativeApplicationVersion ??
+	  '0.0.0'
+	: '0.0.0';
 
 export type UpdateState =
 	| { status: 'idle' }

@@ -25,7 +25,11 @@ const sections = [
 		hint: 'Password, passkeys, where you are signed in'
 	},
 	{ href: '/settings/invites', label: 'Invites', hint: 'Invite links for people to join' },
-	{ href: '/settings/developers', label: 'Developers', hint: 'Access tokens and bots' }
+	{
+		href: '/settings/developers',
+		label: 'Developers',
+		hint: 'API documentation, access tokens and bots'
+	}
 ];
 
 /** "2 to give, 1 link out": the invites row's hint once the server says */

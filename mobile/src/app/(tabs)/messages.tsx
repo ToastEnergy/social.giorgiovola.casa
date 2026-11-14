@@ -3,7 +3,7 @@ import { BellOff, SquarePen, Users } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { refreshColors } from '@/components/PostList';
-import { TabSwipe } from '@/components/TabSwipe';
+import { SHIFT_MS, TabSwipe } from '@/components/TabSwipe';
 import { Avatar, Button, ListState, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
@@ -37,9 +37,18 @@ export default function Messages() {
 		}
 	}, []);
 
+	// fresh each time the tab is opened; once there are chats to show, only after the tab
+	// transition, so the list doesn't re-render while it slides in
+	const loaded = useRef(false);
 	useFocusEffect(
 		useCallback(() => {
-			load();
+			if (!loaded.current) {
+				loaded.current = true;
+				load();
+				return;
+			}
+			const later = setTimeout(load, SHIFT_MS);
+			return () => clearTimeout(later);
 		}, [load])
 	);
 

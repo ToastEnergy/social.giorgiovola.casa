@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppUpdate } from '@/components/AppUpdate';
 import { Overlays } from '@/components/overlays';
 import { PostingStatus } from '@/components/PostingStatus';
 import { Button, Txt } from '@/components/ui';
@@ -126,6 +127,7 @@ export default function RootLayout() {
 						<PostingStatus />
 						<Overlays />
 						<PushNotifications />
+						<AppUpdate />
 					</SessionProvider>
 				</ThemeProvider>
 			</SafeAreaProvider>

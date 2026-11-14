@@ -2,8 +2,10 @@ import { router } from 'expo-router';
 import { Tabs } from 'expo-router/tabs';
 import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
+import { Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '@/components/overlays';
+import { SHIFT_MS } from '@/components/TabSwipe';
 import { Avatar } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -71,8 +73,15 @@ export default function TabsLayout() {
 					fontSize: 11
 				},
 				sceneStyle: { backgroundColor: colors.background },
-				// tabs slide in from the side they sit on, which also makes swiping between them read right
-				animation: 'shift'
+				// tabs slide in from the side they sit on, which also makes swiping between them read right.
+				// the timing is shared with TabSwipe, which hands a swipe over to this same transition, so
+				// a swipe and a tap on the tab bar look alike; easing out starts it moving at once, so a
+				// swipe doesn't stall when the finger lifts. native driven, like the default
+				animation: 'shift',
+				transitionSpec: {
+					animation: 'timing',
+					config: { duration: SHIFT_MS, easing: Easing.out(Easing.cubic) }
+				}
 			}}
 		>
 			<Tabs.Screen
@@ -89,6 +98,9 @@ export default function TabsLayout() {
 				name="messages"
 				options={{
 					title: 'Messages',
+					// mounted with the home tab rather than on the first visit, so the first swipe over isn't
+					// slowed down by building the screen; it only loads its chats once it's opened
+					lazy: false,
 					tabBarAccessibilityLabel: 'Messages',
 					tabBarBadge: badge(unread.messages),
 					tabBarIcon: ({ color, focused }) => (

@@ -12,10 +12,7 @@ const follow = (following: boolean): RequestHandler =>
 		if (!target) return botError(404, 'User not found');
 		if (target.id === bot.user.id) return botError(400, "A bot can't follow itself");
 		if (botLimited(bot.user.id, 'follows', MAX_TOGGLES)) return botError(429, 'Slow down');
-		if (await setFollowing(bot.user.id, target.id, following)) {
-			// the trigger created the notification
-			void publishFollow(bot.user.id, target.id);
-		}
+		void publishFollow(await setFollowing(bot.user.id, target.id, following));
 		return Response.json(await getFollowStats(target.id, bot.user.id));
 	});
 

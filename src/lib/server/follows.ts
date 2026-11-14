@@ -1,22 +1,31 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db, follows, users } from './db/index.js';
+import { onFollow, type Notification } from './notify.js';
 import type { FollowedBy, FollowListEntry, ProfileCard } from '#lib/types.js';
 
-/** Returns true when this created a follow (rather than finding it already there). */
-export async function setFollowing(followerId: number, followedId: number, following: boolean) {
-	if (following) {
-		const inserted = await db
-			.insert(follows)
-			.values({ follower_id: followerId, followed_id: followedId })
-			.onConflictDoNothing()
-			.returning({ id: follows.follower_id });
-		return inserted.length > 0;
-	}
+/**
+ * Follows or unfollows. Returns the notifications a new follow created (none when it was already
+ * there, or the profile was followed before), for publishFollow.
+ */
+export async function setFollowing(
+	followerId: number,
+	followedId: number,
+	following: boolean
+): Promise<Notification[]> {
+	if (following)
+		return db.transaction(async (tx) => {
+			const inserted = await tx
+				.insert(follows)
+				.values({ follower_id: followerId, followed_id: followedId })
+				.onConflictDoNothing()
+				.returning({ id: follows.follower_id });
+			return inserted.length ? onFollow(tx, followerId, followedId) : [];
+		});
 	await db
 		.delete(follows)
 		.where(and(eq(follows.follower_id, followerId), eq(follows.followed_id, followedId)));
-	return false;
+	return [];
 }
 
 /** Follower / following counts of a profile, and whether `viewerId` follows it. */

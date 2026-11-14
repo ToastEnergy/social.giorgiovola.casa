@@ -55,6 +55,14 @@
 				}
 			],
 			[
+				"expo-media-library",
+				{
+					"photosPermission": "Choose images for your posts, messages and profile picture.",
+					"savePhotosPermission": "Save images from posts and messages to your photos.",
+					"granularPermissions": ["photo"]
+				}
+			],
+			[
 				"expo-notifications",
 				{
 					"icon": "./assets/notification-icon.png",

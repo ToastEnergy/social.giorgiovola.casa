@@ -692,7 +692,12 @@ export function ChatView(props: Props) {
 										</View>
 									) : null}
 									{item.images.length ? (
-										<ImageGrid images={item.images} width={230} height={300} />
+										<ImageGrid
+											images={item.images}
+											sizes={item.image_sizes}
+											width={230}
+											height={300}
+										/>
 									) : null}
 									{item.gif ? (
 										<View style={{ width: 230 }}>

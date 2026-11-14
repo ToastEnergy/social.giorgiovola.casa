@@ -186,6 +186,8 @@ export type Message = {
 	recipient: string;
 	content: string;
 	images: string[];
+	/** the size of each image, in the order of `images`; null or missing for older uploads */
+	image_sizes?: ImageSize[] | null;
 	gif: Gif | null;
 	created_at: string;
 	edited_at: string | null;

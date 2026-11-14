@@ -165,9 +165,14 @@ function SingleImage({
 				style={{ flex: 1, borderRadius: 5, backgroundColor: '#111' }}
 				// contain: if the box guessed the shape wrong, the image still shows whole
 				contentFit="contain"
+				// measuring needs the image's own size: downscaled to the box, android reports the
+				// decoded size, which follows the box, and resizing the box loads it again, so the
+				// two chased each other (a flashing image in a box of the wrong shape)
+				allowDownscaling={!!size}
 				transition={100}
 				onLoad={(e) => {
-					if (size) return;
+					// once per image: later loads (a resize, a recycled row) must not move it again
+					if (size || ratios.has(url)) return;
 					const next = e.source.width / e.source.height;
 					if (!next || !isFinite(next)) return;
 					ratios.set(url, next);

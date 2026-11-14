@@ -1,6 +1,6 @@
 import { isRunningInExpoGo } from 'expo';
 import Constants from 'expo-constants';
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
 import { router, usePathname } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,6 +21,18 @@ import { colors } from './theme';
  * listener throws there), and iOS needs a paid Apple developer account */
 export const pushInExpoGo = isRunningInExpoGo();
 export const pushSupported = Platform.OS === 'android' && !pushInExpoGo;
+
+/**
+ * expo-notifications, only where push works. Required, not imported: loading it pulls in
+ * expo-application, whose native module Expo Go lacks, and the throw took the whole app down
+ * before any of the checks above could run.
+ */
+export const Notifications: typeof NotificationsModule | null = pushSupported
+	? (require('expo-notifications') as typeof NotificationsModule)
+	: null;
+
+// AndroidImportance values: the enum is in the module, which isn't loaded everywhere
+export const importance = { none: 2, default: 5, high: 6 } as const;
 
 type PushState = {
 	/** the choice in the settings, for the whole phone; null until read from storage */
@@ -65,13 +77,13 @@ export const channels = [
 		id: 'messages',
 		name: 'Messages',
 		description: 'Direct and group messages',
-		importance: Notifications.AndroidImportance.HIGH
+		importance: importance.high
 	},
 	{
 		id: 'activity',
 		name: 'Activity',
 		description: 'Likes, replies, mentions, follows and the rest of your notifications',
-		importance: Notifications.AndroidImportance.DEFAULT
+		importance: importance.default
 	}
 ] as const;
 
@@ -116,7 +128,7 @@ export function appPath(url: string): string | null {
 let currentPath = '';
 let currentProfile = '';
 
-Notifications.setNotificationHandler({
+Notifications?.setNotificationHandler({
 	// only asked while the app is open: shown unless it is about the screen already open
 	handleNotification: async (notification) => {
 		const data = (notification.request.content.data ?? {}) as PushData;
@@ -135,6 +147,7 @@ Notifications.setNotificationHandler({
 
 /** Creates the channels, so Android 13+ can ask for the permission and the settings list them. */
 async function createChannels() {
+	if (!Notifications) return;
 	for (const { id, ...channel } of channels)
 		await Notifications.setNotificationChannelAsync(id, { ...channel, lightColor: colors.accent });
 }
@@ -144,6 +157,7 @@ async function createChannels() {
  * Firebase. Turning push off still needs the token, to unregister it, but not the permission.
  */
 async function deviceToken(ask: boolean): Promise<string | null> {
+	if (!Notifications) return null;
 	if (ask) {
 		await createChannels();
 		let permission = await Notifications.getPermissionsAsync();
@@ -166,6 +180,7 @@ async function deviceToken(ask: boolean): Promise<string | null> {
 
 /** Asks for the permission from the settings; whether it is granted now. */
 export async function requestPushPermission() {
+	if (!Notifications) throw new Error('Push isn’t available in this build of the app.');
 	await createChannels();
 	const permission = await Notifications.requestPermissionsAsync();
 	if (permission.granted && !state.token) {
@@ -174,6 +189,9 @@ export async function requestPushPermission() {
 	}
 	return permission;
 }
+
+// the same hook on every render: whether push is supported never changes while the app runs
+const useLastNotificationResponse = Notifications?.useLastNotificationResponse ?? (() => null);
 
 /** Registers the phone for push and opens the notifications tapped. Mounted once, in the layout. */
 export function PushNotifications() {
@@ -193,7 +211,7 @@ export function PushNotifications() {
 	}, [me]);
 
 	useEffect(() => {
-		if (!pushSupported || !ready || !signedIn || enabled === null) return;
+		if (!Notifications || !ready || !signedIn || enabled === null) return;
 		let cancelled = false;
 		deviceToken(enabled).then((t) => !cancelled && t && setState({ token: t }));
 		const sub = Notifications.addPushTokenListener((t) => {
@@ -227,11 +245,12 @@ export function PushNotifications() {
 	}, [token, enabled, server, accounts]);
 
 	// a tapped notification, also the one that started the app
-	const response = Notifications.useLastNotificationResponse();
+	const response = useLastNotificationResponse();
 	const handled = useRef<string | null>(null);
 	useEffect(() => {
 		if (!response || !ready || !signedIn) return;
-		if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+		if (!Notifications || response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER)
+			return;
 		const id = `${response.notification.request.identifier}:${response.notification.date}`;
 		if (handled.current === id) return;
 		handled.current = id;

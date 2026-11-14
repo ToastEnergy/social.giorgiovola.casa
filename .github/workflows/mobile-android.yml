@@ -38,7 +38,11 @@ jobs:
       # which only exist after prebuild
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - run: bun install --frozen-lockfile
+      # a tag build takes its version from the tag (app.config.js), which the in-app updater compares
+      # with the latest release; a build by hand keeps app.json's
       - run: bunx expo prebuild --platform android --clean
+        env:
+          SGC_APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/mobile-v') && github.ref_name || '' }}
       # the keystore only ever exists in the runner's temp dir; plugins/android-release-signing.js
       # reads it through the SGC_RELEASE_* gradle properties
       - name: Decode the release keystore

@@ -25,6 +25,7 @@
 				"monochromeImage": "./assets/android-icon-monochrome.png"
 			},
 			"predictiveBackGestureEnabled": false,
+			"permissions": ["android.permission.REQUEST_INSTALL_PACKAGES"],
 			"package": "casa.giorgiovola.social",
 			"intentFilters": [
 				{
@@ -84,6 +85,9 @@
 			]
 		],
 		"scheme": "sgc-app",
+		"extra": {
+			"updateRepo": "ToastEnergy/social.giorgiovola.casa"
+		},
 		"backgroundColor": "#0c0b0b"
 	}
 }

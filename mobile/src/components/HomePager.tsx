@@ -16,15 +16,19 @@ import { setHomePage, useHomePage, type HomePage } from '@/lib/homePage';
 const TURN_SHARE = 0.5;
 const FLICK_VELOCITY = 500;
 // a tap on the tab bar slides over in this long
-export const PAGE_MS = 250;
+const PAGE_MS = 250;
+// a page has stopped moving by then, whether tapped or swiped to: work that re-renders a page
+// waits for it, so it can't cost a frame of the slide
+export const SETTLE_MS = 350;
 
 /**
  * The feed and the messages side by side: a plain horizontal swipe, the pages follow the finger
  * and the release carries its speed into the slide. Only mostly sideways moves towards the other
  * page count, so the lists still scroll.
  *
- * Everything moving runs on the UI thread; React only hears about it once the page has turned
- * (header title, tab bar icons).
+ * Everything moving runs on the UI thread. React hears about it once the page has turned (header
+ * title, tab bar icons), and `pages` must be elements that don't change (made once), so turning
+ * a page never re-renders the feed or the chats while they slide.
  */
 export function HomePager({ pages }: { pages: [React.ReactNode, React.ReactNode] }) {
 	const { width } = useWindowDimensions();
@@ -53,10 +57,12 @@ export function HomePager({ pages }: { pages: [React.ReactNode, React.ReactNode]
 		// only towards the other page, and mostly sideways: anything else is scrolling
 		activeOffsetX: page === 0 ? -15 : 15,
 		failOffsetY: [-15, 15],
-		onActivate: () => {
+		onActivate: (e) => {
 			'worklet';
 			cancelAnimation(x);
-			start.value = x.value;
+			// from where the finger is now, not where it touched down, so the page doesn't jump by the
+			// distance it took to tell a swipe from a scroll
+			start.value = x.value - e.translationX;
 		},
 		onUpdate: (e) => {
 			'worklet';
@@ -67,11 +73,12 @@ export function HomePager({ pages }: { pages: [React.ReactNode, React.ReactNode]
 			let to: HomePage = -x.value > width * TURN_SHARE ? 1 : 0;
 			if (!e.canceled && e.velocityX < -FLICK_VELOCITY) to = 1;
 			else if (!e.canceled && e.velocityX > FLICK_VELOCITY) to = 0;
-			// critically damped, so it eases in at the finger's speed without bouncing past the edge
+			// critically damped (damping = 2√stiffness), so it carries on at the finger's speed and
+			// settles in about 200ms without bouncing past the edge
 			x.value = withSpring(-to * width, {
 				velocity: e.velocityX,
-				stiffness: 400,
-				damping: 40,
+				stiffness: 500,
+				damping: 45,
 				mass: 1,
 				overshootClamping: true
 			});

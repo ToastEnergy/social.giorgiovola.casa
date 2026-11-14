@@ -3,10 +3,11 @@ import { BellOff, SquarePen, Users } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { refreshColors } from '@/components/PostList';
-import { PAGE_MS } from '@/components/HomePager';
+import { SETTLE_MS } from '@/components/HomePager';
 import { Avatar, Button, ListState, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
+import { getHomePage, subscribeHomePage } from '@/lib/homePage';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
 import type { DirectConversation, GroupConversation } from '@/lib/types';
@@ -14,7 +15,7 @@ import type { DirectConversation, GroupConversation } from '@/lib/types';
 type Row = DirectConversation | GroupConversation;
 
 /** the chats list: the second page of the home tab's pager, loaded each time it's shown */
-export function Inbox({ active }: { active: boolean }) {
+export function Inbox() {
 	const [rows, setRows] = useState<Row[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
@@ -39,19 +40,33 @@ export function Inbox({ active }: { active: boolean }) {
 	}, []);
 
 	// fresh each time the page is opened; once there are chats to show, only after the slide, so
-	// the list doesn't re-render while it moves
+	// the list doesn't re-render while it moves. watched without state, so turning the page doesn't
+	// re-render the list either
 	const loaded = useRef(false);
 	useFocusEffect(
 		useCallback(() => {
-			if (!active) return;
-			if (!loaded.current) {
-				loaded.current = true;
-				load();
-				return;
-			}
-			const later = setTimeout(load, PAGE_MS);
-			return () => clearTimeout(later);
-		}, [active, load])
+			let later: ReturnType<typeof setTimeout> | undefined;
+			let shown = false;
+			const update = () => {
+				const now = getHomePage().page === 1;
+				if (now === shown) return;
+				shown = now;
+				clearTimeout(later);
+				if (!now) return;
+				if (!loaded.current) {
+					loaded.current = true;
+					load();
+					return;
+				}
+				later = setTimeout(load, SETTLE_MS);
+			};
+			update();
+			const unsubscribe = subscribeHomePage(update);
+			return () => {
+				unsubscribe();
+				clearTimeout(later);
+			};
+		}, [load])
 	);
 
 	// anything that changes a preview or an unread count: reload, once per burst

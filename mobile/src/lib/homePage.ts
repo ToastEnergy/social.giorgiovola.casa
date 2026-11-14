@@ -17,7 +17,7 @@ function emit(next: State) {
 	listeners.forEach((listener) => listener());
 }
 
-function subscribe(listener: () => void) {
+export function subscribeHomePage(listener: () => void) {
 	listeners.add(listener);
 	return () => listeners.delete(listener);
 }
@@ -36,5 +36,10 @@ export function getHomePage() {
 }
 
 export function useHomePage() {
-	return useSyncExternalStore(subscribe, getHomePage);
+	return useSyncExternalStore(subscribeHomePage, getHomePage);
+}
+
+/** only the page, so a component doesn't re-render when the tab is focused or left */
+export function useHomePageNumber() {
+	return useSyncExternalStore(subscribeHomePage, () => state.page);
 }

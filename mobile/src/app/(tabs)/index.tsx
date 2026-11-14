@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { Plus } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
@@ -9,7 +9,7 @@ import { Inbox } from '@/components/Inbox';
 import { Notice, TabRow } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useBus } from '@/lib/bus';
-import { setHomeFocused, useHomePage } from '@/lib/homePage';
+import { setHomeFocused, useHomePageNumber } from '@/lib/homePage';
 import { usePostSync } from '@/lib/posts';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -21,7 +21,7 @@ type Feed = 'all' | 'following';
 
 // the feed, and a swipe to the left away (like Instagram), the messages
 export default function Home() {
-	const { page } = useHomePage();
+	const page = useHomePageNumber();
 	const navigation = useNavigation();
 	useEffect(() => {
 		navigation.setOptions({ title: page === 1 ? 'Messages' : 'Home' });
@@ -33,7 +33,12 @@ export default function Home() {
 			return () => setHomeFocused(false);
 		}, [])
 	);
-	return <HomePager pages={[<Feed key="feed" />, <Inbox key="inbox" active={page === 1} />]} />;
+	// made once: the same elements each render, so turning the page doesn't re-render either list
+	const pages = useMemo(
+		() => [<Feed key="feed" />, <Inbox key="inbox" />] as [React.ReactNode, React.ReactNode],
+		[]
+	);
+	return <HomePager pages={pages} />;
 }
 
 function Feed() {

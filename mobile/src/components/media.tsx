@@ -22,6 +22,9 @@ export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: numbe
 	return (
 		<View
 			accessibilityLabel={gif.title || 'GIF'}
+			// the native video view would swallow taps: a gif has nothing to tap, so they go to
+			// what holds it (in a list, the post; in a chat, the message)
+			pointerEvents="none"
 			style={{
 				aspectRatio: ratio,
 				maxHeight,

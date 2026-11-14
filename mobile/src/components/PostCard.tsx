@@ -192,7 +192,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			{post.content ? (
 				<RichText content={post.content} size={detail ? 18 : 16} selectable={detail} />
 			) : null}
-			<ImageGrid images={post.images} height={detail ? 300 : 220} />
+			<ImageGrid images={post.images} height={detail ? 500 : 400} />
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
 			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
 			{post.quote ? <QuoteCard quote={post.quote} /> : null}

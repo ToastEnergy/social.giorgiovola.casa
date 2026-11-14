@@ -40,8 +40,15 @@ import type {
 	Reaction,
 	User
 } from '@/lib/types';
-import { AttachmentStrip, pickImages, type Picked } from './attachments';
+import {
+	AttachmentStrip,
+	PasteImageButton,
+	pickImages,
+	useClipboardImage,
+	type Picked
+} from './attachments';
 import { GifPicker } from './GifPicker';
+import { MentionSuggestions, useMentionSuggestions } from './mentions';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
 import { MessageGestures } from './MessageGestures';
 import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
@@ -106,6 +113,7 @@ export function ChatView(props: Props) {
 
 	// what is being written
 	const [text, setText] = useState('');
+	const [cursor, setCursor] = useState(0);
 	const [images, setImages] = useState<Picked[]>([]);
 	const [gif, setGif] = useState<{ gif: Gif; sent: () => void } | null>(null);
 	const [picking, setPicking] = useState(false);
@@ -124,6 +132,20 @@ export function ChatView(props: Props) {
 	const outbox = useRef(Promise.resolve());
 	const imagesRef = useRef(images);
 	imagesRef.current = images;
+	// group chats suggest their members for @mentions, direct chats search everyone (like the web)
+	const mention = useMentionSuggestions(
+		text,
+		cursor,
+		group
+			? (query) =>
+					group.members.filter(
+						(m) =>
+							m.username !== myName &&
+							(m.username.startsWith(query) || m.name.toLowerCase().startsWith(query))
+					)
+			: undefined
+	);
+	const clipboard = useClipboardImage();
 	const gifRef = useRef(gif);
 	gifRef.current = gif;
 	const [typing, setTyping] = useState<string | null>(null);
@@ -880,6 +902,27 @@ export function ChatView(props: Props) {
 								setImages((now) => now.map((image) => (image === old ? edited : image)))
 							}
 						/>
+						<MentionSuggestions
+							users={mention.users}
+							max={4}
+							onPick={(user) => {
+								const next = mention.apply(user);
+								onChangeText(next.text);
+								setCursor(next.cursor);
+								input.current?.setSelection(next.cursor, next.cursor);
+							}}
+						/>
+						{clipboard.available && !editing ? (
+							<PasteImageButton
+								onPress={async () => {
+									if (gif) return toast('A message can have a GIF or images, not both');
+									if (images.length >= maxImages)
+										return toast(`You can attach at most ${maxImages} images`);
+									const pasted = await clipboard.paste();
+									if (pasted) setImages((now) => [...now, pasted].slice(0, maxImages));
+								}}
+							/>
+						) : null}
 						<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
 							{editing ? null : (
 								<>
@@ -916,6 +959,7 @@ export function ChatView(props: Props) {
 								multiline
 								value={text}
 								onChangeText={onChangeText}
+								onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
 								maxLength={instance?.limits.messageContent}
 								placeholder={editing ? 'Edit your message' : 'Write a message'}
 								placeholderTextColor={colors.muted}

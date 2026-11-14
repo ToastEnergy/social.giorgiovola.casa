@@ -11,6 +11,8 @@
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
+	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
+	import { canReadClipboard, clipboardImages, pastedFiles } from '#lib/clipboard.js';
 	import { onMount, tick } from 'svelte';
 	import Avatar from './Avatar.svelte';
 	import LoadingScreen from './LoadingScreen.svelte';
@@ -960,9 +962,24 @@
 	}
 
 	function onPaste(e: ClipboardEvent) {
-		const files = Array.from(e.clipboardData?.files ?? []);
+		// an edited message keeps its images: there's no attaching while editing
+		if (editing) return;
+		const files = pastedFiles(e);
 		if (files.length === 0) return;
 		e.preventDefault();
+		addFiles(files);
+	}
+
+	// touch keyboards only paste text: a button reads an image from the clipboard instead
+	let canPaste = $state(false);
+	async function pasteImage() {
+		let files: File[];
+		try {
+			files = await clipboardImages();
+		} catch {
+			return showError('Could not read the clipboard.');
+		}
+		if (files.length === 0) return showError('There is no image to paste.');
 		addFiles(files);
 	}
 
@@ -1103,6 +1120,7 @@
 	const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
 
 	onMount(() => {
+		canPaste = canReadClipboard();
 		const onDragEnter = (e: DragEvent) => {
 			if (!hasFiles(e)) return;
 			e.preventDefault();
@@ -2019,6 +2037,18 @@
 					onkeydown={onKeydown}
 					oninput={onInput}
 				/>
+				{#if canPaste && !editing}
+					<button
+						type="button"
+						title="Paste image"
+						aria-label="Paste image"
+						disabled={attachments.length >= MAX_IMAGES}
+						onmousedown={keepFocus}
+						onclick={pasteImage}
+						class="flex shrink-0 cursor-pointer items-center self-end p-2.5 opacity-80 outline-none pointer-fine:hidden hover:opacity-100 focus-visible:text-accent disabled:cursor-default disabled:opacity-40"
+						><ClipboardPaste size={20} strokeWidth={1.8} /></button
+					>
+				{/if}
 				{#if gifConfig && !editing}
 					<button
 						type="button"

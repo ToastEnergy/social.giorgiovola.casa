@@ -4,6 +4,8 @@
 	import ImagePlay from '@lucide/svelte/icons/image-play';
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import X from '@lucide/svelte/icons/x';
+	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
+	import { canReadClipboard, clipboardImages, pastedFiles } from '#lib/clipboard.js';
 	import { errorOf } from '#lib/api.js';
 	import { onMount, untrack } from 'svelte';
 	import type { Gif, Post, QuotedPost } from '#lib/types.js';
@@ -292,9 +294,22 @@
 	}
 
 	function onPaste(e: ClipboardEvent) {
-		const files = Array.from(e.clipboardData?.files ?? []);
+		const files = pastedFiles(e);
 		if (files.length === 0) return;
 		e.preventDefault();
+		addFiles(files);
+	}
+
+	// touch keyboards only paste text: a button reads an image from the clipboard instead
+	let canPaste = $state(false);
+	async function pasteImage() {
+		let files: File[];
+		try {
+			files = await clipboardImages();
+		} catch {
+			return showError('Could not read the clipboard.');
+		}
+		if (files.length === 0) return showError('There is no image to paste.');
 		addFiles(files);
 	}
 
@@ -305,6 +320,7 @@
 	onMount(() => {
 		// synchronous, so that iOS still counts it as part of the tap and opens the keyboard
 		if (autofocus) textarea?.focus();
+		canPaste = canReadClipboard();
 		const onDragEnter = (e: DragEvent) => {
 			if (!hasFiles(e)) return;
 			e.preventDefault();
@@ -586,6 +602,18 @@
 				class={pollOptions ? 'text-accent' : ''}
 			/></button
 		>
+		{#if canPaste}
+			<button
+				type="button"
+				title="Paste image"
+				aria-label="Paste image"
+				disabled={attachments.length >= MAX_IMAGES || !!gif}
+				onmousedown={keepFocus}
+				onclick={pasteImage}
+				class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none pointer-fine:hidden hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
+				><ClipboardPaste size={20} strokeWidth={1.8} /></button
+			>
+		{/if}
 		{#if !docked && !formId}
 			{@render send()}
 		{/if}

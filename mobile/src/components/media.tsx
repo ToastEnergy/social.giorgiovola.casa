@@ -150,15 +150,14 @@ function SingleImage({
 	// the API's size when it sent one, else what loading it told us; square until then
 	const [loaded, setLoaded] = useState(() => ratios.get(url));
 	const ratio = size ? size.width / size.height : loaded ?? 1;
-	const widest = Math.min(maxHeight * ratio, size?.width ?? Infinity);
-	const box: ViewStyle =
-		width === undefined
-			? { width: '100%', maxWidth: widest, aspectRatio: ratio }
-			: (() => {
-					const w = Math.min(width, widest);
-					return { width: w, height: w / ratio };
-			  })();
-	return (
+	// the width it may take: given, or measured from the parent. not left to `aspectRatio` with
+	// `maxWidth`: yoga takes the height from the unclamped width, so a tall image got a box far
+	// taller than itself
+	const [measured, setMeasured] = useState<number | null>(null);
+	const room = width ?? measured;
+	const w = room === null ? 0 : Math.min(room, maxHeight * ratio, size?.width ?? Infinity);
+	const box: ViewStyle = { width: w, height: room === null ? Math.min(maxHeight, 200) : w / ratio };
+	const image = (
 		<Tappable onPress={onPress} style={box}>
 			<Image
 				source={source}
@@ -180,6 +179,15 @@ function SingleImage({
 				}}
 			/>
 		</Tappable>
+	);
+	if (width !== undefined) return image;
+	return (
+		<View
+			style={{ alignSelf: 'stretch' }}
+			onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}
+		>
+			{image}
+		</View>
 	);
 }
 

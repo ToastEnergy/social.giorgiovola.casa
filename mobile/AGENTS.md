@@ -41,6 +41,8 @@ The app is not built with EAS (there is no `eas.json`), and isn't in the app sto
 - `../.github/workflows/mobile-ios.yml`: `expo prebuild`, then `generate-ipa.sh` makes an unsigned `.ipa` that AltStore signs on install. Run `generate-ipa.sh` on a Mac after `bunx expo prebuild --platform ios` to build one locally.
 - `../.github/workflows/mobile-android.yml`: `expo prebuild`, then `./gradlew assembleRelease`, signed through `plugins/android-release-signing.js` with the keystore in the `ANDROID_KEYSTORE_*` secrets (the debug keystore without them). Its SHA-256 fingerprint must be in the server's `ANDROID_APP_FINGERPRINTS` for passkeys and app links.
 
+To build the `.apk` locally, follow `../README.md`, "building the android app locally": JDK 17, and on Windows a short folder plus a long-path-aware ninja, or the native steps fail with `build.ninja still dirty`.
+
 Native signing and build settings go in config plugins (`plugins/`), never in hand edits to the generated `ios/` / `android/`. Don't add EAS without asking.
 
 ## Rules

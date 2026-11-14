@@ -362,6 +362,26 @@ GitHub Actions builds the Expo app in `mobile/` for sideloading: run **mobile-io
 
 The Android app updates itself from those releases: when it starts or comes back to the foreground (at most every 6 hours), it looks for the newest `mobile-v*` release on GitHub (`expo.extra.updateRepo` in `mobile/app.json`) with a `SocialGiorgiovolaCasa.apk`, and when that is newer than its own version it offers to download it and opens Android's installer (which asks once to allow installs from the app). The download runs out of the way: a ring around the avatar in the tab bar fills up and the profile menu shows it, and a card asks to install once it is done. _Settings_ shows the installed version and can check for an update right away. A tag build takes its version from the tag (`mobile-v1.2.3` → `1.2.3`, `versionCode` 10203), so tag releases with increasing versions; a build run by hand keeps the version in `app.json` and is offered the latest release. Android only installs an update signed with the same key as the installed app.
 
+### building the android app locally
+
+You need bun, JDK 17 (what CI uses; newer JDKs such as Android Studio's bundled one may not work with Gradle) and the Android SDK with the NDK (Android Studio installs both). Then, the same steps as `mobile-android.yml`:
+
+```
+cd mobile
+bun install --frozen-lockfile
+bunx expo prebuild --platform android --clean
+cd android
+# JAVA_HOME = a JDK 17, ANDROID_HOME = the SDK (Windows: %LOCALAPPDATA%\Android\Sdk)
+ORG_GRADLE_PROJECT_reactNativeArchitectures=arm64-v8a ./gradlew assembleRelease   # gradlew.bat on Windows
+```
+
+The `.apk` is `mobile/android/app/build/outputs/apk/release/app-release.apk` (about 8 minutes the first time). Without the `SGC_RELEASE_*` Gradle properties it is signed with the debug keystore, so a phone that has a release build must uninstall it first, and passkeys only work if its fingerprint (`apksigner verify --print-certs`) is in the server's `ANDROID_APP_FINGERPRINTS`. To sign with the release key, set `ORG_GRADLE_PROJECT_SGC_RELEASE_STORE_FILE`, `…_STORE_PASSWORD`, `…_KEY_ALIAS` and `…_KEY_PASSWORD` like the workflow does.
+
+**Windows:** the native (C++) steps fail with `ninja: error: manifest 'build.ninja' still dirty after 100 tries` or `ninja: error: mkdir(…): No such file or directory` when paths pass 260 characters, which a checkout in a deep folder (such as a worktree under your user folder) does. The ninja bundled with the SDK's CMake (1.10) can't use long paths, even with `LongPathsEnabled` set. Two things fix it, both needed for a deep checkout:
+
+1. Build from a short folder: copy `mobile/` there (with `node_modules`, without `android/`), for example `robocopy mobile C:\sgcb /E /XD %CD%\mobile\android %CD%\mobile\build .cxx`, and run the steps above in it. `subst` doesn't help: Expo's autolinking resolves the real paths.
+2. Even then, a codegen folder of the app is longer than Windows allows, so use a ninja that supports long paths (1.12 or later): install a newer CMake (`sdkmanager "cmake;3.31.4"`), replace its `bin\ninja.exe` with [ninja 1.12.1](https://github.com/ninja-build/ninja/releases/tag/v1.12.1) (`ninja-win.zip`), and point the build at it with `cmake.dir=C:/Users/<you>/AppData/Local/Android/Sdk/cmake/3.31.4` in `android/local.properties`. Delete the `.cxx` folders (`android/app/.cxx`, `node_modules/**/android/.cxx`) from a failed build before trying again.
+
 ## bots
 
 Create bots at `/settings/developers` (up to 5 per account), or with `POST /api/v1/me/bots`. A bot is a profile with a "bot" badge, driven only through the bot API (or the v1 API with its token): you can't switch to it, and it sends no push notifications to its owner. Its token is shown once when the bot is created. _New token_ replaces it and the old one stops working right away. Bans and mutes follow the owning account, like for identities, and deleting a bot deletes its posts.

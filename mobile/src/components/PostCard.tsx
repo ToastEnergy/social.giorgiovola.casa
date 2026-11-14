@@ -96,6 +96,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 	const staff = !!me && me.role !== 'user';
 	const ratio = isRatio(post);
 	const iconColor = colors.muted;
+	const openProfile = () => router.push(`/user/${post.user.username}`);
 
 	const regiorgMenu = () =>
 		showMenu([
@@ -192,11 +193,19 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			{post.content ? (
 				<RichText content={post.content} size={detail ? 18 : 16} selectable={detail} />
 			) : null}
-			<ImageGrid images={post.images} height={detail ? 500 : 400} />
+			{/* in a list a photo is part of the post and opens it; the viewer is for the open post */}
+			<ImageGrid
+				images={post.images}
+				sizes={post.image_sizes}
+				height={detail ? 500 : 400}
+				viewable={detail}
+			/>
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
 			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
-			{post.quote ? <QuoteCard quote={post.quote} /> : null}
-			{!post.quote && post.linked_post ? <QuoteCard quote={post.linked_post} /> : null}
+			{post.quote ? <QuoteCard quote={post.quote} viewable={detail} /> : null}
+			{!post.quote && post.linked_post ? (
+				<QuoteCard quote={post.linked_post} viewable={detail} />
+			) : null}
 			{post.link_preview ? <LinkPreviewCard preview={post.link_preview} /> : null}
 		</View>
 	);
@@ -330,11 +339,25 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				<Avatar user={post.user} size={45} link />
 				<View style={{ flex: 1 }}>
 					<View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-						<Txt bold numberOfLines={1} style={{ flexShrink: 1 }}>
+						{/* the name and @username open the profile, like the avatar; the rest the post */}
+						<Txt
+							bold
+							numberOfLines={1}
+							style={{ flexShrink: 1 }}
+							onPress={openProfile}
+							suppressHighlighting
+						>
 							{post.user.name}
 						</Txt>
 						{badges}
-						<Txt size={14} muted numberOfLines={1} style={{ flexShrink: 2 }}>
+						<Txt
+							size={14}
+							muted
+							numberOfLines={1}
+							style={{ flexShrink: 2 }}
+							onPress={openProfile}
+							suppressHighlighting
+						>
 							@{post.user.username}
 						</Txt>
 						<Txt size={13} muted>

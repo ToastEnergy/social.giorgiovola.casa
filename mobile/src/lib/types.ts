@@ -12,11 +12,16 @@ export type Gif = {
 	height: number;
 };
 
+/** an uploaded image's size in pixels, as stored, so it can be laid out before it loads */
+export type ImageSize = { width: number; height: number };
+
 export type QuotedPost = {
 	id: number;
 	user: User;
 	content: string;
 	images: string[];
+	/** the size of each image, in the order of `images`; null or missing for older uploads */
+	image_sizes?: ImageSize[] | null;
 	gif?: Gif | null;
 	created_at: string;
 	is_quote: boolean;
@@ -43,6 +48,8 @@ export type Post = {
 	user: User & { id: number; bot?: boolean; created_at: string };
 	content: string;
 	images: string[];
+	/** the size of each image, in the order of `images`; null or missing for older uploads */
+	image_sizes?: ImageSize[] | null;
 	gif: Gif | null;
 	created_at: string;
 	edited_at: string | null;

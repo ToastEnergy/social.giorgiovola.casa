@@ -19,20 +19,31 @@ const APK_NAME = 'SocialGiorgiovolaCasa.apk';
 /** at most one look at GitHub this often: unauthenticated calls are limited to 60 an hour */
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * a pretend update for trying the UI in development (EXPO_PUBLIC_FAKE_UPDATE=1 bunx expo start):
+ * version 9.9.9 is always out and its "download" takes about 15 seconds. Never in a release build
+ */
+const fake = __DEV__ && process.env.EXPO_PUBLIC_FAKE_UPDATE === '1';
+
 /** only release builds on Android: Expo Go and dev builds aren't installed from the .apk */
 export const updatesSupported =
-	Platform.OS === 'android' && !isRunningInExpoGo() && !__DEV__ && !!repo;
+	fake || (Platform.OS === 'android' && !isRunningInExpoGo() && !__DEV__ && !!repo);
 
 /**
  * The installed app's versionName, which prebuild sets from the mobile-v* tag (app.config.js).
  * Not Constants.expoConfig.version: that is the config Gradle embeds, which isn't guaranteed to be
  * evaluated with the tag's version (1.0.3 shipped with 1.0.0 in it and kept offering itself).
- * Required, not imported: Expo Go lacks expo-application's native module (see push.tsx).
+ * Required, not imported: Expo Go lacks expo-application's native module (see push.tsx), so
+ * there it is the config's version. null when neither says.
  */
-export const currentVersion: string = updatesSupported
-	? (require('expo-application') as typeof import('expo-application')).nativeApplicationVersion ??
-	  '0.0.0'
-	: '0.0.0';
+export const appVersion: string | null = isRunningInExpoGo()
+	? Constants.expoConfig?.version ?? null
+	: (require('expo-application') as typeof import('expo-application')).nativeApplicationVersion ??
+	  Constants.expoConfig?.version ??
+	  null;
+
+/** the version compared against the releases */
+export const currentVersion: string = updatesSupported ? appVersion ?? '0.0.0' : '0.0.0';
 
 export type UpdateState =
 	| { status: 'idle' }
@@ -83,19 +94,37 @@ type Release = {
 	assets: { name: string; browser_download_url: string; size: number }[];
 };
 
-/** looks for a newer release, unless one was looked for recently (`force` skips that) */
-export async function checkForUpdate(force = false) {
-	if (!updatesSupported) return;
-	if (state.status === 'downloading' || state.status === 'ready') return;
-	if (!force && Date.now() - lastCheck < CHECK_EVERY_MS) return;
+/** what a check found: `busy` while an update is downloading or waiting to be installed */
+export type CheckResult = 'available' | 'current' | 'failed' | 'busy' | 'skipped';
+
+/**
+ * looks for a newer release, unless one was looked for recently. `manual` (the settings button)
+ * skips that wait and offers a version "Later" was chosen for again
+ */
+export async function checkForUpdate(manual = false): Promise<CheckResult> {
+	if (!updatesSupported) return 'skipped';
+	if (state.status === 'downloading' || state.status === 'ready') return 'busy';
+	if (!manual && Date.now() - lastCheck < CHECK_EVERY_MS) return 'skipped';
 	lastCheck = Date.now();
+	if (manual) dismissed = null;
+	if (fake) {
+		if (dismissed === '9.9.9') return 'skipped';
+		setState({
+			status: 'available',
+			version: '9.9.9',
+			url: '',
+			size: 0,
+			notes: 'A pretend update (EXPO_PUBLIC_FAKE_UPDATE).'
+		});
+		return 'available';
+	}
 	const installed = parseVersion(currentVersion);
-	if (!installed) return;
+	if (!installed) return 'failed';
 	try {
 		const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, {
 			headers: { Accept: 'application/vnd.github+json' }
 		});
-		if (!res.ok) return;
+		if (!res.ok) return 'failed';
 		const releases = (await res.json()) as Release[];
 		let best: { version: [number, number, number]; release: Release } | null = null;
 		for (const release of releases) {
@@ -104,9 +133,11 @@ export async function checkForUpdate(force = false) {
 			if (!version || !release.assets.some((a) => a.name === APK_NAME)) continue;
 			if (!best || newer(version, best.version)) best = { version, release };
 		}
-		if (!best || !newer(best.version, installed)) return;
+		if (!best || !newer(best.version, installed)) return 'current';
 		const version = best.version.join('.');
-		if (version === dismissed) return;
+		if (version === dismissed) return 'skipped';
+		// a download may have started while GitHub answered
+		if ((state.status as UpdateState['status']) === 'downloading') return 'busy';
 		const asset = best.release.assets.find((a) => a.name === APK_NAME)!;
 		setState({
 			status: 'available',
@@ -115,8 +146,10 @@ export async function checkForUpdate(force = false) {
 			size: asset.size,
 			notes: best.release.body?.trim() ?? ''
 		});
+		return 'available';
 	} catch {
 		// offline or GitHub is down: try again next time
+		return 'failed';
 	}
 }
 
@@ -130,6 +163,16 @@ export async function downloadUpdate() {
 	if (state.status !== 'available' && state.status !== 'error') return;
 	const { version, url, size } = state;
 	setState({ status: 'downloading', version, progress: 0 });
+	if (fake) {
+		let progress = 0;
+		const timer = setInterval(() => {
+			progress += 0.02;
+			if (progress < 1) return setState({ status: 'downloading', version, progress });
+			clearInterval(timer);
+			setState({ status: 'ready', version, uri: '' });
+		}, 300);
+		return;
+	}
 	try {
 		// only the one being downloaded is kept: each is ~50 MB
 		const dir = new Directory(Paths.cache, 'updates');
@@ -154,6 +197,8 @@ export async function downloadUpdate() {
  * the first time (REQUEST_INSTALL_PACKAGES in app.json) */
 export async function installUpdate() {
 	if (state.status !== 'ready') return;
+	// nothing to install: start over, so the whole flow can be tried again
+	if (fake) return setState({ status: 'idle' });
 	const contentUri = await getContentUriAsync(state.uri);
 	await startActivityAsync('android.intent.action.VIEW', {
 		data: contentUri,

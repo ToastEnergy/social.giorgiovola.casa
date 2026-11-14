@@ -1,3 +1,4 @@
+import { isRunningInExpoGo } from 'expo';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { router, usePathname } from 'expo-router';
@@ -16,8 +17,10 @@ import { colors } from './theme';
  * Turning push off in the settings unregisters the phone from every account signed in here.
  */
 
-/** whether push works on this platform at all (iOS needs a paid Apple developer account) */
-export const pushSupported = Platform.OS === 'android';
+/** push only works in an Android build: Expo Go has no push since SDK 53 (registering a token
+ * listener throws there), and iOS needs a paid Apple developer account */
+export const pushInExpoGo = isRunningInExpoGo();
+export const pushSupported = Platform.OS === 'android' && !pushInExpoGo;
 
 type PushState = {
 	/** the choice in the settings, for the whole phone; null until read from storage */

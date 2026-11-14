@@ -26,7 +26,7 @@ RUN apt-get update \
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json migrate.ts admin.ts ./
-COPY scripts/migrate-assets.ts scripts/seed.ts ./scripts/
+COPY scripts/migrate-assets.ts scripts/seed.ts scripts/backfill-image-sizes.ts ./scripts/
 COPY drizzle ./drizzle
 
 ENV PORT=7777

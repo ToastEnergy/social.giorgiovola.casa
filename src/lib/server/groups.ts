@@ -12,6 +12,7 @@ import type {
 import { mediaPreview } from '#lib/mediaPreview.js';
 import { groupEventText } from '#lib/groupEvents.js';
 import { linkedPosts } from './linkedPosts.js';
+import type { StoredImage } from './images.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
 import { markGroupReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { hit, isLimited } from './ratelimit.js';
@@ -361,6 +362,7 @@ function selectMessages(where: SQL | undefined) {
 			kind: group_messages.kind,
 			content: group_messages.content,
 			images: group_messages.images,
+			image_sizes: group_messages.image_sizes,
 			gif: group_messages.gif,
 			reply_to_id: group_messages.reply_to_id,
 			created_at: group_messages.created_at,
@@ -398,6 +400,7 @@ async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 				: null,
 		content: r.content,
 		images: r.images,
+		image_sizes: r.image_sizes,
 		gif: r.gif,
 		created_at: r.created_at,
 		edited_at: r.edited_at,
@@ -449,7 +452,7 @@ export async function sendGroupMessage(
 	groupId: number,
 	sender: Member,
 	content: string,
-	images: string[] = [],
+	images: StoredImage[] = [],
 	replyTo: number | null = null,
 	gif: Gif | null = null
 ): Promise<GroupMessage> {
@@ -459,7 +462,8 @@ export async function sendGroupMessage(
 			group_id: groupId,
 			sender_id: sender.id,
 			content,
-			images,
+			images: images.map((i) => i.url),
+			image_sizes: images.length ? images.map((i) => i.size) : null,
 			gif,
 			reply_to_id: replyTo
 		})

@@ -118,13 +118,23 @@ export async function submitPost(
 	const saved = await Promise.all(optimized.map(saveUpload));
 	const claimed = await claimStaged(user.id, staged);
 	if (claimed instanceof Response) {
-		await removeUploads(saved);
+		await removeUploads(saved.map((s) => s.url));
 		throw claimed;
 	}
-	const images = [...saved, ...claimed];
+	const stored = [...saved, ...claimed];
+	const images = stored.map((s) => s.url);
+	const image_sizes = stored.map((s) => s.size);
 
 	try {
-		return await createPost(user, { content, images, gif, reply_to, quote_of, poll: poll.poll });
+		return await createPost(user, {
+			content,
+			images,
+			image_sizes,
+			gif,
+			reply_to,
+			quote_of,
+			poll: poll.poll
+		});
 	} catch (e) {
 		await removeUploads(images);
 		throw e;

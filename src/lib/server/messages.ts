@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { db, blocks, dm_mutes, messages, users } from './db/index.js';
-import type { ChatMessage, ChatPeer, Conversation, Gif } from '#lib/types.js';
+import type { ChatMessage, ChatPeer, Conversation, Gif, ImageSize } from '#lib/types.js';
+import type { StoredImage } from './images.js';
 import { mediaPreview } from '#lib/mediaPreview.js';
 import { linkedPosts } from './linkedPosts.js';
 import { unreadGroupCount } from './groups.js';
@@ -98,6 +99,7 @@ type Row = {
 	id: number;
 	content: string;
 	images: string[];
+	image_sizes: ImageSize[] | null;
 	gif: Gif | null;
 	reply_to_id: number | null;
 	created_at: Date;
@@ -110,6 +112,7 @@ const toChatMessage = (row: Row, sender: string, recipient: string) => ({
 	recipient,
 	content: row.content,
 	images: row.images,
+	image_sizes: row.image_sizes,
 	gif: row.gif,
 	reply_to_id: row.reply_to_id,
 	created_at: row.created_at,
@@ -133,6 +136,7 @@ export async function getThread(me: Party, peer: Party, before?: number | null) 
 			sender_id: messages.sender_id,
 			content: messages.content,
 			images: messages.images,
+			image_sizes: messages.image_sizes,
 			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
@@ -171,6 +175,7 @@ export async function getThreadFrom(me: Party, peer: Party, { afterId, limit }: 
 			sender_id: messages.sender_id,
 			content: messages.content,
 			images: messages.images,
+			image_sizes: messages.image_sizes,
 			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
@@ -198,6 +203,7 @@ export async function getReceived(me: Party, { afterId, limit }: ListOptions) {
 			sender: users.username,
 			content: messages.content,
 			images: messages.images,
+			image_sizes: messages.image_sizes,
 			gif: messages.gif,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
@@ -219,17 +225,27 @@ export async function sendMessage(
 	me: Party,
 	peer: Party,
 	content: string,
-	images: string[] = [],
+	stored: StoredImage[] = [],
 	replyTo: number | null = null,
 	gif: Gif | null = null
 ): Promise<ChatMessage> {
+	const images = stored.map((i) => i.url);
+	const image_sizes = stored.length ? stored.map((i) => i.size) : null;
 	const [row] = await db
 		.insert(messages)
-		.values({ sender_id: me.id, recipient_id: peer.id, content, images, gif, reply_to_id: replyTo })
+		.values({
+			sender_id: me.id,
+			recipient_id: peer.id,
+			content,
+			images,
+			image_sizes,
+			gif,
+			reply_to_id: replyTo
+		})
 		.returning({ id: messages.id, created_at: messages.created_at });
 	const [message] = await complete([
 		toChatMessage(
-			{ ...row, content, images, gif, reply_to_id: replyTo, edited_at: null },
+			{ ...row, content, images, image_sizes, gif, reply_to_id: replyTo, edited_at: null },
 			me.username,
 			peer.username
 		)
@@ -241,6 +257,7 @@ const editedColumns = {
 	id: messages.id,
 	content: messages.content,
 	images: messages.images,
+	image_sizes: messages.image_sizes,
 	gif: messages.gif,
 	reply_to_id: messages.reply_to_id,
 	created_at: messages.created_at,

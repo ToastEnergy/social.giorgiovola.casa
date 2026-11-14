@@ -12,6 +12,7 @@
 	import Button from '#lib/components/Button.svelte';
 	import { user, isMobile } from '#lib/store.js';
 	import type { Post } from '#lib/types.js';
+	import { reservedStyle, sizeOf } from '#lib/imageSizes.js';
 	import Posts from './Posts.svelte';
 	import { page } from '$app/state';
 	import { goto, invalidate } from '$app/navigation';
@@ -798,6 +799,9 @@
 										class={gallery.length > 1
 											? 'aspect-square w-full object-cover'
 											: 'max-h-[500px] max-w-full object-contain'}
+										style={gallery.length > 1
+											? undefined
+											: reservedStyle(sizeOf(post.image_sizes, i), '100%', 500)}
 										src={image}
 										alt=""
 										referrerpolicy="no-referrer"

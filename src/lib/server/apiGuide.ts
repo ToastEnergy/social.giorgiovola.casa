@@ -135,6 +135,7 @@ Post:
     "user": { "id", "username", "name", "avatar", "bot": false, "created_at" },
     "content": "text, may contain @mentions, #hashtags, links and line breaks (\\n)",
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
+    "image_sizes": [<ImageSize>] | null,  // same order as images, see ImageSize
     "gif": <Gif> | null,                  // a GIF instead of images, see GIFs
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
@@ -154,7 +155,15 @@ Post:
   }
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
-QuotedPost: { "id", "user": User, "content", "images", "gif": <Gif> | null, "created_at", "is_quote" }
+QuotedPost: { "id", "user": User, "content", "images", "image_sizes": [<ImageSize>] | null,
+              "gif": <Gif> | null, "created_at", "is_quote" }
+ImageSize: { "width": 1600, "height": 1200 }
+  The size in px of an uploaded image as served (EXIF rotation applied, scaled down to fit
+  2048px), so you can reserve its space (aspect ratio) before it loads. "image_sizes" in a
+  Post, QuotedPost, Message or GroupMessage has one entry per path of "images", in the same
+  order. It is null when the sizes aren't known (images uploaded before sizes were saved, and
+  no images): then measure the image once it has loaded. A missing "image_sizes" field (older
+  servers) means the same as null.
 Gif: { "provider": "klipy", "slug", "title", "video": "https://static.klipy.com/….mp4",
        "poster": "https://static.klipy.com/….jpg", "width", "height" }
   A GIF from KLIPY: "video" is a short looping MP4 (play it muted, looped, inline),
@@ -232,6 +241,7 @@ Me (GET /me):
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
     "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
+    "image_sizes": [<ImageSize>] | null,          // same order as images, see ImageSize
     "gif": <Gif> | null,                          // a GIF instead of images, see GIFs
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
@@ -241,8 +251,8 @@ Message (direct message):
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
-    "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "gif" (like
-    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "image_sizes",
+    "gif" (like Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.

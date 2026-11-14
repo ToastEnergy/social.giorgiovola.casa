@@ -309,6 +309,13 @@
       "when": 1794575526782,
       "tag": "0043_push_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794664838557,
+      "tag": "0044_image_sizes",
+      "breakpoints": true
     }
   ]
 }

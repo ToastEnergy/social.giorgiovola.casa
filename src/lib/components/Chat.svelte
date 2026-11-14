@@ -4,6 +4,7 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Trash from '@lucide/svelte/icons/trash';
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import { reservedStyle, sizeOf } from '#lib/imageSizes.js';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import ImagePlay from '@lucide/svelte/icons/image-play';
@@ -1612,10 +1613,14 @@
 											aria-label="Open image"
 											onclick={() => openImage(message.images ?? [], i)}
 										>
+											<!-- a known size reserves the box, so the list doesn't move as it loads -->
 											<img
 												class="block {message.images.length > 1
 													? 'aspect-square w-full object-cover'
 													: 'max-h-[360px] max-w-[min(320px,60vw)] object-contain'}"
+												style={message.images.length > 1
+													? undefined
+													: reservedStyle(sizeOf(message.image_sizes, i), 'min(320px, 60vw)', 360)}
 												src={image}
 												alt=""
 												loading="lazy"

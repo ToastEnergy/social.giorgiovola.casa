@@ -187,11 +187,13 @@ function dm(
 	o: { read?: boolean; images?: string[]; replyTo?: string; edited?: boolean } = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, reply_to_id, edited_at) VALUES (${uid(
+	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, image_sizes, reply_to_id, edited_at) VALUES (${uid(
 		from
-	)}, ${uid(to)}, ${q(content)}, ${ago(mins)}, ${o.read ? ago(mins - 1) : 'NULL'}, ${images}, ${
-		o.replyTo ?? 'NULL'
-	}, ${o.edited ? ago(mins - 2) : 'NULL'});`;
+	)}, ${uid(to)}, ${q(content)}, ${ago(mins)}, ${
+		o.read ? ago(mins - 1) : 'NULL'
+	}, ${images}, ${sizesOf(o.images)}, ${o.replyTo ?? 'NULL'}, ${
+		o.edited ? ago(mins - 2) : 'NULL'
+	});`;
 }
 const dmId = (content: string) => `(SELECT id FROM messages WHERE content = ${q(content)})`;
 const dmReact = (user: string, content: string, emoji: string) =>
@@ -256,9 +258,11 @@ function groupMsg(
 	o: { replyTo?: string; images?: string[] } = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images) VALUES (${gid(
+	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images, image_sizes) VALUES (${gid(
 		name
-	)}, ${uid(from)}, ${q(content)}, ${ago(mins)}, ${o.replyTo ?? 'NULL'}, ${images});`;
+	)}, ${uid(from)}, ${q(content)}, ${ago(mins)}, ${o.replyTo ?? 'NULL'}, ${images}, ${sizesOf(
+		o.images
+	)});`;
 }
 const groupReact = (name: string, msg: string, user: string, emoji: string) =>
 	`INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (${msg}, ${uid(
@@ -267,14 +271,31 @@ const groupReact = (name: string, msg: string, user: string, emoji: string) =>
 const groupMsgId = (name: string, content: string) =>
 	`(SELECT id FROM group_messages WHERE group_id = ${gid(name)} AND content = ${q(content)})`;
 
-// test images, written as uploads (the file names must look like the app's uuids)
-const IMAGES = {
+// test images, written as uploads (the file names must look like the app's uuids). `legacy`:
+// stored without its size, like uploads from before sizes were saved (clients measure it)
+const IMAGES: Record<
+	'wide' | 'tall' | 'square' | 'tiny',
+	{ file: string; w: number; h: number; color: string; legacy?: boolean }
+> = {
 	wide: { file: '5eed0000-0000-4000-8000-000000000001.webp', w: 1600, h: 600, color: '#3b5f7a' },
 	tall: { file: '5eed0000-0000-4000-8000-000000000002.webp', w: 600, h: 1400, color: '#7a5a3b' },
 	square: { file: '5eed0000-0000-4000-8000-000000000003.webp', w: 900, h: 900, color: '#4f7a3b' },
-	tiny: { file: '5eed0000-0000-4000-8000-000000000004.webp', w: 40, h: 40, color: '#7a3b6a' }
+	tiny: {
+		file: '5eed0000-0000-4000-8000-000000000004.webp',
+		w: 40,
+		h: 40,
+		color: '#7a3b6a',
+		legacy: true
+	}
 };
 const img = (k: keyof typeof IMAGES) => `/uploads/${IMAGES[k].file}`;
+
+/** The image_sizes of a message's images (see src/lib/server/db/schema.ts), NULL when unknown. */
+function sizesOf(paths: string[] | undefined) {
+	const found = (paths ?? []).map((p) => Object.values(IMAGES).find((i) => p.endsWith(i.file)));
+	if (found.length === 0 || found.some((i) => !i || i.legacy)) return 'NULL';
+	return `${q(JSON.stringify(found.map((i) => ({ width: i!.w, height: i!.h }))))}::jsonb`;
+}
 
 // into static/uploads (the uploads volume in docker); not into the bucket when S3_BUCKET is set
 async function writeImages() {

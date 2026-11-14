@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { ChevronRight } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
+import { AppVersion } from '@/components/AppUpdate';
 import { Hint, Txt } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -75,6 +76,7 @@ export default function Settings() {
 					{me?.account?.username ?? me?.user.username}.
 				</Hint>
 			</View>
+			<AppVersion />
 		</ScrollView>
 	);
 }

@@ -4,6 +4,7 @@ import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-nati
 import { useEffect, useRef } from 'react';
 import { Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UpdateRing } from '@/components/AppUpdate';
 import { toast } from '@/components/overlays';
 import { Avatar } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
@@ -169,7 +170,14 @@ export default function TabsLayout() {
 					title: 'You',
 					tabBarAccessibilityLabel: 'Profile menu',
 					tabBarIcon: ({ color }) =>
-						me ? <Avatar user={me.user} size={28} /> : <UserRound size={24} color={color} />
+						// the app update downloads out of the way: its progress rings the avatar
+						me ? (
+							<UpdateRing size={28}>
+								<Avatar user={me.user} size={28} />
+							</UpdateRing>
+						) : (
+							<UserRound size={24} color={color} />
+						)
 				}}
 			/>
 		</Tabs>

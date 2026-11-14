@@ -1,6 +1,7 @@
 import { type Href, router, useFocusEffect } from 'expo-router';
 import {
 	Check,
+	Download,
 	Gift,
 	LogOut,
 	Plus,
@@ -11,7 +12,9 @@ import {
 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { useUpdateMenuItem } from '@/components/AppUpdate';
 import { confirm, toast } from '@/components/overlays';
+import { UploadProgress } from '@/components/UploadProgress';
 import { Avatar, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -33,11 +36,13 @@ function MenuRow({
 	badge?: number | null;
 	/** a green outlined pill on the right ("3 left") */
 	pill?: string;
-	onPress: () => void;
+	/** null: shown, but nothing to tap */
+	onPress: (() => void) | null;
 }) {
 	return (
 		<Pressable
-			onPress={onPress}
+			onPress={onPress ?? undefined}
+			disabled={!onPress}
 			accessibilityRole="button"
 			style={({ pressed }) => ({
 				flexDirection: 'row',
@@ -91,6 +96,7 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 	const session = useSession();
 	const { me, accounts } = session;
 	// each signed-in account with its identities, by its index in `accounts`
+	const appUpdate = useUpdateMenuItem();
 	const [switcher, setSwitcher] = useState<(SwitcherAccount | null)[]>([]);
 
 	const tokens = accounts.map((a) => a.token).join();
@@ -209,6 +215,20 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 				onPress={() => go(`/user/${me.user.username}`)}
 			/>
 			<MenuRow icon={<Settings {...icon} />} label="Settings" onPress={() => go('/settings')} />
+			{/* the app update, while it downloads out of the way (or waits for a tap) */}
+			{appUpdate ? (
+				<MenuRow
+					icon={
+						appUpdate.progress !== null ? (
+							<UploadProgress progress={appUpdate.progress} size={20} />
+						) : (
+							<Download size={20} color={colors.accent} />
+						)
+					}
+					label={appUpdate.label}
+					onPress={appUpdate.onPress}
+				/>
+			) : null}
 			{me.role !== 'user' ? (
 				<MenuRow
 					icon={<Shield {...icon} />}

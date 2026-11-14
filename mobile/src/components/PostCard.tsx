@@ -198,13 +198,13 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				images={post.images}
 				sizes={post.image_sizes}
 				height={detail ? 500 : 400}
-				viewable={detail}
+				viewable={!!detail}
 			/>
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
 			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
-			{post.quote ? <QuoteCard quote={post.quote} viewable={detail} /> : null}
+			{post.quote ? <QuoteCard quote={post.quote} viewable={!!detail} /> : null}
 			{!post.quote && post.linked_post ? (
-				<QuoteCard quote={post.linked_post} viewable={detail} />
+				<QuoteCard quote={post.linked_post} viewable={!!detail} />
 			) : null}
 			{post.link_preview ? <LinkPreviewCard preview={post.link_preview} /> : null}
 		</View>

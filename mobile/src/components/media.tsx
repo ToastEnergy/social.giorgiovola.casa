@@ -1,12 +1,12 @@
 import { Image, type ImageSource } from 'expo-image';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { type ReactNode, useState } from 'react';
+import { Pressable, View, type ViewStyle } from 'react-native';
 import { instanceImage } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
-import type { Gif, LinkPreview, QuotedPost } from '@/lib/types';
+import type { Gif, ImageSize, LinkPreview, QuotedPost } from '@/lib/types';
 import { viewImages } from './overlays';
 import { openLink, RichText } from './RichText';
 import { Avatar, Txt } from './ui';
@@ -49,33 +49,53 @@ export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: numbe
 /** width / height of the images seen so far, so a list that remounts a row doesn't jump */
 const ratios = new Map<string, number>();
 
+/** The size of image `i`, when the API sent one that makes sense (older uploads have none). */
+function sizeOf(sizes: ImageSize[] | null | undefined, i: number): ImageSize | null {
+	const size = sizes?.[i];
+	return size && size.width > 0 && size.height > 0 ? size : null;
+}
+
 /**
- * The images of a post or message: one at its own shape, or a grid of two columns. Tapping opens
- * the viewer. `width` fixes the space they take (a chat bubble fits its content); without it they
- * fill their parent.
+ * The images of a post or message: one at its own shape, or a grid of two columns, like the web
+ * app. With `viewable` tapping opens the viewer; without it a tap goes to what holds them (in a
+ * list, the post). `width` fixes the space they take (a chat bubble fits its content); without it
+ * they fill their parent.
  */
 export function ImageGrid({
 	images,
+	sizes,
 	height = 220,
-	width
+	width,
+	viewable = true
 }: {
 	images: string[];
+	/** the size of each image from the API, when it sent them */
+	sizes?: ImageSize[] | null;
 	/** the tallest a single image may be; several are square tiles */
 	height?: number;
 	width?: number;
+	viewable?: boolean;
 }) {
 	if (!images.length) return null;
 	// with the token: message images need it, and on a members-only instance all of them
 	const sources: ImageSource[] = images.map(instanceImage);
 	if (images.length === 1)
-		return <SingleImage url={images[0]} source={sources[0]} maxHeight={height} width={width} />;
+		return (
+			<SingleImage
+				url={images[0]}
+				source={sources[0]}
+				size={sizeOf(sizes, 0)}
+				maxHeight={height}
+				width={width}
+				onPress={viewable ? () => viewImages(sources, 0) : undefined}
+			/>
+		);
 	return (
 		<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, width }}>
 			{sources.map((source, index) => (
-				<Pressable
+				<Tappable
 					key={images[index]}
-					accessibilityLabel="Open image"
-					onPress={() => viewImages(sources, index)}
+					onPress={viewable ? () => viewImages(sources, index) : undefined}
 					style={{ flexBasis: '48%', flexGrow: 1, aspectRatio: 1 }}
 				>
 					<Image
@@ -84,53 +104,89 @@ export function ImageGrid({
 						contentFit="cover"
 						transition={100}
 					/>
-				</Pressable>
+				</Tappable>
 			))}
 		</View>
 	);
 }
 
-/** One image, uncropped: as wide as it may be, shrunk to stay under `maxHeight` when tall. */
-function SingleImage({
-	url,
-	source,
-	maxHeight,
-	width
+/** A button when it opens the viewer, else a plain view that leaves the tap to its parent. */
+function Tappable({
+	onPress,
+	style,
+	children
 }: {
-	url: string;
-	source: ImageSource;
-	maxHeight: number;
-	width?: number;
+	onPress?: () => void;
+	style: ViewStyle;
+	children: ReactNode;
 }) {
-	// the API doesn't send image sizes: square until it has loaded
-	const [ratio, setRatio] = useState(() => ratios.get(url) ?? 1);
-	const size =
-		width === undefined
-			? ({ width: '100%', maxWidth: maxHeight * ratio, maxHeight, aspectRatio: ratio } as const)
-			: (() => {
-					const w = Math.min(width, maxHeight * ratio);
-					return { width: w, height: w / ratio };
-			  })();
+	if (!onPress) return <View style={style}>{children}</View>;
 	return (
-		<Pressable accessibilityLabel="Open image" onPress={() => viewImages([source], 0)} style={size}>
-			<Image
-				source={source}
-				style={{ flex: 1, borderRadius: 5, backgroundColor: '#111' }}
-				contentFit="cover"
-				transition={100}
-				onLoad={(e) => {
-					const next = e.source.width / e.source.height;
-					if (!next || !isFinite(next)) return;
-					ratios.set(url, next);
-					setRatio(next);
-				}}
-			/>
+		<Pressable accessibilityLabel="Open image" onPress={onPress} style={style}>
+			{children}
 		</Pressable>
 	);
 }
 
+/**
+ * One image, uncropped, like the web app: as wide as it may be without being enlarged past its own
+ * size, shrunk to stay under `maxHeight` when tall.
+ */
+function SingleImage({
+	url,
+	source,
+	size,
+	maxHeight,
+	width,
+	onPress
+}: {
+	url: string;
+	source: ImageSource;
+	size: ImageSize | null;
+	maxHeight: number;
+	width?: number;
+	onPress?: () => void;
+}) {
+	// the API's size when it sent one, else what loading it told us; square until then
+	const [loaded, setLoaded] = useState(() => ratios.get(url));
+	const ratio = size ? size.width / size.height : loaded ?? 1;
+	const widest = Math.min(maxHeight * ratio, size?.width ?? Infinity);
+	const box: ViewStyle =
+		width === undefined
+			? { width: '100%', maxWidth: widest, aspectRatio: ratio }
+			: (() => {
+					const w = Math.min(width, widest);
+					return { width: w, height: w / ratio };
+			  })();
+	return (
+		<Tappable onPress={onPress} style={box}>
+			<Image
+				source={source}
+				style={{ flex: 1, borderRadius: 5, backgroundColor: '#111' }}
+				// contain: if the box guessed the shape wrong, the image still shows whole
+				contentFit="contain"
+				transition={100}
+				onLoad={(e) => {
+					if (size) return;
+					const next = e.source.width / e.source.height;
+					if (!next || !isFinite(next)) return;
+					ratios.set(url, next);
+					setLoaded(next);
+				}}
+			/>
+		</Tappable>
+	);
+}
+
 /** A post shown inside another: the quoted one, or the first one linked in the text. */
-export function QuoteCard({ quote }: { quote: QuotedPost | { deleted: true } }) {
+export function QuoteCard({
+	quote,
+	viewable = true
+}: {
+	quote: QuotedPost | { deleted: true };
+	/** tapping an image opens the viewer instead of the quoted post */
+	viewable?: boolean;
+}) {
 	const frame = {
 		borderWidth: 1,
 		borderColor: colors.line,
@@ -158,7 +214,7 @@ export function QuoteCard({ quote }: { quote: QuotedPost | { deleted: true } }) 
 				</Txt>
 			</View>
 			{quote.content ? <RichText content={quote.content} size={14} numberOfLines={6} /> : null}
-			<ImageGrid images={quote.images} height={150} />
+			<ImageGrid images={quote.images} sizes={quote.image_sizes} height={150} viewable={viewable} />
 			{quote.gif ? <GifMedia gif={quote.gif} maxHeight={180} /> : null}
 			{quote.is_quote ? (
 				<Txt size={13} muted>

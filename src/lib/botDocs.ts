@@ -356,6 +356,9 @@ export const postShape = (origin: string) => `{
   "user": { "name": "…", "username": "…", "avatar": "/avatars/5.webp?hash=…" | null, "created_at": "…" },
   "content": "text, may contain @mentions and #hashtags",
   "images": ["/uploads/…"],            // paths on ${origin}
+  "image_sizes": [{ "width": 1600, "height": 1200 }] | null,
+                                        // px, same order as images; null when unknown (measure
+                                        // the image once loaded), also inside "quote"
   "created_at": "ISO date", "edited_at": "ISO date" | null,
   "likes": 3, "liked": true,            // liked: by the bot
   "regiorgs": 1, "regiorged": false,    // regiorged: by the bot
@@ -383,10 +386,12 @@ export const messageShape = `{
   "recipient": "mybot",
   "content": "hi!",        // may be empty when the message only has images
   "images": ["/dm-uploads/…"],   // private: fetch with the bot's token
+  "image_sizes": [{ "width", "height" }] | null,   // like in a post
   "created_at": "ISO date",
   "linked_post": {         // the first post on this site linked in "content", or null
     "id": 57, "user": { "name", "username", "avatar" },
-    "content": "…", "images": ["/uploads/…"], "created_at": "ISO date", "is_quote": false
+    "content": "…", "images": ["/uploads/…"], "image_sizes": [ … ] | null,
+    "created_at": "ISO date", "is_quote": false
   } | null,
   "reply_to": {            // the message this one replies to, or null
     "id": 75, "sender": { "username", "name" },
@@ -406,6 +411,7 @@ export const groupMessageShape = `{
   "target": { "username", "name", "avatar" } | null,   // who was added or removed, else null
   "content": "hi all",     // for "created" and "renamed": the group name
   "images": ["/dm-uploads/…"],   // private, like in Message
+  "image_sizes": [ … ] | null,   // like in Message
   "created_at": "ISO date",
   "linked_post": { … } | null,   // like in Message
   "reply_to": {            // the message this one replies to, or null

@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
-import type { Gif, Post, User } from '#lib/types.js';
+import type { Gif, ImageSize, Post, User } from '#lib/types.js';
 import { extractHashtags } from '#lib/hashtags.js';
 import { getAvatar } from '#lib/utils.js';
 import { DISCORD_WEBHOOK_URL } from '$app/env/private';
@@ -78,6 +78,7 @@ export async function getPosts({
 		.select({
 			content: posts.content,
 			images: posts.images,
+			image_sizes: posts.image_sizes,
 			gif: posts.gif,
 			id: posts.id,
 			created_at: posts.created_at,
@@ -102,6 +103,7 @@ export async function getPosts({
 					'id', p.id,
 					'content', p.content,
 					'images', p.images,
+					'image_sizes', p.image_sizes,
 					'gif', p.gif,
 					'created_at', p.created_at,
 					'is_quote', p.is_quote,
@@ -326,6 +328,7 @@ export async function createPost(
 	{
 		content,
 		images = [],
+		image_sizes = null,
 		gif = null,
 		reply_to,
 		quote_of = null,
@@ -333,6 +336,8 @@ export async function createPost(
 	}: {
 		content: string;
 		images?: string[];
+		/** in the order of `images`, null when unknown */
+		image_sizes?: ImageSize[] | null;
 		gif?: Gif | null;
 		reply_to: number | null;
 		quote_of?: number | null;
@@ -347,6 +352,7 @@ export async function createPost(
 				user_id: user.id,
 				content,
 				images,
+				image_sizes: images.length ? image_sizes : null,
 				gif,
 				reply_to,
 				quote_of,

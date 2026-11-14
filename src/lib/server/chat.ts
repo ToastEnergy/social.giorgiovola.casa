@@ -251,7 +251,7 @@ export async function sendDirect(locals: App.Locals, me: User, username: string,
 	try {
 		message = await sendMessage(me, peer, body.content, images, replyTo, body.gif);
 	} catch (e) {
-		await removeUploads(images);
+		await removeUploads(images.map((i) => i.url));
 		throw e;
 	}
 	void publishMessage(message, me.id, peer.id, me.name);
@@ -431,7 +431,7 @@ export async function sendToGroup(
 	try {
 		message = await sendGroupMessage(group.id, me, body.content, images, replyTo, body.gif);
 	} catch (e) {
-		await removeUploads(images);
+		await removeUploads(images.map((i) => i.url));
 		throw e;
 	}
 	void publishGroupMessage(

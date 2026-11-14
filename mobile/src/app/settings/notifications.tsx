@@ -7,6 +7,7 @@ import { Button, Hint, Notice, Section, Txt } from '@/components/ui';
 import {
 	channels,
 	openNotificationSettings,
+	pushInExpoGo,
 	pushSupported,
 	requestPushPermission,
 	setPushEnabled,
@@ -65,8 +66,10 @@ export default function NotificationSettings() {
 				<Stack.Screen options={{ title: 'Notifications' }} />
 				<Section title="Push notifications">
 					<Hint>
-						Push notifications aren’t available on iPhone and iPad yet. Unread counts and new
-						messages still arrive live while the app is open.
+						{pushInExpoGo
+							? 'Push notifications don’t work in Expo Go: use a development build to try them.'
+							: 'Push notifications aren’t available on iPhone and iPad yet.'}{' '}
+						Unread counts and new messages still arrive live while the app is open.
 					</Hint>
 				</Section>
 			</ScrollView>

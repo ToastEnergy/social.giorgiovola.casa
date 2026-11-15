@@ -4,9 +4,11 @@
 		progress: number;
 		/** width and height in px */
 		size?: number;
+		/** what's uploading, for screen readers */
+		label?: string;
 	};
 
-	let { progress, size = 28 }: Props = $props();
+	let { progress, size = 28, label = 'image' }: Props = $props();
 
 	const R = 10;
 	const CIRCUMFERENCE = 2 * Math.PI * R;
@@ -21,7 +23,7 @@
 	viewBox="0 0 24 24"
 	fill="none"
 	role="progressbar"
-	aria-label={processing ? 'Processing image' : 'Uploading image'}
+	aria-label={processing ? `Processing ${label}` : `Uploading ${label}`}
 	aria-valuemin={0}
 	aria-valuemax={100}
 	aria-valuenow={processing ? undefined : Math.round(progress * 100)}

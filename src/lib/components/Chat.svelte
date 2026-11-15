@@ -11,6 +11,7 @@
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { pastedFiles } from '#lib/clipboard.js';
 	import { onMount, tick } from 'svelte';
 	import Avatar from './Avatar.svelte';
@@ -24,7 +25,18 @@
 	import { shareGif } from '#lib/klipy.js';
 	import { messagePreview } from '#lib/mediaPreview.js';
 	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
-	import { play, wasPlayed, type Track } from '#lib/audioPlayer.svelte.js';
+	import VoiceRecorder from './VoiceRecorder.svelte';
+	import {
+		isCurrent,
+		play,
+		stop as stopPlayback,
+		wasPlayed,
+		type Track
+	} from '#lib/audioPlayer.svelte.js';
+	import { VoiceNote, whenOnline } from '#lib/voiceNote.svelte.js';
+	import { canRecord, voiceCapture } from '#lib/voiceRecorder.svelte.js';
+	import { voiceDraftPrefix } from '#lib/voiceDraft.js';
+	import { connection } from '#lib/connection.svelte.js';
 	import { page as appPage } from '$app/state';
 	import { onRealtime } from '#lib/realtime.js';
 	import BottomNav from './BottomNav.svelte';
@@ -117,7 +129,16 @@
 	let fileInput = $state<HTMLInputElement>();
 	let content = $state('');
 	/** messages on their way to the server, shown at the bottom until they land */
-	let pending = $state<(Draft & { key: number; text: string; sentAt: number; at: Date })[]>([]);
+	let pending = $state<
+		(Draft & {
+			key: number;
+			text: string;
+			sentAt: number;
+			at: Date;
+			/** a voice note that couldn't be sent: why, and the bubble offers to retry */
+			failed?: string;
+		})[]
+	>([]);
 	let pendingKey = 0;
 	// counts messages sent from here: replays the send button's paper plane flying off
 	let sends = $state(0);
@@ -146,6 +167,11 @@
 	// KLIPY's settings, null when GIFs are off on this instance
 	const gifConfig = $derived(appPage.data.gifs ?? null);
 	let pickingGif = $state(false);
+	// voice notes: the server processes audio and this browser can record
+	let recordable = $state(false);
+	const voiceOn = $derived(recordable && !!appPage.data.voiceNotes && !!$user);
+	// the recorder covers the input
+	let recording = $state(false);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	let dragging = $state(false);
 	let dragDepth = 0;
@@ -169,6 +195,8 @@
 	let replyingTo = $state<Message | null>(null);
 	/** the message whose text is being changed in the composer */
 	let editing = $state<Message | null>(null);
+	// the mic takes the send button's place while there is nothing to send
+	const micSlot = $derived(voiceOn && !content.trim() && attachments.length === 0 && !editing);
 	/** what was typed before starting an edit, given back once it ends */
 	let draftBeforeEdit = '';
 	/** the message whose menu (reactions, reply, edit, copy, delete) is open, and where to show it */
@@ -610,7 +638,7 @@
 	function onPointerDown(e: PointerEvent, message: Message) {
 		suppressClick = false;
 		// the menu still offers copying and deleting in a blocked conversation
-		if (e.pointerType === 'mouse' || !e.isPrimary) return;
+		if (e.pointerType === 'mouse' || !e.isPrimary || voiceCapture.active) return;
 		const el = e.currentTarget as HTMLElement;
 		gesture = {
 			message,
@@ -814,10 +842,16 @@
 		// bubble (the oldest one with that text, they go out in order) right away
 		for (const message of incoming) {
 			if (!isMine(message) || messages.some((m) => m.id === message.id)) continue;
-			const draft = pending.find((p) => p.text === message.content.trim());
+			const draft = pending.find(
+				(p) =>
+					p.text === message.content.trim() &&
+					!!p.voice === !!message.audio &&
+					!!p.gif === !!message.gif
+			);
 			if (!draft) continue;
 			carryOn(message.id, draft.sentAt);
 			pending = pending.filter((p) => p !== draft);
+			if (draft.voice) settleVoice(draft.voice);
 		}
 		messages = merge(messages, incoming);
 		await tick();
@@ -1034,6 +1068,8 @@
 		gif?: Gif | null;
 		/** the search that found it, for KLIPY's share count */
 		gifQuery?: string;
+		/** a voice note, sent on its own like a GIF */
+		voice?: VoiceNote | null;
 	};
 
 	// messages go out one at a time, in order, while the input is already free for the next one
@@ -1072,11 +1108,144 @@
 		glideToBottom();
 	}
 
+	/**
+	 * Sends a recorded voice note, as a message of its own (what's typed stays in the input): it
+	 * shows at once with its upload's progress, which started while recording. A voice note in a
+	 * chat has no caption: the mic is only there while the field is empty (like WhatsApp).
+	 */
+	async function sendVoice(voice: VoiceNote) {
+		voice.replyTo = replyingTo?.id ?? null;
+		// saved as being sent: a reload brings it back as unsent, not for review
+		voice.sending = true;
+		const draft: Draft = { content: '', replyingTo, attachments: [], voice };
+		replyingTo = null;
+		error = null;
+		resetTyping(typingTarget);
+		queueVoice(draft);
+		await tick();
+		glideToBottom();
+	}
+
+	function queueVoice(draft: Draft, failed?: string) {
+		const key = pendingKey++;
+		pending = [
+			...pending,
+			{ ...draft, key, text: '', sentAt: performance.now(), at: new Date(), failed }
+		];
+		if (!failed) outbox = outbox.then(() => post(draft, '', key));
+	}
+
+	/** A voice note whose send didn't go through before (a reload): shown failed, to retry. */
+	function restoreVoice(voice: VoiceNote) {
+		const replyTo = messages.find((m) => m.id === voice.replyTo) ?? null;
+		queueVoice({ content: '', replyingTo: replyTo, attachments: [], voice }, 'Not sent');
+	}
+
+	/** Tap to retry: the upload (if that failed) and the send. */
+	function retryVoice(key: number) {
+		const entry = pending.find((p) => p.key === key);
+		if (!entry?.voice || !entry.failed) return;
+		pending = pending.map((p) => (p.key === key ? { ...p, failed: undefined } : p));
+		// a failed upload, or a note restored after a reload: up again (resuming what's there)
+		if (entry.voice.status === 'failed' || !entry.voice.id) entry.voice.upload();
+		const draft: Draft = {
+			content: entry.content,
+			replyingTo: entry.replyingTo,
+			attachments: entry.attachments,
+			voice: entry.voice
+		};
+		outbox = outbox.then(() => post(draft, entry.text, key));
+	}
+
+	function deleteVoice(key: number) {
+		const entry = pending.find((p) => p.key === key);
+		if (!entry?.voice) return;
+		if (!confirm('Delete this voice message? It was not sent.')) return;
+		if (isCurrent(pendingTrack(entry.voice).note)) stopPlayback();
+		entry.voice.discard();
+		pending = pending.filter((p) => p.key !== key);
+	}
+
+	/** The voice note went out: its draft goes. */
+	function settleVoice(voice: VoiceNote) {
+		// still playing: the recording stays until the page goes
+		voice.sent(isCurrent(pendingTrack(voice).note));
+	}
+
+	/** what the shared player plays for a voice note on its way */
+	const pendingTrack = (voice: VoiceNote): Track => ({
+		note: {
+			url: voice.url ?? '',
+			duration_ms: voice.durationMs,
+			waveform: voice.waveform,
+			size: voice.size
+		},
+		sender: me() ?? { username: '', name: 'You', avatar: null }
+	});
+
+	// voice notes sent while the server still processed them (202): settled by the stream
+	const deferred = new Map<
+		string,
+		{ key: number; voice: VoiceNote; poll: ReturnType<typeof setInterval> }
+	>();
+
+	function failPending(key: number, why: string) {
+		pending = pending.map((p) => (p.key === key ? { ...p, failed: why } : p));
+	}
+
+	function deferVoice(upload: string, key: number, voice: VoiceNote) {
+		const poll = setInterval(async () => {
+			// the stream may be down: ask
+			try {
+				const res = await fetch(`/api/v1/uploads/audio/${upload}`);
+				if (res.status === 404) return voiceFailed(upload, 'Could not send the voice message.');
+				if (!res.ok) return;
+				const status = (await res.json()) as { status: string; error?: string };
+				if (status.status === 'sent') voiceSent(upload);
+				else if (status.status === 'failed')
+					voiceFailed(upload, status.error || 'Could not send the voice message.');
+			} catch {
+				// offline: the next poll
+			}
+		}, 10_000);
+		deferred.set(upload, { key, voice, poll });
+	}
+
+	function voiceSent(upload: string) {
+		const entry = deferred.get(upload);
+		if (!entry) return;
+		clearInterval(entry.poll);
+		deferred.delete(upload);
+		settleVoice(entry.voice);
+		// the message itself comes with the stream; if it's down, from the server
+		if (pending.some((p) => p.key === entry.key)) {
+			pending = pending.filter((p) => p.key !== entry.key);
+			sync();
+		}
+	}
+
+	function voiceFailed(upload: string, why: string) {
+		const entry = deferred.get(upload);
+		if (!entry) return;
+		clearInterval(entry.poll);
+		deferred.delete(upload);
+		failPending(entry.key, why);
+	}
+
 	async function post(draft: Draft, text: string, key: number) {
 		const sentAt = pending.find((p) => p.key === key)?.sentAt ?? 0;
 		const settle = () => (pending = pending.filter((p) => p.key !== key));
+		const voice = draft.voice ?? null;
 		const send = async (fresh: boolean) => {
 			const uploads = await uploadIds(draft.attachments, fresh);
+			let audio: string | null = null;
+			if (voice) {
+				// the server lost it (a restart): from the recording kept here
+				if (fresh) voice.upload(true);
+				audio = await voice.done;
+				// offline: it waits for the network, the bubble says so
+				await whenOnline();
+			}
 			return fetch(messagesUrl, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -1084,14 +1253,22 @@
 					content: text,
 					reply_to: draft.replyingTo?.id ?? null,
 					uploads,
-					gif: draft.gif ?? null
+					gif: draft.gif ?? null,
+					...(audio ? { audio } : {})
 				})
 			});
 		};
 		try {
 			let res = await send(false);
-			// the server let the images expire (kept for a day, or lost on a restart): upload again
+			// the server let the images or the voice note expire (kept for a day, or lost on a
+			// restart): upload again
 			if (res.status === 410) res = await send(true);
+			if (res.status === 202 && voice) {
+				// still being processed: the stream says when it went out
+				const { upload } = (await res.json()) as { upload: { id: string } };
+				deferVoice(upload.id, key, voice);
+				return;
+			}
 			if (res.ok) {
 				const message = await res.json();
 				// the stream may have delivered it already, and taken over the pending bubble
@@ -1099,21 +1276,25 @@
 				settle();
 				// the pending bubble showed these until now
 				for (const a of draft.attachments) a.release();
+				if (voice) settleVoice(voice);
 				if (draft.gif && gifConfig) shareGif(gifConfig, draft.gif.slug, draft.gifQuery ?? '');
 				await add([message], true);
 				return;
 			}
-			showError(
+			const why =
 				res.status === 400 || res.status === 403 || res.status === 410 || res.status === 429
 					? (await errorOf(res)).message
 					: res.status === 413
 					? 'Images are too big.'
-					: 'Something went wrong.'
-			);
+					: 'Something went wrong.';
+			// a voice note stays where it is, to retry
+			if (voice) return failPending(key, why);
+			showError(why);
 		} catch (e) {
-			showError(
-				e instanceof UploadError ? e.message : 'Could not send the message, check your connection.'
-			);
+			const why =
+				e instanceof UploadError ? e.message : 'Could not send the message, check your connection.';
+			if (voice) return failPending(key, why);
+			showError(why);
 		}
 		settle();
 		// give back what didn't go out, without overwriting what was typed since. A failed upload is
@@ -1141,6 +1322,8 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		// the voice recorder covers the field and takes the keys (VoiceRecorder)
+		if (recording) return;
 		if (e.key === 'Escape' && editing) {
 			e.preventDefault();
 			stopEditing();
@@ -1254,7 +1437,12 @@
 							setPlayed(id, audio_played_at)
 						)
 				  ];
-		offs.push(onRealtime('open', sync));
+		offs.push(
+			onRealtime('open', sync),
+			onRealtime('audio_sent', ({ upload }) => voiceSent(upload)),
+			onRealtime('audio_failed', ({ upload, error }) => voiceFailed(upload, error))
+		);
+		recordable = canRecord();
 		const onVisibility = () => {
 			if (document.visibilityState === 'visible') sync();
 		};
@@ -1275,6 +1463,7 @@
 			clearTimeout(highlightTimeout);
 			clearTimeout(pressTimer);
 			clearAttachments();
+			for (const { poll } of deferred.values()) clearInterval(poll);
 		};
 	});
 </script>
@@ -1824,11 +2013,9 @@
 			<!-- on its way: dimmed, with the loading mark beside it. It shows the time it was sent at,
 				laid out like a sent message's, so the bubble keeps its size when the message lands -->
 			<div
-				class="send-in mr-2 flex max-w-[85%] flex-col items-end self-end opacity-70 {i === 0 &&
-				!above &&
-				messages.length > 0
-					? 'mt-2.5'
-					: ''}"
+				class="send-in mr-2 flex max-w-[85%] flex-col items-end gap-[5px] self-end {draft.failed
+					? ''
+					: 'opacity-70'} {i === 0 && !above && messages.length > 0 ? 'mt-2.5' : ''}"
 				aria-busy="true"
 			>
 				<div
@@ -1874,6 +2061,11 @@
 							draggable="false"
 						/>
 					{/if}
+					{#if draft.voice}
+						<div class="w-[min(300px,62vw)]">
+							<VoiceNotePlayer track={pendingTrack(draft.voice)} tone="inverse" />
+						</div>
+					{/if}
 					{#if draft.attachments.length}
 						<!-- sized like a sent message's images, see there -->
 						<div
@@ -1902,8 +2094,15 @@
 							{/each}
 						</div>
 					{/if}
-					<div class="absolute bottom-2 -left-6">
-						<LoadingScreen size={14} />
+					<div class="absolute bottom-2 -left-6 flex">
+						{#if draft.failed}
+							<TriangleAlert size={16} class="text-danger" />
+						{:else if draft.voice?.status === 'uploading'}
+							<!-- the upload went on while recording: this is what's left -->
+							<UploadProgress progress={draft.voice.progress} size={18} label="voice message" />
+						{:else}
+							<LoadingScreen size={14} />
+						{/if}
 					</div>
 					{#if draft.text}
 						<p class="wrap-anywhere whitespace-pre-wrap">
@@ -1922,6 +2121,24 @@
 						<span class="opacity-60">{clock(draft.at)}</span>
 					</div>
 				</div>
+				{#if draft.voice && draft.failed}
+					<div class="flex items-center gap-[5px] text-[0.8em]">
+						<button
+							type="button"
+							class="cursor-pointer rounded-[5px] px-[5px] text-danger outline-none hover:underline focus-visible:underline"
+							onclick={() => retryVoice(draft.key)}>{draft.failed}. Tap to retry</button
+						>
+						<button
+							type="button"
+							class="flex size-6 cursor-pointer items-center justify-center rounded-full opacity-70 outline-none hover:bg-white/10 hover:opacity-100"
+							aria-label="Delete voice message"
+							title="Delete"
+							onclick={() => deleteVoice(draft.key)}><Trash size={14} /></button
+						>
+					</div>
+				{:else if draft.voice && connection.state === 'offline'}
+					<p class="text-[0.8em] text-muted">Waiting for a connection…</p>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -2058,7 +2275,7 @@
 		<p class="p-2.5 text-center text-muted">You can't message this user.</p>
 	{:else}
 		<form
-			class="flex items-end gap-2.5"
+			class="relative flex items-end gap-2.5"
 			{...writingHandlers}
 			onsubmit={(e) => {
 				e.preventDefault();
@@ -2116,16 +2333,34 @@
 					>
 				{/if}
 			</div>
-			<button
-				type="submit"
-				title={editing ? 'Save' : 'Send'}
-				aria-label={editing ? 'Save' : 'Send'}
-				class="flex size-[46px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[10px] bg-accent text-background outline-none hover:brightness-110 focus-visible:brightness-110"
-				onmousedown={keepFocus}
-				>{#key sends}<span class="flex {sends > 0 ? 'send-fly' : ''}"
-						><SendHorizontal size={18} /></span
-					>{/key}</button
-			>
+			{#if voiceOn && $user}
+				<!-- the mic in the send button's place while there is nothing to send, and the
+					recorder over the field -->
+				<VoiceRecorder
+					draftPrefix={voiceDraftPrefix(
+						$user.id,
+						groupId !== null ? `group:${groupId}` : `dm:${peerUsername}`
+					)}
+					{typingTarget}
+					showMic={micSlot}
+					bind:active={recording}
+					me={{ username: $user.username, name: $user.name, avatar: $user.avatar }}
+					onsend={sendVoice}
+					onunsent={restoreVoice}
+				/>
+			{/if}
+			{#if !micSlot && !recording}
+				<button
+					type="submit"
+					title={editing ? 'Save' : 'Send'}
+					aria-label={editing ? 'Save' : 'Send'}
+					class="flex size-[46px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-[10px] bg-accent text-background outline-none hover:brightness-110 focus-visible:brightness-110"
+					onmousedown={keepFocus}
+					>{#key sends}<span class="flex {sends > 0 ? 'send-fly' : ''}"
+							><SendHorizontal size={18} /></span
+						>{/key}</button
+				>
+			{/if}
 		</form>
 	{/if}
 	<!-- out of the way while a message is written, also where the page shrinks for the keyboard

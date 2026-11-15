@@ -698,6 +698,14 @@ async function seed(db: postgres.Sql) {
 			'dev'
 		)}, true, 'seed: sign up with this');`,
 
+		// the group keys of the likes, regiorgs and follows above, as notify.ts sets them (the
+		// others stay null: 'n-<id>', see src/lib/server/notifications.ts)
+		`UPDATE inbox SET group_key = CASE
+			WHEN type IN ('like', 'regiorg')
+				THEN type || '-' || post_id || '-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
+			ELSE 'follow-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
+		END WHERE group_key IS NULL AND type IN ('like', 'regiorg', 'follow');`,
+
 		'COMMIT;'
 	].join('\n');
 

@@ -26,6 +26,7 @@
 	import LinkPreviewCard from './LinkPreviewCard.svelte';
 	import PollCard from './PollCard.svelte';
 	import GifMedia from './GifMedia.svelte';
+	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
 	import { markMentionSeen, mentions } from '#lib/mentions.js';
@@ -409,6 +410,7 @@
 		content: post.content,
 		images: post.images ?? [],
 		gif: post.gif ?? null,
+		audio: post.audio ?? null,
 		created_at: post.created_at,
 		is_quote: !!post.quote
 	});
@@ -810,6 +812,17 @@
 								</svelte:element>
 							{/each}
 						</div>
+					{/if}
+					{#if post.audio}
+						<!-- plays in place: a tap on it never opens the post -->
+						<VoiceNotePlayer
+							track={{
+								note: post.audio,
+								sender: post.user,
+								href: `/@${post.user.username}/${post.id}`,
+								caption: post.content
+							}}
+						/>
 					{/if}
 					{#if post.gif}
 						<!-- like a photo: in a list it opens the post, the open post plays and pauses it -->

@@ -23,6 +23,8 @@ export type RealtimeEvents = {
 	message_edited: ChatMessage;
 	/** the reactions to a direct message changed: all of them, oldest first */
 	message_reactions: { id: number; reactions: MessageReaction[] };
+	/** the recipient first played the voice note of a direct message (sent to both sides) */
+	message_played: { id: number; audio_played_at: Date };
 	messages_unread: { count: number; reactions: number };
 	group_message: GroupMessage;
 	group_message_deleted: { group_id: number; id: number };
@@ -103,6 +105,7 @@ const events: (keyof RealtimeEvents)[] = [
 	'message_deleted',
 	'message_edited',
 	'message_reactions',
+	'message_played',
 	'messages_unread',
 	'group_message',
 	'group_message_deleted',

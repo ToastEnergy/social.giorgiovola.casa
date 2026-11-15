@@ -18,9 +18,10 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
 FROM base
-# Roboto is used to render the social card images
+# the social cards are drawn in Manrope (from node_modules), with Noto for emoji and Roboto for
+# other scripts
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends fonts-roboto fontconfig \
+	&& apt-get install -y --no-install-recommends fonts-roboto fonts-noto-color-emoji fontconfig \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& mkdir -p static/avatars static/uploads data/dm data/previews
 # ffmpeg and ffprobe transcode voice notes (src/lib/server/audio.ts): static builds, pinned by

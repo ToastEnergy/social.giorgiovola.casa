@@ -24,7 +24,6 @@
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
-	import { getAvatar } from '#lib/utils.js';
 	import { connectRealtime, disconnectRealtime, onRealtime, onResume } from '#lib/realtime.js';
 	import { invalidateAll } from '$app/navigation';
 	import { syncPush } from '#lib/push.js';
@@ -51,11 +50,8 @@
 	$notisCount = data.notisCount;
 	$messagesCount = data.messagesCount;
 
-	// social cards can't show SVGs: use the first other image of a post, else the generated card
-	const postCard = (post: { images?: string[] }) => {
-		const image = post.images?.find((i) => !i.endsWith('.svg'));
-		return image ? (PUBLIC_URL || page.url.origin) + image : publicUrl() + '/image.png';
-	};
+	// a post or a profile drawn as on the site (#lib/server/socialCard.ts)
+	const socialCard = () => `${PUBLIC_URL || page.url.origin}${page.url.pathname}/image.png`;
 	// image-only posts have no text to quote
 	const postText = (post: { content: string; images?: string[] }) =>
 		post.content || (post.images?.length ? '[image]' : '');
@@ -208,7 +204,10 @@
 			content={`${page.data.post.user.name} : "${postText(page.data.post)}"`}
 		/>
 		<meta property="og:description" content={postText(page.data.post)} />
-		<meta property="og:image" content={postCard(page.data.post)} />
+		<meta property="og:image" content={socialCard()} />
+		<meta property="og:image:type" content="image/png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
 		<meta property="og:profile:username" content={page.data.post.user.username} />
 		<meta
 			property="og:article:published_time"
@@ -223,7 +222,7 @@
 			content={`${page.data.post.user.name} on social.giorgiovola.casa`}
 		/>
 		<meta property="twitter:description" content={postText(page.data.post)} />
-		<meta property="twitter:image" content={postCard(page.data.post)} />
+		<meta property="twitter:image" content={socialCard()} />
 	{:else if page.route.id === '/@[username]' && !page.error}
 		<!-- Primary Meta Tags -->
 		<title>{page.data.user.name} (@{page.data.user.username}) / social.giorgiovola.casa</title>
@@ -247,7 +246,10 @@
 			property="og:description"
 			content={page.data.bio || `Follow @${page.data.user.username} on social.giorgiovola.casa`}
 		/>
-		<meta property="og:image" content={getAvatar(page.data.user, 500, true)} />
+		<meta property="og:image" content={socialCard()} />
+		<meta property="og:image:type" content="image/png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
 		<meta property="og:profile:username" content={page.data.user.username} />
 		<meta property="og:profile:first_name" content={page.data.user.name} />
 		<!-- Twitter -->
@@ -261,7 +263,7 @@
 			property="twitter:description"
 			content={page.data.bio || `Follow @${page.data.user.username} on social.giorgiovola.casa`}
 		/>
-		<meta property="twitter:image" content={`${getAvatar(page.data.user, 500, true)}`} />
+		<meta property="twitter:image" content={socialCard()} />
 	{:else}
 		<!-- Primary Meta Tags -->
 		<title>Social Giorgiovola Casa</title>

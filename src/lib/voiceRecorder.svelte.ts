@@ -38,7 +38,12 @@ const BAR_MS = 100;
 
 // the first of these the browser records and can also play (for the review): Chrome, Firefox and
 // Android give WebM/Opus, Safari MP4/AAC. The server transcodes them all
-const TYPES = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus'];
+const TYPES = [
+	'audio/webm;codecs=opus',
+	'audio/mp4;codecs=mp4a.40.2',
+	'audio/mp4',
+	'audio/ogg;codecs=opus'
+];
 
 /** The recording, once it stopped. */
 export type Recording = { durationMs: number; waveform: number[] };
@@ -69,8 +74,7 @@ const GRANTED_KEY = 'voice-mic-granted';
  */
 export async function micPermission(): Promise<MicPermission> {
 	try {
-		const status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-		return status.state;
+		return (await micStatus()).state;
 	} catch {
 		try {
 			return localStorage.getItem(GRANTED_KEY) ? 'granted' : 'prompt';
@@ -79,6 +83,10 @@ export async function micPermission(): Promise<MicPermission> {
 		}
 	}
 }
+
+/** The browser's permission state for the mic, which says when it changes (where supported). */
+export const micStatus = () =>
+	navigator.permissions.query({ name: 'microphone' as PermissionName });
 
 function rememberGranted() {
 	try {
@@ -354,7 +362,8 @@ export class VoiceRecorder {
 
 	async #end(): Promise<Recording> {
 		const recorder = this.#recorder;
-		if (this.phase === 'recording') this.#before += this.started ? performance.now() - this.#since : 0;
+		if (this.phase === 'recording')
+			this.#before += this.started ? performance.now() - this.#since : 0;
 		this.elapsed = Math.min(MAX_MS, this.#before);
 		if (recorder && recorder.state !== 'inactive') {
 			this.#stopped ??= new Promise<void>((resolve) => {

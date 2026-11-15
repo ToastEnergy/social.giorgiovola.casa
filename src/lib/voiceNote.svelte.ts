@@ -1,5 +1,10 @@
 import { UploadError } from './attachment.svelte.js';
-import { clearVoiceDraft, saveVoiceMeta, saveVoicePart, type VoiceDraftMeta } from './voiceDraft.js';
+import {
+	clearVoiceDraft,
+	saveVoiceMeta,
+	saveVoicePart,
+	type VoiceDraftMeta
+} from './voiceDraft.js';
 
 /**
  * A voice note recorded in a chat, on its way to the server (like `Attachment` for images). Its
@@ -28,10 +33,7 @@ type AudioUpload = {
 };
 
 class HttpError extends Error {
-	constructor(
-		public status: number,
-		message: string
-	) {
+	constructor(public status: number, message: string) {
 		super(message);
 	}
 }
@@ -226,7 +228,11 @@ export class VoiceNote {
 		for (let tries = 0; ; tries++) {
 			await whenOnline();
 			try {
-				if (!this.#session && (this.parts.length <= 1 || this.#noSessions) && this.size <= ONE_SHOT_MAX)
+				if (
+					!this.#session &&
+					(this.parts.length <= 1 || this.#noSessions) &&
+					this.size <= ONE_SHOT_MAX
+				)
 					return await this.#oneShot();
 				return await this.#completeSession();
 			} catch (e) {
@@ -306,7 +312,8 @@ export class VoiceNote {
 				`/audio/sessions/${id}/complete`,
 				JSON.stringify({ chunks: this.parts.length })
 			);
-			if (upload.status === 'failed') throw new UploadError(upload.error || 'Could not process the voice note.');
+			if (upload.status === 'failed')
+				throw new UploadError(upload.error || 'Could not process the voice note.');
 			return id;
 		} catch (e) {
 			if (!(e instanceof HttpError)) throw e;
@@ -320,7 +327,7 @@ export class VoiceNote {
 			// "Chunk n is missing": ask which ones the server has and send the rest
 			if (e.status === 400 && /missing/i.test(e.message)) {
 				this.#sent.clear();
-				throw new TypeError('resume');
+				throw new TypeError('resume', { cause: e });
 			}
 			throw e;
 		}

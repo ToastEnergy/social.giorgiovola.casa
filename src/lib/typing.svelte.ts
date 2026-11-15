@@ -98,7 +98,10 @@ const lastSent = new Map<string, number>();
  * Signals that you are writing (or recording a voice note) in a conversation, at most every few
  * seconds for each.
  */
-export function sendTyping(target: { to: string } | { group: number }, action: TypingAction = 'typing') {
+export function sendTyping(
+	target: { to: string } | { group: number },
+	action: TypingAction = 'typing'
+) {
 	const key = 'to' in target ? dmKey(target.to) : groupKey(target.group);
 	const now = Date.now();
 	if (now - (lastSent.get(`${key}/${action}`) ?? 0) < SEND_EVERY_MS) return;

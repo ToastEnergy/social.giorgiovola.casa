@@ -79,9 +79,7 @@ export async function saveVoicePart(key: string, n: number, blob: Blob) {
 /** Saves what's known of a recording, replacing what was saved before. */
 export async function saveVoiceMeta(meta: Omit<VoiceDraftMeta, 'savedAt'>) {
 	const stored: VoiceDraftMeta = { ...meta, waveform: [...meta.waveform], savedAt: Date.now() };
-	await run([DRAFTS], 'readwrite', (tx) => void tx.objectStore(DRAFTS).put(stored)).catch(
-		() => {}
-	);
+	await run([DRAFTS], 'readwrite', (tx) => void tx.objectStore(DRAFTS).put(stored)).catch(() => {});
 }
 
 const partsRange = (key: string) => IDBKeyRange.bound([key, 0], [key, Infinity]);

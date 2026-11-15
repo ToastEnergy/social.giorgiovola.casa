@@ -22,6 +22,7 @@
 		MAX_MS,
 		haptic,
 		micPermission,
+		micStatus,
 		requestMic,
 		voiceCapture,
 		VoiceRecorder,
@@ -87,7 +88,11 @@
 		oninterrupt: (why, stopped) => {
 			haptic([30, 60, 30]);
 			say(
-				`${why}: ${stopped ? 'the recording stopped. Listen to it, then send it or delete it' : 'the recording is paused'}.`,
+				`${why}: ${
+					stopped
+						? 'the recording stopped. Listen to it, then send it or delete it'
+						: 'the recording is paused'
+				}.`,
 				5000
 			);
 		},
@@ -104,9 +109,7 @@
 	});
 
 	const phase = $derived(recorder.phase);
-	const capturing = $derived(
-		phase === 'requesting' || phase === 'recording' || phase === 'paused'
-	);
+	const capturing = $derived(phase === 'requesting' || phase === 'recording' || phase === 'paused');
 	const holding = $derived(capturing && recorder.mode === 'hold');
 	const locked = $derived(capturing && recorder.mode === 'locked');
 	const reviewing = $derived(phase === 'review');
@@ -142,7 +145,8 @@
 	let spoken = $state('');
 	const announce = (text: string) => (spoken = text);
 	$effect(() => {
-		if (phase === 'recording') announce(recorder.mode === 'locked' ? 'Recording, hands free' : 'Recording');
+		if (phase === 'recording')
+			announce(recorder.mode === 'locked' ? 'Recording, hands free' : 'Recording');
 		else if (phase === 'paused') announce('Recording paused');
 		else if (phase === 'review') announce('Recording stopped. Play it back, delete it or send it.');
 	});
@@ -441,8 +445,7 @@
 		micPermission().then((state) => {
 			if (gone) return;
 			permission = state;
-			navigator.permissions
-				?.query({ name: 'microphone' as PermissionName })
+			micStatus()
 				.then((s) => {
 					if (gone) return;
 					status = s;
@@ -633,9 +636,9 @@
 					</p>
 				{:else if platform === 'android'}
 					<p class="text-muted">
-						In Chrome, tap the icon left of the address bar › Permissions › Microphone and allow
-						it. For the installed app: Chrome › ⋮ › Settings › Site settings › Microphone, then
-						this site. Then try again.
+						In Chrome, tap the icon left of the address bar › Permissions › Microphone and allow it.
+						For the installed app: Chrome › ⋮ › Settings › Site settings › Microphone, then this
+						site. Then try again.
 					</p>
 				{:else}
 					<p class="text-muted">
@@ -672,9 +675,7 @@
 			? 'scale-125'
 			: ''} {holding ? '' : 'transition-transform duration-150'}"
 		style:translate={holding ? `${dx}px ${dy}px` : undefined}
-		aria-label={recorder.active && !holding
-			? 'Send voice message'
-			: 'Record a voice message'}
+		aria-label={recorder.active && !holding ? 'Send voice message' : 'Record a voice message'}
 		title={recorder.active && !holding
 			? 'Send (Enter)'
 			: 'Hold to record, release to send. Click to record hands free.'}

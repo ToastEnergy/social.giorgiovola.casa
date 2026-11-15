@@ -11,7 +11,6 @@
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
-	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { pastedFiles } from '#lib/clipboard.js';
 	import { onMount, tick } from 'svelte';
@@ -27,7 +26,13 @@
 	import { messagePreview } from '#lib/mediaPreview.js';
 	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
 	import VoiceRecorder from './VoiceRecorder.svelte';
-	import { isCurrent, play, stop as stopPlayback, wasPlayed, type Track } from '#lib/audioPlayer.svelte.js';
+	import {
+		isCurrent,
+		play,
+		stop as stopPlayback,
+		wasPlayed,
+		type Track
+	} from '#lib/audioPlayer.svelte.js';
 	import { VoiceNote, whenOnline } from '#lib/voiceNote.svelte.js';
 	import { canRecord, voiceCapture } from '#lib/voiceRecorder.svelte.js';
 	import { voiceDraftPrefix } from '#lib/voiceDraft.js';
@@ -839,7 +844,9 @@
 			if (!isMine(message) || messages.some((m) => m.id === message.id)) continue;
 			const draft = pending.find(
 				(p) =>
-					p.text === message.content.trim() && !!p.voice === !!message.audio && !!p.gif === !!message.gif
+					p.text === message.content.trim() &&
+					!!p.voice === !!message.audio &&
+					!!p.gif === !!message.gif
 			);
 			if (!draft) continue;
 			carryOn(message.id, draft.sentAt);
@@ -1177,7 +1184,10 @@
 	});
 
 	// voice notes sent while the server still processed them (202): settled by the stream
-	const deferred = new Map<string, { key: number; voice: VoiceNote; poll: ReturnType<typeof setInterval> }>();
+	const deferred = new Map<
+		string,
+		{ key: number; voice: VoiceNote; poll: ReturnType<typeof setInterval> }
+	>();
 
 	function failPending(key: number, why: string) {
 		pending = pending.map((p) => (p.key === key ? { ...p, failed: why } : p));
@@ -1192,7 +1202,8 @@
 				if (!res.ok) return;
 				const status = (await res.json()) as { status: string; error?: string };
 				if (status.status === 'sent') voiceSent(upload);
-				else if (status.status === 'failed') voiceFailed(upload, status.error || 'Could not send the voice message.');
+				else if (status.status === 'failed')
+					voiceFailed(upload, status.error || 'Could not send the voice message.');
 			} catch {
 				// offline: the next poll
 			}
@@ -2004,11 +2015,7 @@
 			<div
 				class="send-in mr-2 flex max-w-[85%] flex-col items-end gap-[5px] self-end {draft.failed
 					? ''
-					: 'opacity-70'} {i === 0 &&
-				!above &&
-				messages.length > 0
-					? 'mt-2.5'
-					: ''}"
+					: 'opacity-70'} {i === 0 && !above && messages.length > 0 ? 'mt-2.5' : ''}"
 				aria-busy="true"
 			>
 				<div

@@ -7,6 +7,7 @@ import { checkStorageConfig } from '#lib/server/storage.js';
 import { gate, keepPrivate } from '#lib/server/membersOnly.js';
 import { startPushWorker, stopPushWorker } from '#lib/server/pushOutbox.js';
 import { startNotificationRetention } from '#lib/server/notificationRetention.js';
+import { VOICE_NOTES, clientFeatures, voiceFallbackResponse } from '#lib/server/voiceFallback.js';
 
 const securityHeaders: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
@@ -34,6 +35,7 @@ export const init: ServerInit = () => {
 
 export const handle = (async ({ event, resolve }) => {
 	const api = event.url.pathname.startsWith('/api/v1/') || event.url.pathname === '/api/v1';
+	event.locals.clientFeatures = clientFeatures(event.request, event.url);
 
 	// CORS preflight: bearer tokens may be used from any origin, cookies never are (see api.ts)
 	if (api && event.request.method === 'OPTIONS')
@@ -42,6 +44,9 @@ export const handle = (async ({ event, resolve }) => {
 	// MEMBERS_ONLY: signed-out visitors only reach the login pages (src/lib/server/membersOnly.ts)
 	let response = (await authenticate(event)) ?? gate(event);
 	if (!response) {
+		// the session cookie only comes with this server's own web UI, which plays voice notes
+		if (event.locals.auth === 'cookie' && !event.locals.clientFeatures.has(VOICE_NOTES))
+			event.locals.clientFeatures = new Set([...event.locals.clientFeatures, VOICE_NOTES]);
 		response = await shareAuth(event.locals, () => resolve(event));
 		// unknown routes and methods under /api/v1 answer with the API's error shape too
 		if (
@@ -55,6 +60,12 @@ export const handle = (async ({ event, resolve }) => {
 				response.headers.get('allow') ? { Allow: response.headers.get('allow')! } : undefined
 			);
 		keepPrivate(event, response);
+		// what a client that predates voice notes shows instead of an empty post (voiceFallback.ts)
+		if (event.url.pathname.startsWith('/api/')) {
+			if (!event.locals.clientFeatures.has(VOICE_NOTES))
+				response = await voiceFallbackResponse(response);
+			setHeaders(response, { Vary: 'X-Client-Features' });
+		}
 	}
 
 	if (api) setHeaders(response, CORS_HEADERS);

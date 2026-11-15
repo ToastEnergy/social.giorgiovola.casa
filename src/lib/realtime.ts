@@ -1,3 +1,4 @@
+import { CLIENT_FEATURES } from './api.js';
 import { connection } from './connection.svelte.js';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from './types';
 
@@ -131,7 +132,7 @@ const events: (keyof RealtimeEvents)[] = [
 function open() {
 	clearTimeout(retryTimer);
 	source?.close();
-	const es = new EventSource('/api/v1/stream');
+	const es = new EventSource(`/api/v1/stream?features=${CLIENT_FEATURES}`);
 	source = es;
 	es.addEventListener('open', () => {
 		if (source !== es) return;

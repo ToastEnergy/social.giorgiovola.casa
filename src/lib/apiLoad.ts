@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { API } from './api.js';
+import { API, FEATURES_HEADER } from './api.js';
 
 /**
  * Page loads read their data from /api/v1 through SvelteKit's `fetch`, which forwards the
@@ -30,7 +30,7 @@ export async function apiGet<T>(
 	path: string,
 	{ login = true, optional = false }: Options = {}
 ): Promise<T | null> {
-	const res = await fetch(`${API}${path}`);
+	const res = await fetch(`${API}${path}`, { headers: FEATURES_HEADER });
 	if (res.ok) return res.json();
 	if (res.status === 401 && login) redirect(303, '/login');
 	if (res.status === 404 && optional) return null;

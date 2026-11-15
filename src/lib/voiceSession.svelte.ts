@@ -217,7 +217,7 @@ export class VoiceSession {
 			clearTimeout(this.#binTimer);
 			this.#binTimer = setTimeout(() => (this.binning = false), 450);
 		}
-		this.announce('Voice message deleted');
+		this.announce('Voice note deleted');
 	}
 
 	/** Throws away a recording nobody meant to make (a tap, a mic that didn't start). */

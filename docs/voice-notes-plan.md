@@ -6,6 +6,39 @@ and in the native Expo app. Recording must feel native on phones: hold to record
 cancel, slide up to lock, haptics, live waveform, no clipped first syllable, nothing lost on an
 interruption.
 
+## Status (2026-11-16)
+
+Shipped, phase by phase (section 9): server foundation **#198**, web playback **#201**, web
+recording in chats **#204**, native playback **#200**, native recording **#202**, and polish
+(social card waveform, `og:audio`, seed data, Android recording notification) in the polish PR.
+Web recording in the post composer and replies (phase 4) is its own PR. Listened receipts in DMs
+and auto-play of the next note in a chat shipped with #198/#201/#204 (phase 6 only had what was
+left). The sections below are the plan as written; where the result differs it's under "Known
+limitations".
+
+### Known limitations
+
+- **Native uploads start at stop, not while recording.** The web recorder sends ~5 s chunks to
+  an upload session while it records; the native one (expo-audio writes a single M4A that's only
+  valid once finished) uploads the whole file, in chunks for large ones, when the recording
+  stops. A long native note therefore takes a moment to upload after stop.
+- **The app killed during an active native recording loses it.** The file isn't finalised until
+  the recorder stops, so a crash or the system ending the app mid-recording leaves nothing usable.
+  Stopped, paused and review recordings are drafts on disk and survive.
+- **Android: a call can record silence.** Android doesn't always tell the recorder about a phone
+  call; the recording then goes on with silence instead of stopping into review.
+- **Android: the "Recording audio" notification.** Background recording needs a foreground
+  service, and expo-audio only binds it when the recorder is prepared (`allowsBackgroundRecording`
+  in the audio mode), so it can't be added once a recording is under way. So that every quick
+  hold-to-send doesn't flash the notification, hold recordings on Android run without it; a
+  recording started locked (a composer's mic, the accessibility action) has it. A hold that is
+  locked later stops into review if the app goes to the background (the screen stays on while
+  recording, so that's only when leaving the app). iOS shows no notification and always allows
+  background recording.
+- **Staged uploads and sessions live in memory** on the server: a deploy or restart loses them, and
+  clients re-upload the kept recording when the server answers 404 / 410.
+- **Transcripts** are out of scope, tracked in Orbit as SGC-72.
+
 ## 1. What exists today (and what it means here)
 
 - **Images are staged:** `POST /api/v1/uploads` processes the file at once into a temp dir
@@ -84,8 +117,9 @@ export type VoiceNote = {
   time the recipient plays the note. Groups: none.
 
 Cleanup: everywhere images are removed (post/message delete, account delete, moderation,
-`removeUploads`), the audio file goes too. `scripts/seed.ts` gets a couple of voice notes (a tiny
-committed `.m4a` fixture, or skip if seed must stay self-contained).
+`removeUploads`), the audio file goes too. `scripts/seed.ts` gets a few voice notes: it stays
+self-contained by synthesising speech-like sound itself and encoding it with ffmpeg at seed time
+(skipped when ffmpeg is missing).
 
 ## 4. API (v1, additive only)
 
@@ -267,17 +301,18 @@ Before writing code: read `expo` 58 docs for **expo-audio** (recorder options, m
 
 ## 9. Phases (each a PR)
 
-1. **Server foundation:** ffmpeg in Docker + env, transcode/waveform module, staged audio,
+1. ✅ **Server foundation (#198):** ffmpeg in Docker + env, transcode/waveform module, staged audio,
    `POST /api/v1/uploads/audio`, schema + migration, `audio` on posts/messages create + responses,
    Range serving, DM access check, cleanup paths, CSP, push/list previews, docs (api.txt, README,
    botDocs).
-2. **Web playback:** player, waveform, global audio host, Media Session, now-playing pill, feed +
+2. ✅ **Web playback (#201):** player, waveform, global audio host, Media Session, now-playing pill, feed +
    chat + quote rendering.
-3. **Web recording in chats:** recorder state machine, hold/slide/lock/review, permissions,
+3. ✅ **Web recording in chats (#204):** recorder state machine, hold/slide/lock/review, permissions,
    interruptions, drafts, optimistic send, "recording…" indicator.
-4. **Web recording in post composer / replies.**
-5. **Native playback + recording** (chat first, then compose).
-6. **Polish:** listened receipts (if wanted), auto-play next, social card waveform, seed data.
+4. **Web recording in post composer / replies** (its own PR, in progress).
+5. ✅ **Native playback + recording** (chat first, then compose): playback #200, recording #202.
+6. ✅ **Polish:** listened receipts and auto-play next (shipped with the phases above), social
+   card waveform and `og:audio`, seed data, the Android recording notification only when needed.
 
 ## 10. Test checklist (no test suite: by hand, on real devices)
 

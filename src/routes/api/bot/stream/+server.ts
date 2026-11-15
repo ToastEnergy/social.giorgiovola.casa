@@ -1,3 +1,4 @@
+import { VOICE_NOTES } from '#lib/server/voiceFallback.js';
 import type { RequestHandler } from './$types';
 import { botHandler } from '#lib/server/bots.js';
 import { openBotStream, tooManyStreams } from '#lib/server/realtime.js';
@@ -7,8 +8,8 @@ import { openBotStream, tooManyStreams } from '#lib/server/realtime.js';
  * for posts by profiles it follows. A post can be both. Missed events can be caught up with
  * /api/bot/mentions and /api/bot/feed.
  */
-export const GET: RequestHandler = botHandler(({ user }, { request }) => {
-	const body = openBotStream(user, request.signal);
+export const GET: RequestHandler = botHandler(({ user }, { locals, request }) => {
+	const body = openBotStream(user, request.signal, locals.clientFeatures.has(VOICE_NOTES));
 	if (!body) return tooManyStreams();
 	return new Response(body, {
 		headers: {

@@ -586,7 +586,11 @@
 				const { upload } = (await res.json()) as { upload: { id: string } };
 				const entry = pending.find((p) => p.key === draft.key);
 				if (entry) entry.processing = true;
-				const sent = await whenAudioSent(upload.id);
+				const sent = await whenAudioSent(upload.id).catch((e) => {
+					// the server let go of it: posting again uploads it anew
+					voice.upload(true);
+					throw e;
+				});
 				posted(await api<Post>(`posts/${sent.id}`).catch(() => null));
 				return;
 			}

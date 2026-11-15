@@ -250,6 +250,7 @@ export class VoiceSession {
 		const note = this.note;
 		if (!note) return null;
 		this.note = null;
+		this.hint = null;
 		stopIfPlaying(note);
 		this.recorder.reset();
 		return note;

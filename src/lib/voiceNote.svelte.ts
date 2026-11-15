@@ -1,4 +1,5 @@
 import { UploadError } from './attachment.svelte.js';
+import { onRealtime } from './realtime.js';
 import {
 	clearVoiceDraft,
 	saveVoiceMeta,
@@ -58,6 +59,48 @@ async function request<T>(
 		throw new HttpError(res.status, typeof data?.error === 'string' ? data.error : '');
 	}
 	return res.status === 204 ? (undefined as T) : res.json();
+}
+
+/** Where a voice note sent while the server still processed it (a 202) ended up. */
+export type AudioSent = { type: 'post' | 'message' | 'group_message'; id: number };
+
+/**
+ * After a 202 (the voice note is still being processed): resolves once the server sent what
+ * waited for it, rejects with an UploadError when it couldn't. The stream says so; it's also
+ * asked every few seconds, in case the stream is down.
+ */
+export function whenAudioSent(upload: string): Promise<AudioSent> {
+	return new Promise((resolve, reject) => {
+		const offs = [
+			onRealtime('audio_sent', (e) => {
+				if (e.upload === upload) end(() => resolve({ type: e.type, id: e.id }));
+			}),
+			onRealtime('audio_failed', (e) => {
+				if (e.upload === upload) end(() => reject(new UploadError(e.error)));
+			})
+		];
+		const poll = setInterval(async () => {
+			try {
+				const res = await fetch(`${API}/audio/${upload}`);
+				if (res.status === 404)
+					return end(() => reject(new UploadError('Could not send the voice note.')));
+				if (!res.ok) return;
+				const status = (await res.json()) as AudioUpload & { sent?: AudioSent | null };
+				if (status.status === 'sent' && status.sent) {
+					const sent = status.sent;
+					end(() => resolve(sent));
+				} else if (status.status === 'failed')
+					end(() => reject(new UploadError(status.error || 'Could not send the voice note.')));
+			} catch {
+				// offline: the next time
+			}
+		}, 10_000);
+		function end(settle: () => void) {
+			clearInterval(poll);
+			for (const off of offs) off();
+			settle();
+		}
+	});
 }
 
 /**

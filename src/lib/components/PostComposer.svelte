@@ -5,8 +5,9 @@
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import X from '@lucide/svelte/icons/x';
 	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
+	import Mic from '@lucide/svelte/icons/mic';
 	import { canReadClipboard, clipboardImages, pastedFiles } from '#lib/clipboard.js';
-	import { errorOf } from '#lib/api.js';
+	import { api, errorOf } from '#lib/api.js';
 	import { onMount, untrack } from 'svelte';
 	import type { Gif, Post, QuotedPost } from '#lib/types.js';
 	import { shareGif } from '#lib/klipy.js';
@@ -17,6 +18,15 @@
 	import Avatar from './Avatar.svelte';
 	import LoadingScreen from './LoadingScreen.svelte';
 	import UploadProgress from './UploadProgress.svelte';
+	import ComposerVoice from './ComposerVoice.svelte';
+	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
+	import { connection } from '#lib/connection.svelte.js';
+	import { leavingPage, overlayEntry } from '#lib/history.svelte.js';
+	import { voiceDraftPrefix } from '#lib/voiceDraft.js';
+	import { VoiceNote, whenAudioSent, whenOnline } from '#lib/voiceNote.svelte.js';
+	import { canRecord } from '#lib/voiceRecorder.svelte.js';
+	import { isCurrent } from '#lib/audioPlayer.svelte.js';
+	import { trackOf, VoiceSession } from '#lib/voiceSession.svelte.js';
 	import { Attachment, UploadError, uploadIds } from '#lib/attachment.svelte.js';
 	import { canEdit, editImage } from '#lib/photoEditor.svelte.js';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -102,6 +112,10 @@
 		gifQuery: string;
 		pollOptions: string[] | null;
 		pollMinutes: number;
+		/** a voice note, the content being its caption */
+		voice: VoiceNote | null;
+		/** sent, and the server is still processing the voice note (a 202) */
+		processing?: boolean;
 	};
 	/** posts on their way to the server, shown under the form until they land */
 	let pending: Draft[] = $state([]);
@@ -117,9 +131,6 @@
 	// the send button is always in view, beside the field, so a reply can always be posted
 	// (SGC-54): only the attachment buttons fold away
 	let expanded = $state(false);
-	const tools = $derived(
-		!docked || expanded || !!content.trim() || attachments.length > 0 || !!pollOptions
-	);
 	let errorTimeout: ReturnType<typeof setTimeout>;
 	/** submits still running, waited for before switching profile */
 	const inflight = new Set<Promise<void>>();
@@ -128,15 +139,75 @@
 	const draftKey = () =>
 		replyTo != null ? `reply:${replyTo}` : quoteOf ? `quote:${quoteOf.id}` : 'post';
 
-	const isEmpty = () => !content.trim() && attachments.length === 0 && !gif && !pollOptions;
+	const isEmpty = () =>
+		!content.trim() && attachments.length === 0 && !gif && !pollOptions && !voiceAttached;
 
 	// what's written is saved as it's typed, so leaving the composer (a tap on the bottom bar right
 	// under the reply bar, closing the full screen composer) doesn't lose it
 	const SAVE_DELAY_MS = 800;
 	/** the profile the draft is saved for; null while drafts aren't kept (hidden or signed out) */
-	let owner: { id: number; username: string } | null = null;
+	let owner: { id: number; username: string } | null = $state.raw(null);
 	/** the composer the form holds the draft of: the open post can change under a mounted one */
 	let currentKey = '';
+	/** the composer a voice note recorded now belongs to (follows currentKey once the last one
+	 * was put away) */
+	let voiceKey = '';
+
+	// ---- voice notes: recorded hands free from the mic in the toolbar, the field is the caption
+	let recordable = $state(false);
+	// the server processes audio, this browser can record, and drafts can be kept
+	const voiceOn = $derived(recordable && !!page.data.voiceNotes && !!owner);
+	const voicePrefix = (key: string) =>
+		owner ? voiceDraftPrefix(owner.id, `composer:${key}`) : null;
+	const session = new VoiceSession(() => voicePrefix(voiceKey));
+	/** recording or reviewing a voice note: no images, GIF or poll then */
+	const voiceAttached = $derived(session.recorder.active);
+	// why the mic can't be used now (a voice note takes a caption, nothing else)
+	const micBlocked = $derived(
+		attachments.length > 0
+			? 'A voice note can’t have images: remove them to record'
+			: gif
+			? 'A voice note can’t have a GIF: remove it to record'
+			: pollOptions
+			? 'A voice note can’t have a poll: remove it to record'
+			: null
+	);
+	const voiceOnly = 'A post with a voice note can only have a caption';
+	const me = $derived(
+		$user
+			? { username: $user.username, name: $user.name, avatar: $user.avatar }
+			: { username: '', name: 'You', avatar: null }
+	);
+
+	function startVoice() {
+		if (micBlocked || session.shown) return;
+		pickingGif = false;
+		void session.startLocked();
+	}
+
+	// the back button while recording asks "Discard voice note?" (asked again instead of leaving
+	// when answered no); a review stays attached like an image
+	let reopening = $state(false);
+	overlayEntry(
+		'composer-voice',
+		() => !reopening && session.capturing,
+		() => {
+			// leaving the page: it stops and stays a draft as the composer goes
+			if (leavingPage() || !session.capturing || session.confirmDiscard()) return;
+			reopening = true;
+			setTimeout(() => (reopening = false));
+		}
+	);
+
+	// (the docked bar's attachment buttons, see `expanded`)
+	const tools = $derived(
+		!docked ||
+			expanded ||
+			!!content.trim() ||
+			attachments.length > 0 ||
+			!!pollOptions ||
+			session.shown
+	);
 	/** false until the saved draft was looked at: saving before would overwrite it */
 	let loaded = false;
 	let destroyed = false;
@@ -148,7 +219,8 @@
 		pollOptions: pollOptions && [...pollOptions],
 		pollMinutes,
 		files: attachments.map((a) => a.file),
-		gif: gif && { ...gif }
+		gif: gif && { ...gif },
+		voice: session.note?.draftKey ?? null
 	});
 
 	/** Saves the draft now (or drops it once emptied). */
@@ -162,25 +234,47 @@
 		else if (pending.length === 0) clearDraft(owner.id, currentKey);
 	}
 
-	/** Puts back the draft saved for the composer `key`, if the form is still empty. */
-	async function restore(key: string) {
+	/**
+	 * Puts back the draft saved for the composer `key`, if the form is still empty, and its voice
+	 * note (saved apart, voiceDraft.ts). `away`: the previous composer's voice note being put away.
+	 */
+	async function restore(key: string, away: Promise<void> = Promise.resolve()) {
 		loaded = false;
 		currentKey = key;
 		const draft = owner ? await loadDraft(owner, key) : null;
+		await away;
 		if (destroyed || currentKey !== key) return;
+		voiceKey = key;
 		loaded = true;
-		if (!draft || !isEmpty()) return;
-		content = draft.content;
-		pollOptions = draft.pollOptions;
-		pollMinutes = draft.pollMinutes;
-		gif = draft.gif ?? null;
-		// uploaded again: uploads are temporary, and may belong to another profile
-		addFiles(draft.files);
+		if (draft && isEmpty()) {
+			content = draft.content;
+			pollOptions = draft.pollOptions;
+			pollMinutes = draft.pollMinutes;
+			gif = draft.gif ?? null;
+			// uploaded again: uploads are temporary, and may belong to another profile
+			addFiles(draft.files);
+		}
+		const prefix = voicePrefix(key);
+		if (prefix && page.data.voiceNotes)
+			await session.restoreDrafts(prefix, {
+				gone: () => destroyed || currentKey !== key,
+				prefer: draft?.voice,
+				accept: () => attachments.length === 0 && !gif && !pollOptions,
+				message: 'Your voice note was kept: post it or delete it.'
+			});
 	}
 
 	$effect(() => {
 		// everything a draft holds
-		void [content, pollMinutes, attachments.length, gif, pollOptions && [...pollOptions]];
+		void [
+			content,
+			pollMinutes,
+			attachments.length,
+			gif,
+			pollOptions && [...pollOptions],
+			session.note,
+			voiceAttached
+		];
 		if (!loaded) return;
 		clearTimeout(saveTimer);
 		saveTimer = setTimeout(persist, SAVE_DELAY_MS);
@@ -197,7 +291,8 @@
 			gif = null;
 			pickingGif = false;
 			clearAttachments();
-			restore(key);
+			// a voice note stays a draft of the post it was recorded for
+			restore(key, session.putAway());
 		});
 	});
 
@@ -232,6 +327,10 @@
 	function addFiles(files: Iterable<File>) {
 		const added: Attachment[] = [];
 		for (const file of files) {
+			if (voiceAttached) {
+				showError(`${voiceOnly}.`);
+				break;
+			}
 			if (gif) {
 				showError('A post can have a GIF or images, not both.');
 				break;
@@ -321,6 +420,8 @@
 		// synchronous, so that iOS still counts it as part of the tap and opens the keyboard
 		if (autofocus) textarea?.focus();
 		canPaste = canReadClipboard();
+		recordable = canRecord();
+		const unwatchMic = session.watchPermission();
 		const onDragEnter = (e: DragEvent) => {
 			if (!hasFiles(e)) return;
 			e.preventDefault();
@@ -359,7 +460,8 @@
 		const me = get(user);
 		if (me && form && form.getClientRects().length > 0)
 			owner = { id: me.id, username: me.username };
-		restore(draftKey());
+		voiceKey = draftKey();
+		restore(voiceKey);
 		// the page may be closed or killed in the background without unmounting anything
 		const onHide = () => persist();
 		const onVisibility = () => document.visibilityState === 'hidden' && persist();
@@ -369,15 +471,20 @@
 		const unregister = onProfileSwitch(async () => {
 			// a post on its way either lands or comes back to the form, rather than being cut off
 			await Promise.allSettled([...inflight]);
+			// a voice note stays this profile's draft: its upload is this profile's
+			await session.putAway();
 			if (!owner || isEmpty()) return null;
 			for (const a of attachments) a.unstage();
-			return { ...snapshot(), user: owner.id };
+			return { ...snapshot(), voice: null, user: owner.id };
 		});
 
 		return () => {
 			// before the attachments go: their files are part of the draft
 			persist();
 			destroyed = true;
+			unwatchMic();
+			// closed mid-recording: it stops into review and stays a draft for next time
+			session.dispose();
 			unregister();
 			window.removeEventListener('pagehide', onHide);
 			document.removeEventListener('visibilitychange', onVisibility);
@@ -399,7 +506,7 @@
 	}
 
 	async function submit() {
-		if (!content.trim() && attachments.length === 0 && !gif) return;
+		if (!content.trim() && attachments.length === 0 && !gif && !voiceAttached) return;
 		if (pollOptions && !content.trim()) return showError('A poll needs a question.');
 		if (pollOptions?.some((o) => !o.trim())) return showError('Fill in every poll option.');
 		// the saved draft is exactly what's sent, and stays until the post lands
@@ -407,6 +514,14 @@
 		const submittedAt = Date.now();
 		const draftOwner = owner;
 		const key = currentKey;
+		// a recording stops here and goes as it is; the recorder is free again at once
+		const voice = voiceAttached ? await session.take() : null;
+		if (voiceAttached || (!voice && !content.trim() && attachments.length === 0 && !gif)) return;
+		if (voice) {
+			// saved as being sent: a reload brings it back to the composer, not twice
+			voice.sending = true;
+			if (voice.status === 'failed') voice.upload();
+		}
 		const draft: Draft = {
 			key: pendingKey++,
 			content,
@@ -414,7 +529,8 @@
 			gif,
 			gifQuery,
 			pollOptions: pollOptions && [...pollOptions],
-			pollMinutes
+			pollMinutes,
+			voice
 		};
 		// cleared right away: the post shows as pending below while it is on its way
 		content = '';
@@ -427,6 +543,14 @@
 		const settle = () => (pending = pending.filter((p) => p.key !== draft.key));
 		const send = async (fresh: boolean) => {
 			const uploads = await uploadIds(draft.attachments, fresh);
+			let audio: string | null = null;
+			if (voice) {
+				// the server lost it (a restart, expired): from the recording kept here
+				if (fresh) voice.upload(true);
+				audio = await voice.done;
+				// offline: it waits for the network, the pending post says so
+				await whenOnline();
+			}
 			return fetch('/api/v1/posts', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -438,22 +562,40 @@
 					gif: draft.gif,
 					poll: draft.pollOptions
 						? { options: draft.pollOptions, duration_minutes: draft.pollMinutes }
-						: null
+						: null,
+					...(audio ? { audio } : {})
 				})
 			});
+		};
+		/** it went out: the composer's draft goes (unless something new was written meanwhile) */
+		const posted = (post: Post | null) => {
+			settle();
+			for (const a of draft.attachments) a.release();
+			// still playing in the pending post: the recording stays until the page goes
+			if (voice) voice.sent(!!voice.url && isCurrent(trackOf(voice, me).note));
+			if (draft.gif && gifConfig) shareGif(gifConfig, draft.gif.slug, draft.gifQuery);
+			if (draftOwner) clearDraft(draftOwner.id, key, submittedAt);
+			if (post) oncreated?.(post);
 		};
 		try {
 			let res = await send(false);
 			// the server let the images expire (kept for a day, or lost on a restart): upload again
 			if (res.status === 410) res = await send(true);
+			if (res.status === 202 && voice) {
+				// a long voice note still being processed: the post is made when it's ready
+				const { upload } = (await res.json()) as { upload: { id: string } };
+				const entry = pending.find((p) => p.key === draft.key);
+				if (entry) entry.processing = true;
+				const sent = await whenAudioSent(upload.id).catch((e) => {
+					// the server let go of it: posting again uploads it anew
+					voice.upload(true);
+					throw e;
+				});
+				posted(await api<Post>(`posts/${sent.id}`).catch(() => null));
+				return;
+			}
 			if (res.ok) {
-				const post: Post = await res.json();
-				settle();
-				for (const a of draft.attachments) a.release();
-				if (draft.gif && gifConfig) shareGif(gifConfig, draft.gif.slug, draft.gifQuery);
-				// unless something new was written meanwhile
-				if (draftOwner) clearDraft(draftOwner.id, key, submittedAt);
-				oncreated?.(post);
+				posted(await res.json());
 				return;
 			} else if (
 				res.status === 400 ||
@@ -474,14 +616,17 @@
 		// a failed upload is dropped, it would only fail again
 		const kept = draft.attachments.filter((a) => !a.failed);
 		for (const a of draft.attachments) if (a.failed) a.discard();
+		// a voice note is a draft again; when it can't come back now it does next time
+		if (voice) voice.sending = false;
 		// give back what didn't go out, unless something new was started meanwhile
-		if (isEmpty()) {
+		if (!destroyed && isEmpty()) {
 			content = draft.content;
 			attachments = kept;
 			gif = draft.gif;
 			gifQuery = draft.gifQuery;
 			pollOptions = draft.pollOptions;
 			pollMinutes = draft.pollMinutes;
+			if (voice) session.put(voice);
 		} else for (const a of kept) a.discard();
 	}
 </script>
@@ -537,7 +682,7 @@
 		<MentionInput
 			bind:value={content}
 			bind:element={textarea}
-			required={(attachments.length === 0 && !gif) || !!pollOptions}
+			required={(attachments.length === 0 && !gif && !voiceAttached) || !!pollOptions}
 			placeholder={pollOptions ? 'Ask a question' : placeholder}
 			placement={docked ? 'above' : 'below'}
 			maxHeight={maxHeight ??
@@ -567,9 +712,9 @@
 		/>
 		<button
 			type="button"
-			title="Attach images"
+			title={voiceAttached ? voiceOnly : 'Attach images'}
 			aria-label="Attach images"
-			disabled={attachments.length >= MAX_IMAGES || !!gif}
+			disabled={attachments.length >= MAX_IMAGES || !!gif || voiceAttached}
 			onmousedown={keepFocus}
 			onclick={() => fileInput?.click()}
 			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
@@ -578,10 +723,10 @@
 		{#if gifConfig}
 			<button
 				type="button"
-				title={pickingGif ? 'Close GIFs' : 'Add a GIF'}
+				title={voiceAttached ? voiceOnly : pickingGif ? 'Close GIFs' : 'Add a GIF'}
 				aria-label={pickingGif ? 'Close GIFs' : 'Add a GIF'}
 				aria-pressed={pickingGif}
-				disabled={attachments.length > 0}
+				disabled={attachments.length > 0 || voiceAttached}
 				onmousedown={keepFocus}
 				onclick={() => (pickingGif = !pickingGif)}
 				class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
@@ -590,12 +735,13 @@
 		{/if}
 		<button
 			type="button"
-			title={pollOptions ? 'Remove poll' : 'Add a poll'}
+			title={voiceAttached ? voiceOnly : pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-label={pollOptions ? 'Remove poll' : 'Add a poll'}
 			aria-pressed={!!pollOptions}
+			disabled={voiceAttached}
 			onmousedown={keepFocus}
 			onclick={() => (pollOptions = pollOptions ? null : ['', ''])}
-			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent"
+			class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
 			><ChartNoAxesColumn
 				size={20}
 				strokeWidth={1.8}
@@ -605,19 +751,36 @@
 		{#if canPaste}
 			<button
 				type="button"
-				title="Paste image"
+				title={voiceAttached ? voiceOnly : 'Paste image'}
 				aria-label="Paste image"
-				disabled={attachments.length >= MAX_IMAGES || !!gif}
+				disabled={attachments.length >= MAX_IMAGES || !!gif || voiceAttached}
 				onmousedown={keepFocus}
 				onclick={pasteImage}
 				class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none pointer-fine:hidden hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
 				><ClipboardPaste size={20} strokeWidth={1.8} /></button
 			>
 		{/if}
+		{#if voiceOn}
+			<!-- records hands free at once (no hold: writing a post is a slower, deliberate flow) -->
+			<button
+				type="button"
+				title={micBlocked ?? (voiceAttached ? 'Recording a voice note' : 'Record a voice note')}
+				aria-label="Record a voice note"
+				aria-pressed={voiceAttached}
+				disabled={!!micBlocked || voiceAttached}
+				onmousedown={keepFocus}
+				onclick={startVoice}
+				class="flex cursor-pointer items-center rounded-[5px] p-[5px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40"
+				><Mic size={20} strokeWidth={1.8} class={voiceAttached ? 'text-accent' : ''} /></button
+			>
+		{/if}
 		{#if !docked && !formId}
 			{@render send()}
 		{/if}
 	</div>
+	{#if session.shown || session.hint || session.micError}
+		<ComposerVoice {session} {me} {keepFocus} />
+	{/if}
 	{#if pickingGif && gifConfig}
 		<GifPicker
 			config={gifConfig}
@@ -769,6 +932,21 @@
 						<p class="rounded-[5px] border border-line p-[5px] text-[0.9em]">{option}</p>
 					{/each}
 				</div>
+			{/if}
+			{#if draft.voice}
+				<div class="flex items-center gap-2.5">
+					<div class="min-w-0 flex-1">
+						<VoiceNotePlayer track={trackOf(draft.voice, me)} />
+					</div>
+					{#if !draft.voice.id}
+						<UploadProgress progress={draft.voice.progress} size={24} label="voice note" />
+					{/if}
+				</div>
+				{#if connection.state === 'offline'}
+					<p class="text-[0.85em] text-muted">Waiting for the connection…</p>
+				{:else if draft.processing}
+					<p class="text-[0.85em] text-muted">Processing the voice note…</p>
+				{/if}
 			{/if}
 			{#if draft.gif}
 				<img

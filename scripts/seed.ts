@@ -20,12 +20,13 @@
 //     dave   never answered: all 8 messages unread, the first one taller than the screen
 //     erin   50 messages, all read: opens at the bottom, no divider
 //     frank  dev wrote last and frank hasn't read it: nothing unread for dev
-//     grace  images (wide, tall, square, tiny), replies, reactions and an edit around the divider
+//     grace  images (wide, tall, square, tiny), replies, reactions and an edit around the divider,
+//            a voice note to dev (not played yet) and one from dev (played)
 //     heidi  muted, 6 unread (out of the badge)
 //     ivan   blocked by dev, read history
 //     judy   first contact: one unread message, nothing before it
 //   groups
-//     weekend plans       40 read, 10 unread with a reply and reactions
+//     weekend plans       40 read, 10 unread with a reply, reactions and a voice note
 //     book club backlog   120 messages, 80 unread (several pages)
 //     muted noise         muted, 25 unread
 //     all caught up       everything read
@@ -61,9 +62,14 @@
 //   expires, printed at the end: sign up a new account with it (fixed locally, random on a
 //   public server)
 //
+// voice notes (made with ffmpeg, FFMPEG_PATH as for the app; left out without it): alice's voice
+// post with a caption (liked, quoted by dev, a voice reply from erin), bob's without one, dave's
+// long one (over 2 minutes: skip buttons), and the grace DMs and weekend plans message above
+//
 // generated messages start with "#n" (their position in the thread) so you can see where the
 // chat opened.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { randomBytes, scrypt } from 'node:crypto';
 import postgres from 'postgres';
 
@@ -184,16 +190,24 @@ function dm(
 	to: string,
 	content: string,
 	mins: number,
-	o: { read?: boolean; images?: string[]; replyTo?: string; edited?: boolean } = {}
+	o: {
+		read?: boolean;
+		images?: string[];
+		replyTo?: string;
+		edited?: boolean;
+		/** a voice note (audio()), `played` once the recipient listened to it */
+		audio?: string;
+		played?: boolean;
+	} = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, image_sizes, reply_to_id, edited_at) VALUES (${uid(
+	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, image_sizes, reply_to_id, edited_at, audio, audio_played_at) VALUES (${uid(
 		from
 	)}, ${uid(to)}, ${q(content)}, ${ago(mins)}, ${
 		o.read ? ago(mins - 1) : 'NULL'
 	}, ${images}, ${sizesOf(o.images)}, ${o.replyTo ?? 'NULL'}, ${
 		o.edited ? ago(mins - 2) : 'NULL'
-	});`;
+	}, ${o.audio ?? 'NULL'}, ${o.played ? ago(mins - 1) : 'NULL'});`;
 }
 const dmId = (content: string) => `(SELECT id FROM messages WHERE content = ${q(content)})`;
 const dmReact = (user: string, content: string, emoji: string) =>
@@ -255,14 +269,14 @@ function groupMsg(
 	from: string,
 	content: string,
 	mins: number,
-	o: { replyTo?: string; images?: string[] } = {}
+	o: { replyTo?: string; images?: string[]; audio?: string } = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images, image_sizes) VALUES (${gid(
+	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images, image_sizes, audio) VALUES (${gid(
 		name
 	)}, ${uid(from)}, ${q(content)}, ${ago(mins)}, ${o.replyTo ?? 'NULL'}, ${images}, ${sizesOf(
 		o.images
-	)});`;
+	)}, ${o.audio ?? 'NULL'});`;
 }
 const groupReact = (name: string, msg: string, user: string, emoji: string) =>
 	`INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (${msg}, ${uid(
@@ -313,6 +327,139 @@ async function writeImages() {
 	}
 }
 
+// test voice notes: speech-like sound (a buzzy voice in syllables, words and pauses) made here and
+// encoded by ffmpeg like the app's (mono AAC in M4A), written where the app keeps them: a post's
+// in static/uploads (public), a message's in data/dm (served by /dm-uploads). Not into the bucket
+// when S3_BUCKET is set
+type VoiceKey = 'alice' | 'bob' | 'dave' | 'erin' | 'grace' | 'dev' | 'group';
+const VOICES: Record<VoiceKey, { n: number; seconds: number; dm: boolean }> = {
+	alice: { n: 1, seconds: 14, dm: false },
+	bob: { n: 2, seconds: 42, dm: false },
+	dave: { n: 3, seconds: 200, dm: false },
+	erin: { n: 4, seconds: 5, dm: false },
+	grace: { n: 5, seconds: 8, dm: true },
+	dev: { n: 6, seconds: 21, dm: true },
+	group: { n: 7, seconds: 18, dm: true }
+};
+/** The VoiceNote (src/lib/types.ts) of each voice note made, as the audio columns hold it. */
+type Voice = { url: string; duration_ms: number; waveform: number[]; size: number };
+const voices: Partial<Record<VoiceKey, Voice>> = {};
+
+const RATE = 16000;
+
+/** A deterministic voice-like signal, 16 kHz mono 16-bit. */
+function speech(n: number, seconds: number) {
+	let seed = (n * 2654435761) >>> 0;
+	const random = () => {
+		seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+		return seed / 2 ** 32;
+	};
+	const samples = new Int16Array(Math.round(seconds * RATE));
+	const base = 110 + 25 * n;
+	let i = 0;
+	let phase = 0;
+	while (i < samples.length) {
+		// a word of 1–4 syllables, then a gap (now and then a longer pause)
+		const syllables = 1 + Math.floor(random() * 4);
+		for (let k = 0; k < syllables && i < samples.length; k++) {
+			const length = Math.round((0.12 + random() * 0.18) * RATE);
+			const loud = 0.35 + random() * 0.6;
+			const pitch = base * (0.85 + random() * 0.35);
+			for (let j = 0; j < length && i < samples.length; j++, i++) {
+				const env = Math.sin((Math.PI * j) / length) ** 1.5;
+				phase += (2 * Math.PI * pitch * (1 + 0.05 * Math.sin(i / 900))) / RATE;
+				let v = (random() - 0.5) * 0.15;
+				for (let h = 1; h <= 6; h++) v += Math.sin(phase * h) / h;
+				samples[i] = Math.max(-32767, Math.min(32767, Math.round(v * env * loud * 14000)));
+			}
+		}
+		i += Math.round((random() < 0.15 ? 0.5 + random() * 0.4 : 0.05 + random() * 0.15) * RATE);
+	}
+	return samples;
+}
+
+function wav(samples: Int16Array) {
+	const data = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
+	const header = Buffer.alloc(44);
+	header.write('RIFF', 0);
+	header.writeUInt32LE(36 + data.length, 4);
+	header.write('WAVEfmt ', 8);
+	header.writeUInt32LE(16, 16);
+	header.writeUInt16LE(1, 20); // PCM
+	header.writeUInt16LE(1, 22); // mono
+	header.writeUInt32LE(RATE, 24);
+	header.writeUInt32LE(RATE * 2, 28);
+	header.writeUInt16LE(2, 32);
+	header.writeUInt16LE(16, 34);
+	header.write('data', 36);
+	header.writeUInt32LE(data.length, 40);
+	return Buffer.concat([header, data]);
+}
+
+/** 64 bars of 0–255 the way the app makes them (src/lib/server/audio.ts): 50 ms peaks, sqrt. */
+function waveformOf(samples: Int16Array) {
+	const block = RATE / 20;
+	const peaks: number[] = [];
+	for (let i = 0; i < samples.length; i += block) {
+		let peak = 0;
+		for (let j = i; j < Math.min(i + block, samples.length); j++)
+			peak = Math.max(peak, Math.abs(samples[j]));
+		peaks.push(peak / 32768);
+	}
+	const loudest = Math.max(0, ...peaks);
+	return Array.from({ length: 64 }, (_, b) => {
+		const from = Math.floor((b * peaks.length) / 64);
+		const to = Math.max(from + 1, Math.floor(((b + 1) * peaks.length) / 64));
+		const peak = Math.max(0, ...peaks.slice(from, to));
+		return loudest > 0 ? Math.round(Math.sqrt(peak / loudest) * 255) : 0;
+	});
+}
+
+// a WAV on stdin, so only the wav demuxer and the aac encoder are needed (any ffmpeg build)
+function writeVoices() {
+	const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
+	if (ffmpeg === 'off') return console.warn('> seed: FFMPEG_PATH is off, no test voice notes');
+	for (const key of Object.keys(VOICES) as VoiceKey[]) {
+		const { n, seconds, dm } = VOICES[key];
+		const samples = speech(n, seconds);
+		const file = `5eed0000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}.m4a`;
+		const dir = dm ? 'data/dm' : 'static/uploads';
+		mkdirSync(dir, { recursive: true });
+		// the app's format: mono AAC-LC, 48 kHz, 48 kbps, the index at the front
+		const result = spawnSync(
+			ffmpeg,
+			[
+				...['-nostdin', '-v', 'error', '-hide_banner', '-f', 'wav', '-i', 'pipe:0'],
+				...['-map_metadata', '-1', '-ac', '1', '-ar', '48000', '-c:a', 'aac', '-b:a', '48k'],
+				...['-movflags', '+faststart', '-f', 'mp4', '-y', `${dir}/${file}`]
+			],
+			{ input: wav(samples), stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true }
+		);
+		if (result.error || result.status !== 0) {
+			console.warn(
+				`> seed: no test voice notes, ${ffmpeg} failed:`,
+				result.error?.message ?? String(result.stderr).slice(-500)
+			);
+			for (const k of Object.keys(voices) as VoiceKey[]) delete voices[k];
+			return;
+		}
+		voices[key] = {
+			url: `${dm ? '/dm-uploads' : '/uploads'}/${file}`,
+			duration_ms: Math.round((samples.length / RATE) * 1000),
+			waveform: waveformOf(samples),
+			size: statSync(`${dir}/${file}`).size
+		};
+	}
+}
+
+/** The audio column of a voice note: NULL when it wasn't made. */
+const audio = (key: VoiceKey) => {
+	const voice = voices[key];
+	return voice ? `${q(JSON.stringify(voice))}::jsonb` : 'NULL';
+};
+/** `statements` when the voice notes were made, else nothing. */
+const withVoices = (...statements: string[]) => (voices.alice ? statements : []);
+
 async function seed(db: postgres.Sql) {
 	const [{ count }] = await db<{ count: number }[]>`SELECT count(*)::int AS count FROM users`;
 	if (count !== 0) return false;
@@ -326,6 +473,11 @@ async function seed(db: postgres.Sql) {
 	} catch (e) {
 		// the chats still work, the images just show as broken
 		console.warn('> seed: could not write test images:', e);
+	}
+	try {
+		writeVoices();
+	} catch (e) {
+		console.warn('> seed: could not write test voice notes:', e);
 	}
 
 	const users = [
@@ -430,6 +582,23 @@ async function seed(db: postgres.Sql) {
 	// mentions in any case notify; dev's own mention of the parent's author is just the reply
 	const p5 = 'has anyone seen @Dev today? @bob says the poll is up';
 	const r4 = 'thanks @alice, and @carol you should vote too';
+	// voice posts (the text is the caption). bob's and dave's have none: found by their file
+	const v1 = 'quick voice note about #svelte runes, too long to type';
+	const v2 = 'had to quote this one';
+	const v3 = 'agreed, listen to this';
+	const voicePost = (
+		user: string,
+		content: string,
+		key: VoiceKey,
+		mins: number,
+		replyTo?: string
+	) =>
+		[
+			`INSERT INTO posts (user_id, content, created_at, reply_to, audio) VALUES (${uid(user)}, ${q(
+				content
+			)}, ${ago(mins)}, ${replyTo ? pid(replyTo) : 'NULL'}, ${audio(key)});`,
+			replyTo ? notifyAuthor(replyTo, user, 'reply', pid(content), ago(mins)) : ''
+		].join(' ');
 
 	// grace: media, replies, reactions and an edit on both sides of the divider
 	const g1 = 'look at this view';
@@ -549,6 +718,21 @@ async function seed(db: postgres.Sql) {
 			'alice'
 		)}, 0), (${pid(p4)}, ${uid('bob')}, 2), (${pid(p4)}, ${uid('dev')}, 0);`,
 
+		// voice posts: alice's (liked, quoted by dev, a voice reply from erin), bob's, dave's long one
+		...withVoices(
+			voicePost('alice', v1, 'alice', 50),
+			tag(v1, 'svelte'),
+			like('dev', v1, 45),
+			like('bob', v1, 44),
+			`INSERT INTO posts (user_id, content, created_at, quote_of, is_quote) VALUES (${uid(
+				'dev'
+			)}, ${q(v2)}, ${ago(40)}, ${pid(v1)}, true);`,
+			notifyAuthor(v1, 'dev', 'quote', pid(v2), ago(40)),
+			voicePost('erin', v3, 'erin', 35, v1),
+			voicePost('bob', '', 'bob', 48),
+			voicePost('dave', '', 'dave', 33)
+		),
+
 		// --- direct messages ---
 
 		// alice: a short thread, the last one unread by dev
@@ -593,6 +777,11 @@ async function seed(db: postgres.Sql) {
 		dm('grace', 'dev', g7, 30, { replyTo: dmId(g3) }),
 		dm('grace', 'dev', g8, 20, { edited: true }),
 		dmReact('grace', g5, '🔥'),
+		// voice notes: dev's, played by grace; grace's, not played yet
+		...withVoices(
+			dm('dev', 'grace', '', 25, { read: true, audio: audio('dev'), played: true }),
+			dm('grace', 'dev', '', 15, { audio: audio('grace') })
+		),
 
 		// heidi: muted, with unread
 		dmRun('dev', 'heidi', { from: 1, to: 6, who: 'ab', read: true, every: 10, endAgo: 200 }),
@@ -622,6 +811,7 @@ async function seed(db: postgres.Sql) {
 		groupReact(W, groupMsgId(W, w1), 'bob', '🙋'),
 		groupReact(W, groupMsgId(W, w3), 'bob', '🎉'),
 		groupReact(W, groupMsgId(W, w3), 'dev', '🎉'),
+		...withVoices(groupMsg(W, 'bob', '', 80, { audio: audio('group') })),
 		// everyone else is caught up
 		...['alice', 'bob', 'carol'].map((u) => groupRead(W, u, 'all')),
 

@@ -2,7 +2,7 @@ import { Image, type ImageSource } from 'expo-image';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { type ReactNode, useState } from 'react';
-import { Pressable, View, type ViewStyle } from 'react-native';
+import { type GestureResponderEvent, Pressable, View, type ViewStyle } from 'react-native';
 import { instanceImage } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
@@ -69,7 +69,8 @@ export function ImageGrid({
 	sizes,
 	height = 220,
 	width,
-	viewable = true
+	viewable = true,
+	onTap
 }: {
 	images: string[];
 	/** the size of each image from the API, when it sent them */
@@ -78,10 +79,20 @@ export function ImageGrid({
 	height?: number;
 	width?: number;
 	viewable?: boolean;
+	/** a tap on a viewable image goes through this first (the open post's double tap like) */
+	onTap?: (e: GestureResponderEvent, open: () => void) => void;
 }) {
 	if (!images.length) return null;
 	// with the token: message images need it, and on a members-only instance all of them
 	const sources: ImageSource[] = images.map(instanceImage);
+	const view = (index: number) =>
+		viewable
+			? (e: GestureResponderEvent) => {
+					const open = () => viewImages(sources, index);
+					if (onTap) onTap(e, open);
+					else open();
+			  }
+			: undefined;
 	if (images.length === 1)
 		return (
 			<SingleImage
@@ -90,7 +101,7 @@ export function ImageGrid({
 				size={sizeOf(sizes, 0)}
 				maxHeight={height}
 				width={width}
-				onPress={viewable ? () => viewImages(sources, 0) : undefined}
+				onPress={view(0)}
 			/>
 		);
 	return (
@@ -98,7 +109,7 @@ export function ImageGrid({
 			{sources.map((source, index) => (
 				<Tappable
 					key={images[index]}
-					onPress={viewable ? () => viewImages(sources, index) : undefined}
+					onPress={view(index)}
 					style={{ flexBasis: '48%', flexGrow: 1, aspectRatio: 1 }}
 				>
 					<Image
@@ -119,7 +130,7 @@ function Tappable({
 	style,
 	children
 }: {
-	onPress?: () => void;
+	onPress?: (e: GestureResponderEvent) => void;
 	style: ViewStyle;
 	children: ReactNode;
 }) {
@@ -148,7 +159,7 @@ function SingleImage({
 	size: ImageSize | null;
 	maxHeight: number;
 	width?: number;
-	onPress?: () => void;
+	onPress?: (e: GestureResponderEvent) => void;
 }) {
 	// the API's size when it sent one, else what loading it told us; square until then
 	const [loaded, setLoaded] = useState(() => ratios.get(url));

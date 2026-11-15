@@ -10,8 +10,12 @@ export const postUrl = (post: { id: number; user: { username: string } }) =>
 /** a change made here, shown at once by every list holding the post */
 const patch = (id: number, fields: Partial<Post>) => emit('post_patch', { id, ...fields });
 
-export async function toggleLike(post: Post) {
-	const liked = !post.liked;
+export const toggleLike = (post: Post) => setLike(post, !post.liked);
+
+/** the double tap on a post: it only ever likes */
+export const like = (post: Post) => (post.liked ? undefined : setLike(post, true));
+
+async function setLike(post: Post, liked: boolean) {
 	patch(post.id, { liked, likes: Math.max(0, post.likes + (liked ? 1 : -1)) });
 	try {
 		const res = await api<{ liked: boolean; likes: number }>(`posts/${post.id}/like`, {

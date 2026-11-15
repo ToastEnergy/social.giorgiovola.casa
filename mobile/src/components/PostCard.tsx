@@ -23,6 +23,7 @@ import { deletePost, postUrl, setPin, toggleLike, toggleRegiorg, vote } from '@/
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Poll, Post } from '@/lib/types';
+import { useDoubleTapLike } from './DoubleTapLike';
 import { GifMedia, ImageGrid, LinkPreviewCard, QuoteCard } from './media';
 import { confirm, showMenu, toast } from './overlays';
 import { RichText } from './RichText';
@@ -97,6 +98,8 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 	const ratio = isRatio(post);
 	const iconColor = colors.muted;
 	const openProfile = () => router.push(`/user/${post.user.username}`);
+	// double tap to like, like the web app; a single tap waits out the double tap window
+	const doubleTap = useDoubleTapLike(post, !!me);
 
 	const regiorgMenu = () =>
 		showMenu([
@@ -199,6 +202,8 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				sizes={post.image_sizes}
 				height={detail ? 500 : 400}
 				viewable={!!detail}
+				// photos are where a double tap is most expected
+				onTap={doubleTap.tap}
 			/>
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
 			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
@@ -299,7 +304,14 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 
 	if (detail)
 		return (
-			<View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+			// not a button: a single tap on the open post does nothing, a double tap likes it
+			<Pressable
+				ref={doubleTap.ref}
+				accessible={false}
+				onPress={(e) => doubleTap.tap(e)}
+				style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.line }}
+			>
+				{doubleTap.hearts}
 				{banner}
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
 					<Avatar user={post.user} size={50} link />
@@ -322,18 +334,20 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 					{post.edited_at ? ` · edited ${fullDate(post.edited_at)}` : ''}
 				</Txt>
 				{actions}
-			</View>
+			</Pressable>
 		);
 
 	return (
 		<Pressable
-			onPress={() => router.push(`/post/${post.id}`)}
+			ref={doubleTap.ref}
+			onPress={(e) => doubleTap.tap(e, () => router.push(`/post/${post.id}`))}
 			style={({ pressed }) => ({
 				paddingVertical: 12,
 				paddingHorizontal: 20,
 				backgroundColor: pressed ? colors.hover : 'transparent'
 			})}
 		>
+			{doubleTap.hearts}
 			{banner}
 			<View style={{ flexDirection: 'row', gap: 10 }}>
 				<Avatar user={post.user} size={45} link />

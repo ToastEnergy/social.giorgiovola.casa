@@ -28,7 +28,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api, ApiError, errorMessage, getPage, uploadImage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
-import { clock, dayLabel, groupEventText, sameDay } from '@/lib/format';
+import { clock, dayLabel, groupEventText, sameDay, voicePreview } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import type {
@@ -40,6 +40,7 @@ import type {
 	Reaction,
 	User
 } from '@/lib/types';
+import { play, wasHeard, type Track } from '@/lib/voicePlayer';
 import {
 	AttachmentStrip,
 	PasteImageButton,
@@ -55,13 +56,28 @@ import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
 import { RichText } from './RichText';
 import { UploadProgress } from './UploadProgress';
 import { Avatar, ErrorBanner, IconButton, Loading, Notice, Txt } from './ui';
+import { NowPlayingBar, VoiceNotePlayer } from './voice';
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 /** how long after sending a message can still be edited */
 const EDIT_WINDOW_MS = 60 * 60 * 1000;
 
 /** direct and group messages in one shape: the sender is always a profile */
-type Msg = Omit<GroupMessage, 'group_id'>;
+type Msg = Omit<GroupMessage, 'group_id'> & { audio_played_at?: string | null };
+
+/** what stands for a message without text: its voice note, GIF or images */
+const mediaLabel = (m: {
+	audio?: { duration_ms: number } | null;
+	gif: unknown;
+	images: unknown[] | number;
+}) =>
+	m.audio
+		? voicePreview(m.audio.duration_ms)
+		: m.gif
+		? 'GIF'
+		: (typeof m.images === 'number' ? m.images : m.images.length)
+		? 'Image'
+		: '';
 
 type DirectInfo = {
 	peer: User;
@@ -305,6 +321,15 @@ export function ChatView(props: Props) {
 	useBus('message', (m: Message) => here(m) && add(normalize(m)));
 	useBus('message_edited', (m: Message) => here(m) && replace(normalize(m)));
 	useBus('message_deleted', (e: { id: number }) => direct && remove(e.id));
+	// the recipient played one of your voice notes
+	useBus(
+		'message_played',
+		(e: { id: number; audio_played_at: string }) =>
+			direct &&
+			setMessages((now) =>
+				now.map((m) => (m.id === e.id ? { ...m, audio_played_at: e.audio_played_at } : m))
+			)
+	);
 	useBus(
 		'message_reactions',
 		(e: { id: number; reactions: Reaction[] }) => direct && setReactions(e.id, e.reactions)
@@ -583,6 +608,42 @@ export function ChatView(props: Props) {
 		}
 	}
 
+	// voice notes
+	const chatHref = direct ? `/chat/${props.username}` : `/group/${props.id}`;
+	const messagesRef = useRef(messages);
+	messagesRef.current = messages;
+	const notYetHeard = (m: Msg) =>
+		!!m.audio &&
+		m.kind === 'message' &&
+		m.sender.username !== myName &&
+		!m.audio_played_at &&
+		!wasHeard(m.audio.url);
+	/** direct messages: tells the sender you listened, the first time */
+	function markPlayed(message: Msg) {
+		if (!direct || message.sender.username === myName || message.audio_played_at) return;
+		const setPlayed = (at: string) =>
+			setMessages((now) =>
+				now.map((m) =>
+					m.id === message.id && !m.audio_played_at ? { ...m, audio_played_at: at } : m
+				)
+			);
+		setPlayed(new Date().toISOString());
+		api(`${base}/messages/${message.id}/played`, { method: 'POST' }).catch(() => {});
+	}
+	const trackFor = (message: Msg): Omit<Track, 'note'> => ({
+		title: message.sender.name,
+		subtitle: direct ? undefined : group?.name,
+		user: message.sender,
+		href: chatHref,
+		onStart: () => markPlayed(message),
+		// like WhatsApp: the next message, when it's a voice note you haven't heard, plays on
+		onEnd: () => {
+			const all = messagesRef.current;
+			const next = all[all.findIndex((m) => m.id === message.id) + 1];
+			if (next?.audio && notYetHeard(next)) play({ ...trackFor(next), note: next.audio });
+		}
+	});
+
 	// the list is inverted: newest first
 	const data = useMemo(() => [...messages].reverse(), [messages]);
 	const title = direct ? peer?.name ?? `@${props.username}` : group?.name ?? 'Group';
@@ -681,7 +742,9 @@ export function ChatView(props: Props) {
 											</Txt>
 											<Txt size={13} muted numberOfLines={2}>
 												{item.reply_to.content ||
-													(item.reply_to.gif
+													(item.reply_to.audio_ms != null
+														? voicePreview(item.reply_to.audio_ms)
+														: item.reply_to.gif
 														? 'GIF'
 														: item.reply_to.images
 														? `${item.reply_to.images} ${
@@ -702,6 +765,17 @@ export function ChatView(props: Props) {
 									{item.gif ? (
 										<View style={{ width: 230 }}>
 											<GifMedia gif={item.gif} maxHeight={230} />
+										</View>
+									) : null}
+									{item.audio ? (
+										<View style={{ width: 230 }}>
+											<VoiceNotePlayer
+												note={item.audio}
+												track={trackFor(item)}
+												unplayed={direct && !mine && !item.audio_played_at}
+												played={direct && mine ? !!item.audio_played_at : undefined}
+												onLongPress={() => messageMenu(item)}
+											/>
 										</View>
 									) : null}
 									{item.content ? <RichText content={item.content} /> : null}
@@ -796,6 +870,7 @@ export function ChatView(props: Props) {
 					)
 				}}
 			/>
+			<NowPlayingBar hideHref={chatHref} style={{ marginHorizontal: 10, marginTop: 5 }} />
 			{loading ? (
 				<View style={{ flex: 1 }}>
 					<Loading />
@@ -883,7 +958,7 @@ export function ChatView(props: Props) {
 										{editing ? 'Editing' : `Replying to ${banner.sender.name}`}
 									</Txt>
 									<Txt size={13} muted numberOfLines={1}>
-										{banner.content || (banner.gif ? 'GIF' : 'Image')}
+										{banner.content || mediaLabel(banner)}
 									</Txt>
 								</View>
 								<IconButton
@@ -1040,7 +1115,7 @@ function PendingBubble({ pending: p }: { pending: Pending }) {
 							{p.replyTo.sender.name}
 						</Txt>
 						<Txt size={13} muted numberOfLines={2}>
-							{p.replyTo.content || (p.replyTo.gif ? 'GIF' : 'Image')}
+							{p.replyTo.content || mediaLabel(p.replyTo)}
 						</Txt>
 					</View>
 				) : null}

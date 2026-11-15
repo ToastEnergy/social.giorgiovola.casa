@@ -17,6 +17,7 @@ import { QuoteCard } from '@/components/media';
 import { Avatar, Button, ErrorBanner, IconButton, Input, Loading, Txt } from '@/components/ui';
 import { api, auth, errorMessage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
+import { voicePreview } from '@/lib/format';
 import {
 	isEmptyDraft,
 	loadDraft,
@@ -230,7 +231,11 @@ export default function Compose() {
 						<Txt size={14} accent>
 							@{target.user.username}
 						</Txt>
-						{target.content ? `: ${target.content.slice(0, 140)}` : ''}
+						{target.content
+							? `: ${target.content.slice(0, 140)}`
+							: target.audio
+							? `: ${voicePreview(target.audio.duration_ms)}`
+							: ''}
 					</Txt>
 				) : null}
 				<View style={{ flexDirection: 'row', gap: 10 }}>

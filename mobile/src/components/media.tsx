@@ -10,6 +10,7 @@ import type { Gif, ImageSize, LinkPreview, QuotedPost } from '@/lib/types';
 import { viewImages } from './overlays';
 import { openLink, RichText } from './RichText';
 import { Avatar, Txt } from './ui';
+import { VoiceNotePlayer } from './voice';
 
 /** A KLIPY GIF: a short muted looping video, loaded straight from KLIPY. */
 export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: number }) {
@@ -243,6 +244,13 @@ export function QuoteCard({
 			{quote.content ? <RichText content={quote.content} size={14} numberOfLines={6} /> : null}
 			<ImageGrid images={quote.images} sizes={quote.image_sizes} height={150} viewable={viewable} />
 			{quote.gif ? <GifMedia gif={quote.gif} maxHeight={180} /> : null}
+			{quote.audio ? (
+				<VoiceNotePlayer
+					compact
+					note={quote.audio}
+					track={{ title: quote.user.name, user: quote.user, href: `/post/${quote.id}` }}
+				/>
+			) : null}
 			{quote.is_quote ? (
 				<Txt size={13} muted>
 					Quotes another post

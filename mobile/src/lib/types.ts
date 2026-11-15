@@ -15,6 +15,19 @@ export type Gif = {
 /** an uploaded image's size in pixels, as stored, so it can be laid out before it loads */
 export type ImageSize = { width: number; height: number };
 
+/**
+ * A voice note: AAC in an M4A file. `url` is /uploads/… for posts (public) or /dm-uploads/… for
+ * messages (private: load it with the token, like message images)
+ */
+export type VoiceNote = {
+	url: string;
+	duration_ms: number;
+	/** 64 peaks, 0–255, to draw it before it loads */
+	waveform: number[];
+	/** of the file, in bytes */
+	size: number;
+};
+
 export type QuotedPost = {
 	id: number;
 	user: User;
@@ -23,6 +36,8 @@ export type QuotedPost = {
 	/** the size of each image, in the order of `images`; null or missing for older uploads */
 	image_sizes?: ImageSize[] | null;
 	gif?: Gif | null;
+	/** a voice note (the content is its caption); missing on older servers */
+	audio?: VoiceNote | null;
 	created_at: string;
 	is_quote: boolean;
 };
@@ -51,6 +66,8 @@ export type Post = {
 	/** the size of each image, in the order of `images`; null or missing for older uploads */
 	image_sizes?: ImageSize[] | null;
 	gif: Gif | null;
+	/** a voice note (the content is its caption); missing on older servers */
+	audio?: VoiceNote | null;
 	created_at: string;
 	edited_at: string | null;
 	likes: number;
@@ -175,6 +192,8 @@ export type MessageReplyTo = {
 	content: string;
 	images: number;
 	gif: boolean;
+	/** its voice note's length, if it has one */
+	audio_ms?: number | null;
 };
 
 export type Reaction = { emoji: string; username: string; name: string; avatar: string | null };
@@ -189,6 +208,10 @@ export type Message = {
 	/** the size of each image, in the order of `images`; null or missing for older uploads */
 	image_sizes?: ImageSize[] | null;
 	gif: Gif | null;
+	/** a voice note (the content is its caption); missing on older servers */
+	audio?: VoiceNote | null;
+	/** direct messages: when the recipient first played the voice note, null until then */
+	audio_played_at?: string | null;
 	created_at: string;
 	edited_at: string | null;
 	reply_to: MessageReplyTo | null;

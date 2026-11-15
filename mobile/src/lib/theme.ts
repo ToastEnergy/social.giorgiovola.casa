@@ -19,3 +19,8 @@ export const fonts = {
 	/** codes (invite codes): the system's monospaced font */
 	mono: Platform.select({ ios: 'Menlo', default: 'monospace' })
 };
+
+/** the tab bar's height above the safe area: breathing room between its top border and the
+ * icons, and as much more so the icons don't get pushed into the home indicator area */
+export const TAB_BAR_PADDING_TOP = 8;
+export const TAB_BAR_HEIGHT = 49 + TAB_BAR_PADDING_TOP;

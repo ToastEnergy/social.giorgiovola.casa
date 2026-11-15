@@ -94,3 +94,12 @@ export function groupEventText(
 			return event.content;
 	}
 }
+
+/** A length as m:ss, like the server's previews (an hour is 60:00). */
+export function duration(seconds: number) {
+	const s = Math.max(0, Math.round(seconds));
+	return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** What stands for a voice note without its caption: `🎤 Voice message (0:42)`. */
+export const voicePreview = (ms: number) => `🎤 Voice message (${duration(ms / 1000)})`;

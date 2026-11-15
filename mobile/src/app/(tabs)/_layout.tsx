@@ -10,11 +10,7 @@ import { Avatar } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
 import { getHomePage, setHomePage, useHomePage } from '@/lib/homePage';
 import { useSession } from '@/lib/session';
-import { colors, fonts } from '@/lib/theme';
-
-// breathing room between the bar's top border and the icons; the bar grows by the same amount so
-// the icons don't get pushed into the home indicator area
-const TAB_BAR_PADDING_TOP = 8;
+import { colors, fonts, TAB_BAR_HEIGHT, TAB_BAR_PADDING_TOP } from '@/lib/theme';
 
 // with a profile to switch back to, a first tap on the avatar waits this long for a second one
 // before opening the menu
@@ -66,7 +62,7 @@ export default function TabsLayout() {
 					backgroundColor: colors.background,
 					borderTopColor: colors.line,
 					paddingTop: TAB_BAR_PADDING_TOP,
-					height: 49 + TAB_BAR_PADDING_TOP + insets.bottom
+					height: TAB_BAR_HEIGHT + insets.bottom
 				},
 				tabBarActiveTintColor: colors.accent,
 				tabBarInactiveTintColor: colors.foreground,

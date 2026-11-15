@@ -3,7 +3,7 @@ import path from 'node:path';
 import { GlobalFonts, Path2D, createCanvas, loadImage } from '@napi-rs/canvas';
 import type { Canvas, SKRSContext2D as CanvasRenderingContext2D, Image } from '@napi-rs/canvas';
 import { PUBLIC_URL } from '$app/env/public';
-import type { LinkPreview, Poll, Post, ProfileCard, QuotedPost } from '#lib/types.js';
+import type { Gif, LinkPreview, Poll, Post, ProfileCard, QuotedPost } from '#lib/types.js';
 import { richText } from '#lib/richText.js';
 import { unwrapMarkdownImages, websiteLabel } from '#lib/utils.js';
 import { generateAvatar } from './avatar.js';
@@ -15,9 +15,12 @@ import * as storage from './storage.js';
 /**
  * The social cards (og:image) of posts and profiles: the post drawn the way Post.svelte shows it,
  * or the header of the profile page, on the black content panel over the page background, scaled
- * up to fill a 1200×630 image. Everything it shows
- * is read from our own storage (avatars, uploads, link preview images); only a GIF's still frame
- * comes from KLIPY.
+ * up to fill a 1200×630 image.
+ *
+ * Nothing is ever fetched from another site, so rendering a card can't reveal the server's address:
+ * every image comes from our own storage (avatars, post photos and the link preview images
+ * previewImages.ts already downloaded through the worker). A GIF is KLIPY's, so it's drawn as a
+ * placeholder rather than fetching its still frame.
  */
 
 export const CARD_WIDTH = 1200;
@@ -138,19 +141,6 @@ async function avatarImage(user: { username: string; avatar: string | null }) {
 		if (image) return image;
 	}
 	return decode(Buffer.from(generateAvatar(user.username, 256)));
-}
-
-/** A GIF's still frame, from KLIPY's media hosts only (the ones the CSP allows). */
-async function gifPoster(url: string) {
-	try {
-		const { protocol, hostname } = new URL(url);
-		if (protocol !== 'https:' || !/^static\d*\.klipy\.com$/.test(hostname)) return null;
-		const res = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: 'error' });
-		if (!res.ok) return null;
-		return decode(Buffer.from(await res.arrayBuffer()));
-	} catch {
-		return null;
-	}
 }
 
 let logoImage: Promise<Image | null> | null = null;
@@ -372,10 +362,8 @@ type Block = {
 type Media = {
 	avatar: Image | null;
 	images: (Image | null)[];
-	gif: Image | null;
 	quoteAvatar: Image | null;
 	quoteImages: (Image | null)[];
-	quoteGif: Image | null;
 	preview: Image | null;
 };
 
@@ -417,8 +405,10 @@ function layout(
 	const photos = post.images
 		.map((url, i) => ({ url, image: media.images[i] }))
 		.filter((p) => p.image);
-	if (photos.length === 1 || (photos.length === 0 && media.gif)) {
-		const image = (photos[0]?.image ?? media.gif)!;
+	const gif = photos.length ? null : post.gif;
+	if (gif) blocks.push(gifBlock(ctx, gif, colX, colW, s));
+	else if (photos.length === 1) {
+		const image = photos[0].image!;
 		const natural = Math.min(500 * s, (colW * image.height) / image.width);
 		blocks.push({
 			height: natural,
@@ -428,7 +418,6 @@ function layout(
 				// whole and centred like on the site, unless that leaves it a sliver
 				const shown = (h * image.width) / image.height;
 				drawImage(ctx, image, box, 5 * s, shown < colW * 0.5 ? 'cover' : 'contain');
-				if (!photos.length) gifBadge(ctx, colX + 5 * s, y + h - 5 * s, s);
 			}
 		});
 	} else if (photos.length > 1) {
@@ -478,7 +467,7 @@ function layout(
 			previewBlock(
 				ctx,
 				post.link_preview,
-				photos.length || media.gif ? null : media.preview,
+				photos.length || gif ? null : media.preview,
 				colX,
 				colW,
 				s
@@ -591,6 +580,36 @@ function gifBadge(ctx: CanvasRenderingContext2D, x: number, bottom: number, s: n
 	ctx.roundRect(x, bottom - h, w, h, h / 2);
 	ctx.fill();
 	text(ctx, 'GIF', x + w / 2, bottom - h / 2, f, FOREGROUND, 'center');
+	return x + w;
+}
+
+/**
+ * A GIF, drawn as a box of its shape with the GIF badge and its title: the GIF itself is on KLIPY,
+ * and the server never fetches from other sites.
+ */
+function gifBlock(ctx: CanvasRenderingContext2D, gif: Gif, x: number, w: number, s: number): Block {
+	const ratio = gif.width > 0 && gif.height > 0 ? gif.width / gif.height : 1;
+	const natural = Math.min(240 * s, w / ratio);
+	return {
+		height: natural,
+		flex: { min: Math.min(natural, 70 * s) },
+		draw: (y, h) => {
+			const bw = Math.min(w, Math.max(h * ratio, 260 * s));
+			ctx.fillStyle = 'rgba(255,255,255,0.05)';
+			ctx.beginPath();
+			ctx.roundRect(x, y, bw, h, 5 * s);
+			ctx.fill();
+			strokeBox(ctx, { x, y, w: bw, h }, 5 * s, s);
+			const badge = font(700, 12 * s);
+			ctx.font = badge;
+			const titleF = font(500, 13.6 * s);
+			const title = gif.title ? fit(ctx, gif.title, bw - 20 * s, titleF) : '';
+			const cy = y + h / 2 - (title ? 11 * s : 0);
+			const bwBadge = ctx.measureText('GIF').width + 10 * s;
+			gifBadge(ctx, x + bw / 2 - bwBadge / 2, cy + 9 * s, s);
+			if (title) text(ctx, title, x + bw / 2, cy + 24 * s, titleF, MUTED, 'center');
+		}
+	};
 }
 
 function botBadge(ctx: CanvasRenderingContext2D, s: number) {
@@ -706,7 +725,8 @@ function quoteBlock(
 		.map((_, i) => media.quoteImages[i])
 		.filter((i): i is Image => !!i)
 		.slice(0, 4);
-	const single = thumbs.length === 1 ? thumbs[0] : !thumbs.length ? media.quoteGif : null;
+	const single = thumbs.length === 1 ? thumbs[0] : null;
+	const quoteGif = !thumbs.length && quote.gif ? quote.gif : null;
 	let mediaH = 0;
 	if (thumbs.length > 1) mediaH = (innerW - 3 * 4 * s) / 4;
 	else if (single) mediaH = Math.min(140 * s, (innerW * single.height) / single.width);
@@ -714,6 +734,7 @@ function quoteBlock(
 		headH,
 		lines.length ? lines.length * tlh : 0,
 		quote.is_quote ? 0.85 * 24 * s : 0,
+		quoteGif ? 18 * s : 0,
 		mediaH
 	].filter(Boolean);
 	const natural = pad * 2 + parts.reduce((a, b) => a + b, 0) + (parts.length - 1) * 5 * s;
@@ -786,7 +807,17 @@ function quoteBlock(
 			} else if (single) {
 				const iw = (mediaH * single.width) / single.height;
 				drawImage(ctx, single, { x: x + pad, y: cy, w: iw, h: shownH }, 5 * s, 'cover');
-				if (!thumbs.length) gifBadge(ctx, x + pad + 5 * s, cy + shownH - 5 * s, s);
+			} else if (quoteGif) {
+				const end = gifBadge(ctx, x + pad, cy + 18 * s, s);
+				if (quoteGif.title)
+					text(
+						ctx,
+						fit(ctx, quoteGif.title, innerW - (end - x - pad) - 5 * s, font(500, 13.6 * s)),
+						end + 5 * s,
+						cy + 9 * s,
+						font(500, 13.6 * s),
+						MUTED
+					);
 			}
 		}
 	};
@@ -873,18 +904,16 @@ function heightsFor(l: Layout, room: number): number[] | null {
 async function loadMedia(post: Post): Promise<Media> {
 	const quote = post.quote ?? post.linked_post ?? null;
 	const quoted = quote && !('deleted' in quote) ? quote : null;
-	const [avatar, images, gif, quoteAvatar, quoteImages, quoteGif, preview] = await Promise.all([
+	const [avatar, images, quoteAvatar, quoteImages, preview] = await Promise.all([
 		avatarImage(post.user),
 		Promise.all(post.images.slice(0, 4).map(storedImage)),
-		post.gif && !post.images.length ? gifPoster(post.gif.poster) : null,
 		quoted ? avatarImage(quoted.user) : null,
 		quoted ? Promise.all(quoted.images.slice(0, 4).map(storedImage)) : [],
-		quoted?.gif && !quoted.images.length ? gifPoster(quoted.gif.poster) : null,
 		!quote && post.link_preview?.image && isPreviewPath(post.link_preview.image)
 			? storedImage(post.link_preview.image)
 			: null
 	]);
-	return { avatar, images, gif, quoteAvatar, quoteImages, quoteGif, preview };
+	return { avatar, images, quoteAvatar, quoteImages, preview };
 }
 
 /** A blank card: the page background and the empty content panel. */

@@ -82,7 +82,7 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 				notes: [
 					'Text only, bots cannot attach images.',
 					'With a poll, "content" is the question. Polls cannot be edited.',
-					'@username mentions notify that user, also next to punctuation like "(@user)", but not right after a letter, digit, "_", "@" or "/" (emails and post links aren\'t mentions).',
+					'@username mentions notify that user, in any case ("@Alice" is alice), also next to punctuation like "(@user)", but not right after a letter, digit, "_", "@" or "/" (emails and post links aren\'t mentions). Replies and quotes notify their mentions too; the author replied to or quoted gets only the reply or quote notification. Nobody is notified between two profiles when either has blocked the other.',
 					'#hashtags are linked and searchable.'
 				]
 			},
@@ -782,7 +782,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET / PATCH / DELETE',
 				path: '/api/v1/posts/:id',
 				auth: 'public / author / author or staff',
-				summary: 'read / edit the text `{ content }` / delete'
+				summary:
+					'read / edit the text `{ content }` (newly mentioned profiles are notified) / delete'
 			},
 			{
 				method: 'GET',
@@ -912,13 +913,13 @@ export const v1Groups: V1Group[] = [
 				method: 'PUT / DELETE',
 				path: '/api/v1/users/:username/follow',
 				auth: 'signed in',
-				summary: 'follow / unfollow'
+				summary: 'follow / unfollow (unfollowing removes the follow notification)'
 			},
 			{
 				method: 'PUT / DELETE',
 				path: '/api/v1/users/:username/block',
 				auth: 'signed in',
-				summary: 'block / unblock'
+				summary: 'block / unblock (no direct messages or new notifications either way)'
 			},
 			{
 				method: 'GET',

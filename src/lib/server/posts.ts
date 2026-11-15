@@ -9,7 +9,14 @@ import type { PollInput } from './validation.js';
 import { imagesOfPostTrees, removeUploads } from './images.js';
 import { linkedPosts } from './linkedPosts.js';
 import { linkPreviews, warmLinkPreview } from './linkPreviews.js';
-import { onLike, onPostCreated, onRegiorg, type Notification } from './notify.js';
+import {
+	onLike,
+	onPostCreated,
+	onRegiorg,
+	onUnlike,
+	onUnregiorg,
+	type Notification
+} from './notify.js';
 import { publishDeleted, publishLikes, publishPost, publishRegiorg } from './realtime.js';
 
 export type GetPostsOptions = {
@@ -430,20 +437,30 @@ export async function setLiked(userId: number, postId: number, liked: boolean) {
 		.from(posts)
 		.where(eq(posts.id, postId));
 	if (!post) return null;
-	const { total, notifications } = await db.transaction(async (tx) => {
-		let notifications: Notification[] = [];
+	const { total, changes } = await db.transaction(async (tx) => {
+		let created: Notification[] = [];
+		let removed: Notification[] = [];
+		// liking (or unliking) again changes nothing
 		if (liked) {
 			const added = await tx
 				.insert(likes)
 				.values({ user_id: userId, post_id: postId })
 				.onConflictDoNothing({ target: [likes.user_id, likes.post_id] })
 				.returning({ post_id: likes.post_id });
-			// liking again changes nothing
-			if (added.length) notifications = await onLike(tx, userId, postId);
-		} else await tx.delete(likes).where(and(eq(likes.user_id, userId), eq(likes.post_id, postId)));
-		return { total: await tx.$count(likes, eq(likes.post_id, postId)), notifications };
+			if (added.length) created = await onLike(tx, userId, postId);
+		} else {
+			const gone = await tx
+				.delete(likes)
+				.where(and(eq(likes.user_id, userId), eq(likes.post_id, postId)))
+				.returning({ post_id: likes.post_id });
+			if (gone.length) removed = await onUnlike(tx, userId, postId);
+		}
+		return {
+			total: await tx.$count(likes, eq(likes.post_id, postId)),
+			changes: { created, removed }
+		};
 	});
-	void publishLikes(postId, total, notifications);
+	void publishLikes(postId, total, changes);
 	return { liked, likes: total };
 }
 
@@ -454,9 +471,10 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 		.from(posts)
 		.where(eq(posts.id, postId));
 	if (!post) return null;
-	const { added, total, notifications } = await db.transaction(async (tx) => {
+	const { added, total, changes } = await db.transaction(async (tx) => {
 		let added = false;
-		let notifications: Notification[] = [];
+		let created: Notification[] = [];
+		let removed: Notification[] = [];
 		if (regiorged) {
 			const res = await tx
 				.insert(regiorgs)
@@ -464,14 +482,21 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 				.onConflictDoNothing({ target: [regiorgs.user_id, regiorgs.post_id] })
 				.returning({ post_id: regiorgs.post_id });
 			added = res.length > 0;
-			if (added) notifications = await onRegiorg(tx, userId, postId);
-		} else
-			await tx
+			if (added) created = await onRegiorg(tx, userId, postId);
+		} else {
+			const gone = await tx
 				.delete(regiorgs)
-				.where(and(eq(regiorgs.user_id, userId), eq(regiorgs.post_id, postId)));
-		return { added, total: await tx.$count(regiorgs, eq(regiorgs.post_id, postId)), notifications };
+				.where(and(eq(regiorgs.user_id, userId), eq(regiorgs.post_id, postId)))
+				.returning({ post_id: regiorgs.post_id });
+			if (gone.length) removed = await onUnregiorg(tx, userId, postId);
+		}
+		return {
+			added,
+			total: await tx.$count(regiorgs, eq(regiorgs.post_id, postId)),
+			changes: { created, removed }
+		};
 	});
-	void publishRegiorg(postId, total, added ? userId : null, notifications);
+	void publishRegiorg(postId, total, added ? userId : null, changes);
 	return { regiorged, regiorgs: total };
 }
 

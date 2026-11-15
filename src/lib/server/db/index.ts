@@ -18,6 +18,7 @@ export const {
 	likes,
 	regiorgs,
 	inbox,
+	inbox_removed,
 	messages,
 	group_chats,
 	group_members,

@@ -1,7 +1,13 @@
 // an "@username" anywhere, also next to punctuation ("(@user)", "@user,"), but not right after a
 // username character, "@" or "/": emails (a@b.com) and post links (/@user/57) aren't mentions.
-// keep in sync with the mention trigger (drizzle/0025_mentions_next_to_punctuation.sql)
+// usernames are lowercase, so "@Alice" mentions alice. keep in sync with the bot mention
+// matching (mentionsOf in src/lib/server/bots.ts, openBotStream in src/lib/server/realtime.ts)
 export const MENTION_RE = /(?<![a-zA-Z0-9_@/])@([a-zA-Z0-9_]+)/g;
+
+/** The usernames a text mentions, lowercase and without repeats, in order. */
+export const mentionedUsernames = (text: string) => [
+	...new Set([...text.matchAll(MENTION_RE)].map((m) => m[1].toLowerCase()))
+];
 
 /** Splits text into plain strings and mentioned usernames, in order. */
 export function splitMentions(text: string): (string | { username: string })[] {
@@ -16,9 +22,9 @@ export function splitMentions(text: string): (string | { username: string })[] {
 	return parts;
 }
 
-/** Whether the text mentions `username`. */
+/** Whether the text mentions `username` (lowercase, like every username). */
 export const mentions = (text: string, username: string) =>
-	[...text.matchAll(MENTION_RE)].some((m) => m[1] === username);
+	[...text.matchAll(MENTION_RE)].some((m) => m[1].toLowerCase() === username);
 
 // posts already reported, so scrolling past one again doesn't repeat the request
 const reported = new Set<string>();

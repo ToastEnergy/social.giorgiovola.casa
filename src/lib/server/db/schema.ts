@@ -18,8 +18,8 @@ import {
 import type { Gif, ImageSize } from '../../types.js';
 
 // Property names match the column names (snake_case) so rows line up with the types in
-// src/lib/types.ts. The triggers that create notifications can't be expressed here, they live
-// in a hand written migration (see drizzle/).
+// src/lib/types.ts. Notifications (inbox) are created and removed by src/lib/server/notify.ts,
+// inside the transaction of the event that causes them: there are no triggers.
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -281,6 +281,31 @@ export const inbox = pgTable(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`
 		)
+	]
+);
+
+// A like, regiorg or follow notification that was pushed and then removed by undoing it (unlike,
+// un-regiorg, unfollow), kept for a while so that redoing it doesn't push again: the new inbox row
+// takes over pushed_at and read_at (see src/lib/server/notify.ts). Not shown anywhere.
+export const inbox_removed = pgTable(
+	'inbox_removed',
+	{
+		user_id: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		sender_id: integer('sender_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// null for a follow
+		post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+		type: text('type', { enum: ['like', 'regiorg', 'follow'] }).notNull(),
+		pushed_at: timestamptz('pushed_at').notNull(),
+		read_at: timestamptz('read_at')
+	},
+	(t) => [
+		unique('inbox_removed_key').on(t.user_id, t.sender_id, t.post_id, t.type).nullsNotDistinct(),
+		// expired rows are cleared by pushed_at
+		index('inbox_removed_pushed_at').on(t.pushed_at)
 	]
 );
 

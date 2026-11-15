@@ -602,6 +602,9 @@ GET /hashtags/:tag/posts              public, paginated Posts (replies included)
 
 ### Notifications
 
+Notifications are kept for 6 months, read or unread; older ones are deleted and no longer
+appear in any of these lists or counts.
+
 GET /notifications                    signed in, paginated (default 50, at most 200)
   Every notification on its own (Notification objects).
 GET /notifications/grouped            signed in, paginated (default 50, at most 200)

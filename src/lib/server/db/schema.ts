@@ -301,6 +301,8 @@ export const inbox = pgTable(
 		index('inbox_unpushed')
 			.on(t.id)
 			.where(sql`${t.pushed_at} IS NULL`),
+		// the sweep deleting notifications older than 6 months (notificationRetention.ts)
+		index('inbox_created_at').on(t.created_at),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`

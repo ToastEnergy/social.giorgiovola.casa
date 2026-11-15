@@ -6,6 +6,8 @@ import { checkLinkPreviewConfig } from '#lib/server/linkPreviews.js';
 import { checkStorageConfig } from '#lib/server/storage.js';
 import { gate, keepPrivate } from '#lib/server/membersOnly.js';
 import { startPushWorker, stopPushWorker } from '#lib/server/pushOutbox.js';
+// starts the sweep that deletes notifications older than 6 months
+import '#lib/server/notificationRetention.js';
 
 const securityHeaders: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',

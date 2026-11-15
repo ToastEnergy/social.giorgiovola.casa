@@ -949,7 +949,7 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/notifications',
 				auth: 'signed in',
-				summary: 'your notifications (kept for 6 months, read or unread)'
+				summary: 'your notifications (read ones are kept for 6 months)'
 			},
 			{
 				method: 'GET',

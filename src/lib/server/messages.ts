@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db, blocks, dm_mutes, messages, users } from './db/index.js';
-import type { ChatMessage, ChatPeer, Conversation, Gif, ImageSize } from '#lib/types.js';
+import type { ChatMessage, ChatPeer, Conversation, Gif, ImageSize, VoiceNote } from '#lib/types.js';
 import type { StoredImage } from './images.js';
-import { mediaPreview } from '#lib/mediaPreview.js';
+import { messagePreview } from '#lib/mediaPreview.js';
+import { filesOf } from './images.js';
 import { linkedPosts } from './linkedPosts.js';
 import { unreadGroupCount } from './groups.js';
 import { markDirectReactionsRead, withRepliesAndReactions } from './messageReactions.js';
@@ -101,6 +102,8 @@ type Row = {
 	images: string[];
 	image_sizes: ImageSize[] | null;
 	gif: Gif | null;
+	audio: VoiceNote | null;
+	audio_played_at: Date | null;
 	reply_to_id: number | null;
 	created_at: Date;
 	edited_at: Date | null;
@@ -114,6 +117,8 @@ const toChatMessage = (row: Row, sender: string, recipient: string) => ({
 	images: row.images,
 	image_sizes: row.image_sizes,
 	gif: row.gif,
+	audio: row.audio,
+	audio_played_at: row.audio_played_at,
 	reply_to_id: row.reply_to_id,
 	created_at: row.created_at,
 	edited_at: row.edited_at
@@ -138,6 +143,8 @@ export async function getThread(me: Party, peer: Party, before?: number | null) 
 			images: messages.images,
 			image_sizes: messages.image_sizes,
 			gif: messages.gif,
+			audio: messages.audio,
+			audio_played_at: messages.audio_played_at,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -177,6 +184,8 @@ export async function getThreadFrom(me: Party, peer: Party, { afterId, limit }: 
 			images: messages.images,
 			image_sizes: messages.image_sizes,
 			gif: messages.gif,
+			audio: messages.audio,
+			audio_played_at: messages.audio_played_at,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -205,6 +214,8 @@ export async function getReceived(me: Party, { afterId, limit }: ListOptions) {
 			images: messages.images,
 			image_sizes: messages.image_sizes,
 			gif: messages.gif,
+			audio: messages.audio,
+			audio_played_at: messages.audio_played_at,
 			reply_to_id: messages.reply_to_id,
 			created_at: messages.created_at,
 			edited_at: messages.edited_at
@@ -227,7 +238,8 @@ export async function sendMessage(
 	content: string,
 	stored: StoredImage[] = [],
 	replyTo: number | null = null,
-	gif: Gif | null = null
+	gif: Gif | null = null,
+	audio: VoiceNote | null = null
 ): Promise<ChatMessage> {
 	const images = stored.map((i) => i.url);
 	const image_sizes = stored.length ? stored.map((i) => i.size) : null;
@@ -240,12 +252,23 @@ export async function sendMessage(
 			images,
 			image_sizes,
 			gif,
+			audio,
 			reply_to_id: replyTo
 		})
 		.returning({ id: messages.id, created_at: messages.created_at });
 	const [message] = await complete([
 		toChatMessage(
-			{ ...row, content, images, image_sizes, gif, reply_to_id: replyTo, edited_at: null },
+			{
+				...row,
+				content,
+				images,
+				image_sizes,
+				gif,
+				audio,
+				audio_played_at: null,
+				reply_to_id: replyTo,
+				edited_at: null
+			},
 			me.username,
 			peer.username
 		)
@@ -259,6 +282,8 @@ const editedColumns = {
 	images: messages.images,
 	image_sizes: messages.image_sizes,
 	gif: messages.gif,
+	audio: messages.audio,
+	audio_played_at: messages.audio_played_at,
 	reply_to_id: messages.reply_to_id,
 	created_at: messages.created_at,
 	edited_at: messages.edited_at
@@ -285,13 +310,15 @@ export async function editMessage(
 			content: messages.content,
 			images: messages.images,
 			gif: messages.gif,
+			audio: messages.audio,
+			audio_played_at: messages.audio_played_at,
 			created_at: messages.created_at
 		})
 		.from(messages)
 		.where(mineTo);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
-	if (!content && found.images.length === 0 && !found.gif) return 'empty';
+	if (!content && found.images.length === 0 && !found.gif && !found.audio) return 'empty';
 	// the same text: nothing to mark as edited
 	const [row] =
 		content === found.content
@@ -308,8 +335,8 @@ export async function editMessage(
 }
 
 /**
- * Deletes a message, only if `senderId` sent it. Returns the recipient and the images to remove
- * from disk, or null when there was nothing of theirs to delete.
+ * Deletes a message, only if `senderId` sent it. Returns the recipient and the files (images,
+ * voice note) to remove from storage, or null when there was nothing of theirs to delete.
  */
 export async function deleteMessage(senderId: number, id: number, recipientId?: number) {
 	const [row] = await db
@@ -321,8 +348,44 @@ export async function deleteMessage(senderId: number, id: number, recipientId?: 
 				recipientId === undefined ? undefined : eq(messages.recipient_id, recipientId)
 			)
 		)
-		.returning({ recipient_id: messages.recipient_id, images: messages.images });
+		.returning({ recipient_id: messages.recipient_id, files: filesOf('messages') });
 	return row ?? null;
+}
+
+/**
+ * Marks the voice note of message `id`, sent by `peer` to `me`, as played. Idempotent: the first
+ * time is kept. Null when there is no such message with a voice note; `mine` when `me` sent it.
+ */
+export async function markAudioPlayed(
+	me: Party,
+	peer: Party,
+	id: number
+): Promise<{ audio_played_at: Date; changed: boolean } | 'mine' | null> {
+	const [updated] = await db
+		.update(messages)
+		.set({ audio_played_at: sql`NOW()` })
+		.where(
+			and(
+				eq(messages.id, id),
+				eq(messages.sender_id, peer.id),
+				eq(messages.recipient_id, me.id),
+				isNotNull(messages.audio),
+				isNull(messages.audio_played_at)
+			)
+		)
+		.returning({ audio_played_at: messages.audio_played_at });
+	if (updated?.audio_played_at) return { audio_played_at: updated.audio_played_at, changed: true };
+	const [found] = await db
+		.select({
+			sender_id: messages.sender_id,
+			audio: sql<boolean>`(${messages.audio} IS NOT NULL)`,
+			audio_played_at: messages.audio_played_at
+		})
+		.from(messages)
+		.where(and(eq(messages.id, id), between(me.id, peer.id)));
+	if (!found || !found.audio) return null;
+	if (found.sender_id === me.id) return 'mine';
+	return found.audio_played_at ? { audio_played_at: found.audio_played_at, changed: false } : null;
 }
 
 /** The oldest message `peerId` sent to `userId` that is still unread, null when there is none. */
@@ -380,6 +443,7 @@ export async function getConversations(userId: number): Promise<Conversation[]> 
 			content: sql<string>`LEFT(${messages.content}, ${PREVIEW_LENGTH})`,
 			images: sql<number>`CARDINALITY(${messages.images})`,
 			gif: sql<boolean>`(${messages.gif} IS NOT NULL)`,
+			audio_ms: sql<number | null>`(${messages.audio}->>'duration_ms')::int`,
 			created_at: messages.created_at
 		})
 		.from(messages)
@@ -411,7 +475,7 @@ export async function getConversations(userId: number): Promise<Conversation[]> 
 			return [
 				{
 					peer: { username, name, avatar },
-					preview: row.content || mediaPreview(row),
+					preview: messagePreview(row),
 					mine: row.sender_id === userId,
 					created_at: row.created_at,
 					unread: unread.find((u) => u.sender_id === peer.id)?.count ?? 0

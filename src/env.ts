@@ -92,6 +92,15 @@ export const variables = defineEnvVars({
 	S3_REGION: { schema: (input: string | undefined) => input || 'auto' },
 	S3_ACCESS_KEY_ID: { schema: optional },
 	S3_SECRET_ACCESS_KEY: { schema: optional },
+	// the ffmpeg that transcodes voice notes (src/lib/server/audio.ts); ffprobe is looked for next
+	// to it. Default: ffmpeg on PATH. off (or ffmpeg missing) turns voice notes off
+	FFMPEG_PATH: {
+		schema: (input: string | undefined) => {
+			const value = input?.trim() || 'ffmpeg';
+			if (/[\r\n\0]/.test(value)) throw new Error('FFMPEG_PATH must be a single path');
+			return value;
+		}
+	},
 	DATABASE_URL: {
 		// server modules are imported during `vite build`, when no database is configured
 		schema: (input: string | undefined) => {

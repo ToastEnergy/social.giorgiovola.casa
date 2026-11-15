@@ -72,12 +72,18 @@ export function sniffImage(buf: Buffer): string | null {
 	return null;
 }
 
-const FILE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.([a-z]+)$/;
+const FILE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.([a-z0-9]+)$/;
 
-/** The content type for an upload file name as written by saveUpload, null for anything else. */
+// uploads that aren't images: voice notes (src/lib/server/audio.ts)
+const MEDIA_TYPES: Record<string, string> = { m4a: 'audio/mp4' };
+
+/**
+ * The content type for an upload file name as written by saveUpload (or storeAudioUpload), null
+ * for anything else.
+ */
 export function uploadType(file: string): string | null {
 	const ext = FILE_RE.exec(file)?.[1];
-	return ext ? IMAGE_TYPES[ext] ?? null : null;
+	return ext ? IMAGE_TYPES[ext] ?? MEDIA_TYPES[ext] ?? null : null;
 }
 
 // decoding a huge (or decompression-bomb) image would eat the server's memory
@@ -230,6 +236,13 @@ export async function storeUpload(kind: UploadKind, data: Uint8Array): Promise<S
 	return { url: UPLOAD_KINDS[kind].path + file, size };
 }
 
+/** Stores a voice note (an M4A file) of `kind` under a random name; returns its URL path. */
+export async function storeAudioUpload(kind: UploadKind, data: Uint8Array): Promise<string> {
+	const file = `${crypto.randomUUID()}.m4a`;
+	await storage.put(UPLOAD_KINDS[kind].key + file, data, 'audio/mp4');
+	return UPLOAD_KINDS[kind].path + file;
+}
+
 /** Writes a post image; returns its URL path and size. */
 export const saveUpload = (buf: Buffer) => storeUpload('uploads', buf);
 
@@ -253,33 +266,41 @@ export async function removeUploads(urls: string[]) {
 	}
 }
 
+/** The files of a row of `table` (posts, messages, group_messages): its images and voice note. */
+export const filesOf = (table: string) =>
+	sql<string[]>`${sql.raw(
+		`array_cat(${table}.images, array_remove(ARRAY[${table}.audio->>'url'], NULL))`
+	)}`;
+
 /**
- * Images of the given posts and of every reply below them (replies are deleted along with their
- * parent). Call before deleting, then pass the result to removeUploads once the delete succeeded.
+ * Images and voice notes of the given posts and of every reply below them (replies are deleted
+ * along with their parent). Call before deleting, then pass the result to removeUploads once the
+ * delete succeeded.
  */
 export async function imagesOfPostTrees(where: ReturnType<typeof sql>): Promise<string[]> {
 	const rows = await db.execute<{ image: string }>(sql`
 		WITH RECURSIVE tree AS (
-			SELECT id, images FROM posts WHERE ${where}
+			SELECT id, ${filesOf('posts')} AS files FROM posts WHERE ${where}
 			UNION
-			SELECT p.id, p.images FROM posts p INNER JOIN tree ON p.reply_to = tree.id
+			SELECT p.id, ${filesOf('p')} FROM posts p INNER JOIN tree ON p.reply_to = tree.id
 		)
-		SELECT unnest(images) AS image FROM tree
+		SELECT unnest(files) AS image FROM tree
 	`);
 	return rows.map((r) => r.image);
 }
 
 /**
- * Images of the direct messages the profile sent or received and of the group messages it sent:
- * they go away with it (ON DELETE CASCADE). Call before deleting, then pass the result to
- * removeUploads once the delete succeeded.
+ * Images and voice notes of the direct messages the profile sent or received and of the group
+ * messages it sent: they go away with it (ON DELETE CASCADE). Call before deleting, then pass the
+ * result to removeUploads once the delete succeeded.
  */
 export async function imagesOfMessagesOf(userId: number): Promise<string[]> {
 	const rows = await db.execute<{ image: string }>(sql`
-		SELECT unnest(images) AS image FROM messages
+		SELECT unnest(${filesOf('messages')}) AS image FROM messages
 		WHERE sender_id = ${userId} OR recipient_id = ${userId}
 		UNION ALL
-		SELECT unnest(images) AS image FROM group_messages WHERE sender_id = ${userId}
+		SELECT unnest(${filesOf('group_messages')}) AS image FROM group_messages
+		WHERE sender_id = ${userId}
 	`);
 	return rows.map((r) => r.image);
 }

@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import type { User } from '#lib/types.js';
+import type { Post, User } from '#lib/types.js';
 import { extractHashtags } from '#lib/hashtags.js';
 import { db, polls, post_hashtags, posts, users } from './db/index.js';
 import { ApiError, fail, readJson } from './api.js';
@@ -17,7 +17,8 @@ import {
 import { actionsLimited, canDeletePostOf, logAction } from './moderation.js';
 import { resolveReportsOfPost } from './reports.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
-import { broadcast, publishNotifications } from './realtime.js';
+import { broadcast, publishNotifications, publishToProfile } from './realtime.js';
+import { audioPending, parseAudioId, sendWithAudio } from './stagedAudio.js';
 import { onPostEdited } from './notify.js';
 import { warmLinkPreview } from './linkPreviews.js';
 import { parseGif } from './gifs.js';
@@ -47,6 +48,7 @@ export async function readPostBody(request: Request, locals: App.Locals): Promis
 				reply_to: form.get('reply_to') || null,
 				quote_of: form.get('quote_of') || null,
 				gif: form.get('gif'),
+				audio: form.get('audio'),
 				poll: form.has('poll_options')
 					? { options: form.getAll('poll_options'), minutes: form.get('poll_minutes') }
 					: null
@@ -62,19 +64,27 @@ const unwrap = <T>(value: T | Response): T => {
 	return value;
 };
 
-/** Validates and writes a new post, reply or quote by `user`, with its images and poll. */
+/**
+ * Validates and writes a new post, reply or quote by `user`, with its images, poll or voice note.
+ * Answers the post, or a 202 response when its voice note is still being processed: the post is
+ * then published when it's ready (see sendWithAudio).
+ */
 export async function submitPost(
 	user: Pick<User, 'id' | 'username' | 'name' | 'avatar'>,
 	{ body, files }: RawPost
-) {
+): Promise<Post | Response> {
 	const staged = unwrap(parseStagedIds(body.uploads));
 	if (body.content != null && typeof body.content !== 'string')
 		fail(400, 'content must be a string');
 	const content = typeof body.content === 'string' ? normalizePostContent(body.content) : '';
 	const gif = parseGif(body.gif) ?? null;
-	if (!content && !gif && files.length === 0 && staged.length === 0) fail(400, 'Missing content');
+	const audioId = parseAudioId(body.audio);
+	if (!content && !gif && !audioId && files.length === 0 && staged.length === 0)
+		fail(400, 'Missing content');
 	if (gif && files.length + staged.length > 0)
 		fail(400, 'A post can have a GIF or images, not both');
+	if (audioId && (gif || files.length + staged.length > 0 || body.poll != null))
+		fail(400, "A voice note can't have images, a GIF or a poll: only a caption");
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
 
@@ -106,6 +116,18 @@ export async function submitPost(
 	if (refError) fail(refError.status, refError.message);
 	const stagedMissing = checkStaged(user.id, staged);
 	if (stagedMissing) throw stagedMissing;
+
+	if (audioId) {
+		const result = await sendWithAudio(
+			user.id,
+			audioId,
+			'uploads',
+			(audio) => createPost(user, { content, reply_to, quote_of, audio }),
+			(post) => ({ type: 'post', id: post.id }),
+			(event, data) => publishToProfile(user.id, event, data)
+		);
+		return 'sent' in result ? result.sent : audioPending(result.pending);
+	}
 
 	let optimized: Buffer[];
 	try {
@@ -153,6 +175,7 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 			user_id: posts.user_id,
 			images: posts.images,
 			gif: posts.gif,
+			audio: posts.audio,
 			poll: polls.post_id
 		})
 		.from(posts)
@@ -163,7 +186,8 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 	const content = normalizePostContent(rawContent);
 	// the same rules as a new post: the text of a poll is its question
 	if (!content && post.poll !== null) fail(400, 'A poll needs a question');
-	if (!content && post.images.length === 0 && !post.gif) fail(400, 'Missing content');
+	if (!content && post.images.length === 0 && !post.gif && !post.audio)
+		fail(400, 'Missing content');
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
 

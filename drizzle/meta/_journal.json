@@ -365,6 +365,13 @@
       "when": 1794763578975,
       "tag": "0051_inbox_read_created_at",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794767693401,
+      "tag": "0052_voice_notes",
+      "breakpoints": true
     }
   ]
 }

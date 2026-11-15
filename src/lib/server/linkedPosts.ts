@@ -39,6 +39,7 @@ export async function linkedPosts(contents: string[]): Promise<(QuotedPost | nul
 			images: posts.images,
 			image_sizes: posts.image_sizes,
 			gif: posts.gif,
+			audio: posts.audio,
 			created_at: posts.created_at,
 			is_quote: posts.is_quote,
 			user: {

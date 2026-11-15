@@ -359,6 +359,10 @@ export const postShape = (origin: string) => `{
   "image_sizes": [{ "width": 1600, "height": 1200 }] | null,
                                         // px, same order as images; null when unknown (measure
                                         // the image once loaded), also inside "quote"
+  "audio": {                            // a voice note (M4A), or null; "content" is its caption
+    "url": "/uploads/….m4a", "duration_ms": 42000,
+    "waveform": [ … 64 values 0-255 ], "size": 254810
+  } | null,
   "created_at": "ISO date", "edited_at": "ISO date" | null,
   "likes": 3, "liked": true,            // liked: by the bot
   "regiorgs": 1, "regiorged": false,    // regiorged: by the bot
@@ -387,6 +391,8 @@ export const messageShape = `{
   "content": "hi!",        // may be empty when the message only has images
   "images": ["/dm-uploads/…"],   // private: fetch with the bot's token
   "image_sizes": [{ "width", "height" }] | null,   // like in a post
+  "audio": { "url": "/dm-uploads/….m4a", … } | null,   // a voice note, private like images
+  "audio_played_at": "ISO date" | null,   // when the recipient first played it
   "created_at": "ISO date",
   "linked_post": {         // the first post on this site linked in "content", or null
     "id": 57, "user": { "name", "username", "avatar" },
@@ -412,6 +418,7 @@ export const groupMessageShape = `{
   "content": "hi all",     // for "created" and "renamed": the group name
   "images": ["/dm-uploads/…"],   // private, like in Message
   "image_sizes": [ … ] | null,   // like in Message
+  "audio": { … } | null,         // a voice note, like in Message
   "created_at": "ISO date",
   "linked_post": { … } | null,   // like in Message
   "reply_to": {            // the message this one replies to, or null
@@ -776,7 +783,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/posts',
 				auth: 'not muted',
 				summary:
-					'`{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`; `gif` is a KLIPY GIF the client found itself (see GIFs in /api.txt)'
+					'`{ content, uploads?, gif?, audio?, reply_to?, quote_of?, poll? }`; `gif` is a KLIPY GIF the client found itself (see GIFs in /api.txt), `audio` a voice note id from `/api/v1/uploads/audio` (caption only, no images, GIF or poll; 202 while it is still processing)'
 			},
 			{
 				method: 'GET / PATCH / DELETE',
@@ -852,14 +859,47 @@ export const v1Groups: V1Group[] = [
 				method: 'DELETE',
 				path: '/api/v1/uploads/:id',
 				auth: 'signed in',
-				summary: 'drop an unused upload'
+				summary: 'drop an unused upload (an image, a voice note or its session)'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/uploads/audio',
+				auth: 'not muted (bots too)',
+				summary:
+					'upload a whole voice note (raw body: WebM, MP4/M4A, Ogg, WAV or MP3, at most 1 hour) → `{ id, status, duration_ms, waveform }`, transcoded to AAC; pass the id as `audio`. 503 when the server has no ffmpeg'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/uploads/audio/sessions',
+				auth: 'not muted (bots too)',
+				summary:
+					'open a chunked voice note upload, for long recordings → `{ id, status: receiving }`'
+			},
+			{
+				method: 'PUT',
+				path: '/api/v1/uploads/audio/sessions/:id/chunks/:n',
+				auth: 'uploader',
+				summary: 'chunk `n` (raw bytes, up to 5 MB); sending it again replaces it'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/uploads/audio/sessions/:id/complete',
+				auth: 'uploader',
+				summary: '`{ chunks }`: join chunks 0 to chunks - 1 and process them'
+			},
+			{
+				method: 'GET',
+				path: '/api/v1/uploads/audio/:id',
+				auth: 'uploader',
+				summary:
+					'status of a voice note upload: receiving (with its `chunks`), processing, ready, failed (`error`) or sent'
 			},
 			{
 				method: 'GET',
 				path: '/dm-uploads/:file',
 				auth: 'in the conversation',
 				summary:
-					'a message image (cookie or bearer token, private caching); 404 when missing or not yours, 401 for an invalid token. Older message images under `/uploads/` get the same check; post images there load whatever the token'
+					'a message image or voice note (cookie or bearer token, private caching); 404 when missing or not yours, 401 for an invalid token. Older message images under `/uploads/` get the same check; post files there load whatever the token. Every upload answers HTTP Range requests (206)'
 			}
 		]
 	},
@@ -1011,7 +1051,14 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/conversations/:username/messages',
 				auth: 'signed in / not muted',
 				summary:
-					'messages, oldest first (`cursor` for older) / send `{ content, uploads?, gif?, reply_to? }`'
+					'messages, oldest first (`cursor` for older) / send `{ content, uploads?, gif?, audio?, reply_to? }` (202 while a voice note is still processing)'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/conversations/:username/messages/:id/played',
+				auth: 'recipient',
+				summary:
+					'mark the voice note of a message you received as played → `{ id, audio_played_at }`; idempotent, the sender gets `message_played`'
 			},
 			{
 				method: 'PATCH / DELETE',
@@ -1041,7 +1088,7 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/conversations/:username/typing',
 				auth: 'signed in',
-				summary: 'typing indicator'
+				summary: 'typing indicator; `{ action: "recording" }` while recording a voice note'
 			},
 			{
 				method: 'GET / POST',
@@ -1102,7 +1149,7 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/groups/:id/typing',
 				auth: 'member',
-				summary: 'typing indicator'
+				summary: 'typing indicator; `{ action: "recording" }` while recording a voice note'
 			}
 		]
 	},

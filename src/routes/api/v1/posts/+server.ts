@@ -16,5 +16,6 @@ export const POST: RequestHandler = v1(async ({ locals, request }) => {
 	if (locals.auth === 'bot')
 		rateLimit(`bot:${user.id}:posts`, MAX_BOT_POSTS, 60_000, 'Posting too fast');
 	else rateLimit(`posts:${user.id}`, MAX_POSTS, 60_000, 'Posting too fast');
-	return created(await submitPost(user, await readPostBody(request, locals)));
+	const post = await submitPost(user, await readPostBody(request, locals));
+	return post instanceof Response ? post : created(post);
 });

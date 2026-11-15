@@ -41,8 +41,15 @@ export default defineConfig(({ mode }) => ({
 					'style-src': ['self', 'unsafe-inline'],
 					// api.klipy.com: the GIF pickers search KLIPY from the browser (src/lib/klipy.ts)
 					'connect-src': ['self', 'cloudflareinsights.com', 'api.klipy.com'],
-					// GIFs play as KLIPY's own MP4s, loaded from its media hosts
-					'media-src': ['static.klipy.com', 'static1.klipy.com', 'static2.klipy.com'],
+					// voice notes are ours (uploads, dm-uploads), blob: plays a recording before it's sent. GIFs
+					// play as KLIPY's own MP4s, loaded from its media hosts
+					'media-src': [
+						'self',
+						'blob:',
+						'static.klipy.com',
+						'static1.klipy.com',
+						'static2.klipy.com'
+					],
 					// every image is served by us (uploads, avatars, link preview images), except KLIPY's
 					// GIF stills (video posters and the picker's previews). blob: is for the previews of
 					// files attached in the composer and the photo editor

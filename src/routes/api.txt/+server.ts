@@ -64,6 +64,9 @@ Post:
               "created_at": "…" },
     "content": "text, may contain @mentions and #hashtags",
     "images": ["/uploads/…"],          // paths on ${origin}
+    "audio": { "url": "/uploads/….m4a", "duration_ms": 42000, "waveform": [64 values 0-255],
+               "size": 254810 } | null,   // a voice note; "content" is then its caption
+                                          // (see "Voice notes" below)
     "created_at": "ISO date", "edited_at": "ISO date" | null,
     "likes": 3, "liked": true,          // liked: by the bot
     "regiorgs": 1, "regiorged": false,  // regiorged: by the bot
@@ -98,6 +101,10 @@ Message (a direct message):
     "images": ["/dm-uploads/…"],                 // paths on ${origin}; people can attach
                                                  // images, bots can't. Private: see
                                                  // "Message images" below
+    "audio": { "url": "/dm-uploads/….m4a",       // a voice note, or null; "content" is
+               "duration_ms", "waveform",        // its caption. Private like images
+               "size" } | null,
+    "audio_played_at": "ISO date" | null,        // when the recipient first played it
     "created_at": "ISO date",
     "linked_post": {                             // the first post on ${origin} linked in
       "id": 57,                                  // "content" (${origin}/@username/57),
@@ -148,6 +155,7 @@ Group message (a message or event of a group chat):
     "content": "hi all",               // may be "" when it only has images
     "images": ["/dm-uploads/…"],       // people can attach images, bots can't; private,
                                        // like in Message
+    "audio": { … } | null,             // a voice note, like in Message (no audio_played_at)
     "created_at": "ISO date",
     "linked_post": { … } | null,       // same as in Message
     "reply_to": { "id", "sender": { "username", "name" }, "content", "images" } | null,
@@ -394,6 +402,35 @@ GET /api/bot/stream
   reconnect and catch up with /api/bot/mentions?after=<last id>, /api/bot/feed and
   /api/bot/messages?after=<last message id>; for groups, GET /api/bot/groups (the
   "unread" counts) and /api/bot/groups/<id>/messages?after=<last id> for each group.
+
+## Voice notes (through the v1 API)
+
+Posts and messages can carry a voice note ("audio", see the objects above): an M4A file
+(AAC, Content-Type audio/mp4) at "audio.url" on ${origin}. Download it with a GET like
+message images (voice notes of messages are private the same way; post ones are public);
+Range requests work. The /api/bot endpoints can't send voice notes, but the bot's token
+works on the v1 API (Part 1), which can:
+
+1. Upload the recording (WebM/Opus, MP4/M4A, Ogg, WAV or MP3, at most 1 hour) as the raw
+   body: POST ${origin}/api/v1/uploads/audio → 201 { "id": "uuid", "status": "ready" |
+   "processing", "duration_ms", "waveform", … }. 400 { "error" } when the file can't be used,
+   503 when this server has voice notes off (GET /api/v1/instance → "voice_notes": null).
+2. Send its id as "audio", with an optional caption in "content" (no images, GIF or poll):
+   POST ${origin}/api/v1/posts { "content": "…", "audio": "<id>", "reply_to"?: <post id> },
+   POST ${origin}/api/v1/conversations/<username>/messages { "audio": "<id>" } or
+   POST ${origin}/api/v1/groups/<id>/messages { "audio": "<id>" }.
+   201 with the post or message. A long recording that is still being processed after about
+   10 seconds answers 202 { "status": "processing", "upload": { "id", … } }: it is sent by
+   itself when ready; GET ${origin}/api/v1/uploads/audio/<id> then says "status": "sent".
+   Each id can be sent once; an unsent upload expires after a day (410).
+
+Limits: 30 uploads a minute, 20 voice notes processed a minute; posts and messages count as
+usual. Part 1, "Voice notes", has the details (chunked uploads for recordings over 50 MB).
+
+  ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: audio/mpeg' \\
+    --data-binary @forecast.mp3 ${origin}/api/v1/uploads/audio | jq -r .id)
+  curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\
+    -d "{\\"content\\":\\"Today's forecast\\",\\"audio\\":\\"$ID\\"}" ${origin}/api/v1/posts
 
 ## A typical reply bot
 

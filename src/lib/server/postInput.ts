@@ -17,7 +17,8 @@ import {
 import { actionsLimited, canDeletePostOf, logAction } from './moderation.js';
 import { resolveReportsOfPost } from './reports.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
-import { broadcast } from './realtime.js';
+import { broadcast, publishNotifications } from './realtime.js';
+import { onPostEdited } from './notify.js';
 import { warmLinkPreview } from './linkPreviews.js';
 import { parseGif } from './gifs.js';
 
@@ -118,13 +119,23 @@ export async function submitPost(
 	const saved = await Promise.all(optimized.map(saveUpload));
 	const claimed = await claimStaged(user.id, staged);
 	if (claimed instanceof Response) {
-		await removeUploads(saved);
+		await removeUploads(saved.map((s) => s.url));
 		throw claimed;
 	}
-	const images = [...saved, ...claimed];
+	const stored = [...saved, ...claimed];
+	const images = stored.map((s) => s.url);
+	const image_sizes = stored.map((s) => s.size);
 
 	try {
-		return await createPost(user, { content, images, gif, reply_to, quote_of, poll: poll.poll });
+		return await createPost(user, {
+			content,
+			images,
+			image_sizes,
+			gif,
+			reply_to,
+			quote_of,
+			poll: poll.poll
+		});
 	} catch (e) {
 		await removeUploads(images);
 		throw e;
@@ -133,7 +144,8 @@ export async function submitPost(
 
 /**
  * Edits the text of one of `user`'s own posts (images and polls stay as they are). Its hashtags
- * follow the new text. Realtime clients get a `post_edited` event.
+ * follow the new text, and profiles it newly @mentions are notified. Realtime clients get a
+ * `post_edited` event.
  */
 export async function editPost(user: Pick<User, 'id'>, postId: number, rawContent: string) {
 	const [post] = await db
@@ -155,7 +167,14 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 	if (content.length > LIMITS.postContent)
 		fail(400, `Posts can be at most ${LIMITS.postContent} characters`);
 
-	await db.transaction(async (tx) => {
+	const notifications = await db.transaction(async (tx) => {
+		// the text it replaces, locked so two edits at once compare against each other's text
+		const [previous] = await tx
+			.select({ content: posts.content, reply_to: posts.reply_to, quote_of: posts.quote_of })
+			.from(posts)
+			.where(eq(posts.id, postId))
+			.for('update');
+		if (!previous) fail(404, 'Post not found');
 		await tx
 			.update(posts)
 			.set({ content, edited_at: sql`NOW()` })
@@ -164,11 +183,25 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 		const tags = extractHashtags(content);
 		if (tags.length)
 			await tx.insert(post_hashtags).values(tags.map((tag) => ({ post_id: postId, tag })));
+		return onPostEdited(
+			tx,
+			{
+				id: postId,
+				user_id: user.id,
+				content,
+				reply_to: previous.reply_to,
+				quote_of: previous.quote_of
+			},
+			previous.content
+		);
 	});
 	await warmLinkPreview(content);
 	const [updated] = await getPosts({ postId, loggedUser: user });
 	const [anonymous] = await getPosts({ postId });
 	if (anonymous) broadcast('post_edited', anonymous);
+	void publishNotifications({ created: notifications, removed: [] }).catch((e) =>
+		console.error('realtime: publishNotifications failed', e)
+	);
 	return updated;
 }
 

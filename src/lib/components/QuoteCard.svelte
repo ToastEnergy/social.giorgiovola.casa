@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { QuotedPost } from '#lib/types.js';
+	import { reservedStyle, sizeOf } from '#lib/imageSizes.js';
 	import Avatar from './Avatar.svelte';
 	import LocalTime from './LocalTime.svelte';
 	import { DATE } from '#lib/time.svelte.js';
@@ -61,11 +62,14 @@
 		{/if}
 		{#if quote.images.length > 0}
 			<div class="grid gap-1 {quote.images.length > 1 ? 'grid-cols-4' : ''}">
-				{#each quote.images.slice(0, 4) as image}
+				{#each quote.images.slice(0, 4) as image, i}
 					<img
 						class={quote.images.length > 1
 							? 'aspect-square w-full rounded-[5px] object-cover'
 							: 'max-h-50 max-w-full self-start rounded-[5px] object-contain'}
+						style={quote.images.length > 1
+							? undefined
+							: reservedStyle(sizeOf(quote.image_sizes, i), '100%', 200)}
 						src={image}
 						alt=""
 						loading="lazy"

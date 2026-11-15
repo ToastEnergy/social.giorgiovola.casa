@@ -5,6 +5,8 @@ import { PUBLIC_URL } from '$app/env/public';
 import { checkLinkPreviewConfig } from '#lib/server/linkPreviews.js';
 import { checkStorageConfig } from '#lib/server/storage.js';
 import { gate, keepPrivate } from '#lib/server/membersOnly.js';
+import { startPushWorker, stopPushWorker } from '#lib/server/pushOutbox.js';
+import { startNotificationRetention } from '#lib/server/notificationRetention.js';
 
 const securityHeaders: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
@@ -23,6 +25,11 @@ function setHeaders(response: Response, headers: Record<string, string>) {
 export const init: ServerInit = () => {
 	checkStorageConfig();
 	checkLinkPreviewConfig();
+	// here rather than on import: the build imports this file too, without a database
+	startPushWorker();
+	startNotificationRetention();
+	// adapter-node, once the requests in flight are done after SIGTERM (not emitted by vite dev)
+	process.once('sveltekit:shutdown', () => void stopPushWorker());
 };
 
 export const handle = (async ({ event, resolve }) => {

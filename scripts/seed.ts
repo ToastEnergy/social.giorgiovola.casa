@@ -187,11 +187,13 @@ function dm(
 	o: { read?: boolean; images?: string[]; replyTo?: string; edited?: boolean } = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, reply_to_id, edited_at) VALUES (${uid(
+	return `INSERT INTO messages (sender_id, recipient_id, content, created_at, read_at, images, image_sizes, reply_to_id, edited_at) VALUES (${uid(
 		from
-	)}, ${uid(to)}, ${q(content)}, ${ago(mins)}, ${o.read ? ago(mins - 1) : 'NULL'}, ${images}, ${
-		o.replyTo ?? 'NULL'
-	}, ${o.edited ? ago(mins - 2) : 'NULL'});`;
+	)}, ${uid(to)}, ${q(content)}, ${ago(mins)}, ${
+		o.read ? ago(mins - 1) : 'NULL'
+	}, ${images}, ${sizesOf(o.images)}, ${o.replyTo ?? 'NULL'}, ${
+		o.edited ? ago(mins - 2) : 'NULL'
+	});`;
 }
 const dmId = (content: string) => `(SELECT id FROM messages WHERE content = ${q(content)})`;
 const dmReact = (user: string, content: string, emoji: string) =>
@@ -256,9 +258,11 @@ function groupMsg(
 	o: { replyTo?: string; images?: string[] } = {}
 ) {
 	const images = o.images?.length ? `ARRAY[${o.images.map(q).join(', ')}]` : `'{}'::text[]`;
-	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images) VALUES (${gid(
+	return `INSERT INTO group_messages (group_id, sender_id, content, created_at, reply_to_id, images, image_sizes) VALUES (${gid(
 		name
-	)}, ${uid(from)}, ${q(content)}, ${ago(mins)}, ${o.replyTo ?? 'NULL'}, ${images});`;
+	)}, ${uid(from)}, ${q(content)}, ${ago(mins)}, ${o.replyTo ?? 'NULL'}, ${images}, ${sizesOf(
+		o.images
+	)});`;
 }
 const groupReact = (name: string, msg: string, user: string, emoji: string) =>
 	`INSERT INTO group_message_reactions (message_id, user_id, emoji) VALUES (${msg}, ${uid(
@@ -267,14 +271,31 @@ const groupReact = (name: string, msg: string, user: string, emoji: string) =>
 const groupMsgId = (name: string, content: string) =>
 	`(SELECT id FROM group_messages WHERE group_id = ${gid(name)} AND content = ${q(content)})`;
 
-// test images, written as uploads (the file names must look like the app's uuids)
-const IMAGES = {
+// test images, written as uploads (the file names must look like the app's uuids). `legacy`:
+// stored without its size, like uploads from before sizes were saved (clients measure it)
+const IMAGES: Record<
+	'wide' | 'tall' | 'square' | 'tiny',
+	{ file: string; w: number; h: number; color: string; legacy?: boolean }
+> = {
 	wide: { file: '5eed0000-0000-4000-8000-000000000001.webp', w: 1600, h: 600, color: '#3b5f7a' },
 	tall: { file: '5eed0000-0000-4000-8000-000000000002.webp', w: 600, h: 1400, color: '#7a5a3b' },
 	square: { file: '5eed0000-0000-4000-8000-000000000003.webp', w: 900, h: 900, color: '#4f7a3b' },
-	tiny: { file: '5eed0000-0000-4000-8000-000000000004.webp', w: 40, h: 40, color: '#7a3b6a' }
+	tiny: {
+		file: '5eed0000-0000-4000-8000-000000000004.webp',
+		w: 40,
+		h: 40,
+		color: '#7a3b6a',
+		legacy: true
+	}
 };
 const img = (k: keyof typeof IMAGES) => `/uploads/${IMAGES[k].file}`;
+
+/** The image_sizes of a message's images (see src/lib/server/db/schema.ts), NULL when unknown. */
+function sizesOf(paths: string[] | undefined) {
+	const found = (paths ?? []).map((p) => Object.values(IMAGES).find((i) => p.endsWith(i.file)));
+	if (found.length === 0 || found.some((i) => !i || i.legacy)) return 'NULL';
+	return `${q(JSON.stringify(found.map((i) => ({ width: i!.w, height: i!.h }))))}::jsonb`;
+}
 
 // into static/uploads (the uploads volume in docker); not into the bucket when S3_BUCKET is set
 async function writeImages() {
@@ -355,16 +376,48 @@ async function seed(db: postgres.Sql) {
 		['mallory', 'mallory_hidden', 'Mallory Hidden', 2600, ['dev']]
 	];
 
+	// the app creates notifications itself (src/lib/server/notify.ts), and this script writes SQL:
+	// these helpers add the inbox rows the app would have. `notifyAuthor` notifies the author of a
+	// post, unless they are the sender
+	const notifyAuthor = (content: string, from: string, type: string, postId: string, at: string) =>
+		`INSERT INTO inbox (user_id, sender_id, post_id, type, created_at)
+			SELECT p.user_id, ${uid(from)}, ${postId}, ${q(type)}, ${at} FROM posts p
+			WHERE p.id = ${pid(content)} AND p.user_id <> ${uid(from)};`;
 	const post = (user: string, content: string, mins: number, replyTo?: string) =>
-		`INSERT INTO posts (user_id, content, created_at, reply_to) VALUES (${uid(user)}, ${q(
-			content
-		)}, ${ago(mins)}, ${replyTo ? pid(replyTo) : 'NULL'});`;
+		[
+			`INSERT INTO posts (user_id, content, created_at, reply_to) VALUES (${uid(user)}, ${q(
+				content
+			)}, ${ago(mins)}, ${replyTo ? pid(replyTo) : 'NULL'});`,
+			replyTo ? notifyAuthor(replyTo, user, 'reply', pid(content), ago(mins)) : ''
+		].join(' ');
+	// the mentions of a post (other than the parent's author of a reply, who gets the reply)
+	const mention = (content: string, from: string, to: string[], mins: number) =>
+		to
+			.map(
+				(u) =>
+					`INSERT INTO inbox (user_id, sender_id, post_id, type, created_at) VALUES (${uid(
+						u
+					)}, ${uid(from)}, ${pid(content)}, 'mention', ${ago(mins)});`
+			)
+			.join(' ');
 	const tag = (content: string, t: string) =>
 		`INSERT INTO post_hashtags (post_id, tag) VALUES (${pid(content)}, ${q(t)});`;
-	const like = (user: string, content: string) =>
-		`INSERT INTO likes (user_id, post_id) VALUES (${uid(user)}, ${pid(content)});`;
-	const follow = (a: string, b: string) =>
-		`INSERT INTO follows (follower_id, followed_id) VALUES (${uid(a)}, ${uid(b)});`;
+	const like = (user: string, content: string, mins = 0) =>
+		[
+			`INSERT INTO likes (user_id, post_id, created_at) VALUES (${uid(user)}, ${pid(
+				content
+			)}, ${ago(mins)});`,
+			notifyAuthor(content, user, 'like', pid(content), ago(mins))
+		].join(' ');
+	const follow = (a: string, b: string, mins = 0) =>
+		[
+			`INSERT INTO follows (follower_id, followed_id, created_at) VALUES (${uid(a)}, ${uid(
+				b
+			)}, ${ago(mins)});`,
+			`INSERT INTO inbox (user_id, sender_id, type, created_at) VALUES (${uid(b)}, ${uid(
+				a
+			)}, 'follow', ${ago(mins)});`
+		].join(' ');
 
 	const p1 = 'hello from the dev seed, this is the first post';
 	const p2 = 'trying out #svelte 5 runes, so far so good';
@@ -374,6 +427,9 @@ async function seed(db: postgres.Sql) {
 	const r1 = 'welcome @dev!';
 	const r2 = 'runes are great, $state everywhere';
 	const r3 = 'nested reply to the reply';
+	// mentions in any case notify; dev's own mention of the parent's author is just the reply
+	const p5 = 'has anyone seen @Dev today? @bob says the poll is up';
+	const r4 = 'thanks @alice, and @carol you should vote too';
 
 	// grace: media, replies, reactions and an edit on both sides of the divider
 	const g1 = 'look at this view';
@@ -460,12 +516,12 @@ async function seed(db: postgres.Sql) {
 		dmRun('alice_art', 'grace', { from: 1, to: 4, who: 'b', read: false, every: 10, endAgo: 25 }),
 		dm('carol', 'carol_desk', 'reminder: check the report queue', 45),
 
-		follow('dev', 'alice'),
-		follow('dev', 'bob'),
-		follow('alice', 'dev'),
-		follow('bob', 'dev'),
-		follow('carol', 'dev'),
-		follow('alice', 'bob'),
+		follow('dev', 'alice', 300),
+		follow('dev', 'bob', 300),
+		follow('alice', 'dev', 290),
+		follow('bob', 'dev', 280),
+		follow('carol', 'dev', 270),
+		follow('alice', 'bob', 260),
 		post('dev', p1, 180),
 		post('alice', p2, 150),
 		tag(p2, 'svelte'),
@@ -474,13 +530,17 @@ async function seed(db: postgres.Sql) {
 		post('alice', r1, 170, p1),
 		post('bob', r2, 140, p2),
 		post('dev', r3, 130, r2),
-		like('alice', p1),
-		like('bob', p1),
-		like('carol', p1),
-		like('dev', p2),
-		like('bob', p2),
-		like('dev', p3),
-		like('dev', r1),
+		post('erin', p5, 70),
+		mention(p5, 'erin', ['dev', 'bob'], 70),
+		post('dev', r4, 65, p2),
+		mention(r4, 'dev', ['carol'], 65),
+		like('alice', p1, 175),
+		like('bob', p1, 160),
+		like('carol', p1, 100),
+		like('dev', p2, 145),
+		like('bob', p2, 140),
+		like('dev', p3, 110),
+		like('dev', r1, 165),
 		// a poll with a few votes
 		`INSERT INTO polls (post_id, options, ends_at) VALUES (${pid(
 			p4
@@ -637,6 +697,16 @@ async function seed(db: postgres.Sql) {
 		`INSERT INTO invites (code, inviter_id, by_staff, note) VALUES (${q(SEED_INVITE)}, ${uid(
 			'dev'
 		)}, true, 'seed: sign up with this');`,
+
+		// the group keys of the likes, regiorgs and follows above, as notify.ts sets them (the
+		// others stay null: 'n-<id>', see src/lib/server/notifications.ts)
+		`UPDATE inbox SET group_key = CASE
+			WHEN type IN ('like', 'regiorg')
+				THEN type || '-' || post_id || '-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
+			ELSE 'follow-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
+		END WHERE group_key IS NULL AND type IN ('like', 'regiorg', 'follow');`,
+		// the notifications above are history: the push worker (pushOutbox.ts) mustn't send them
+		`UPDATE inbox SET pushed_at = created_at WHERE pushed_at IS NULL;`,
 
 		'COMMIT;'
 	].join('\n');

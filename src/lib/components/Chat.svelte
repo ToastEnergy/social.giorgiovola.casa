@@ -4,12 +4,14 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Trash from '@lucide/svelte/icons/trash';
 	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import { reservedStyle, sizeOf } from '#lib/imageSizes.js';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import ImagePlay from '@lucide/svelte/icons/image-play';
 	import SendHorizontal from '@lucide/svelte/icons/send-horizontal';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import X from '@lucide/svelte/icons/x';
+	import { pastedFiles } from '#lib/clipboard.js';
 	import { onMount, tick } from 'svelte';
 	import Avatar from './Avatar.svelte';
 	import LoadingScreen from './LoadingScreen.svelte';
@@ -959,7 +961,9 @@
 	}
 
 	function onPaste(e: ClipboardEvent) {
-		const files = Array.from(e.clipboardData?.files ?? []);
+		// an edited message keeps its images: there's no attaching while editing
+		if (editing) return;
+		const files = pastedFiles(e);
 		if (files.length === 0) return;
 		e.preventDefault();
 		addFiles(files);
@@ -1612,10 +1616,14 @@
 											aria-label="Open image"
 											onclick={() => openImage(message.images ?? [], i)}
 										>
+											<!-- a known size reserves the box, so the list doesn't move as it loads -->
 											<img
 												class="block {message.images.length > 1
 													? 'aspect-square w-full object-cover'
 													: 'max-h-[360px] max-w-[min(320px,60vw)] object-contain'}"
+												style={message.images.length > 1
+													? undefined
+													: reservedStyle(sizeOf(message.image_sizes, i), 'min(320px, 60vw)', 360)}
 												src={image}
 												alt=""
 												loading="lazy"
@@ -1641,7 +1649,7 @@
 													: ''} {piece.username.toLowerCase() === $user?.username
 													? 'rounded-[5px] bg-accent/25 px-[2px]'
 													: ''}"
-												href={`/@${piece.username}`}
+												href={`/@${piece.username.toLowerCase()}`}
 												use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
 											>{:else if piece.type === 'text'}{piece.text}{/if}{/each}{#if inlineMeta}<span
 											aria-hidden="true"

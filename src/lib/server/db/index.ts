@@ -4,7 +4,8 @@ import postgres from 'postgres';
 import * as schema from './schema';
 
 // DATABASE_URL is required at runtime (validated in src/env.ts), empty only during `vite build`
-const client = postgres(DATABASE_URL);
+// also used directly for LISTEN (the push worker, pushOutbox.ts), which drizzle doesn't wrap
+export const client = postgres(DATABASE_URL);
 
 export const db = drizzle(client, { schema });
 export { schema };
@@ -18,6 +19,7 @@ export const {
 	likes,
 	regiorgs,
 	inbox,
+	inbox_removed,
 	messages,
 	group_chats,
 	group_members,

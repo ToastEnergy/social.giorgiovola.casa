@@ -23,6 +23,7 @@ import { deletePost, postUrl, setPin, toggleLike, toggleRegiorg, vote } from '@/
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Poll, Post } from '@/lib/types';
+import { useDoubleTapLike } from './DoubleTapLike';
 import { GifMedia, ImageGrid, LinkPreviewCard, QuoteCard } from './media';
 import { confirm, showMenu, toast } from './overlays';
 import { RichText } from './RichText';
@@ -96,6 +97,9 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 	const staff = !!me && me.role !== 'user';
 	const ratio = isRatio(post);
 	const iconColor = colors.muted;
+	const openProfile = () => router.push(`/user/${post.user.username}`);
+	// double tap to like, like the web app; a single tap waits out the double tap window
+	const doubleTap = useDoubleTapLike(post, !!me);
 
 	const regiorgMenu = () =>
 		showMenu([
@@ -192,11 +196,21 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			{post.content ? (
 				<RichText content={post.content} size={detail ? 18 : 16} selectable={detail} />
 			) : null}
-			<ImageGrid images={post.images} height={detail ? 300 : 220} />
+			{/* in a list a photo is part of the post and opens it; the viewer is for the open post */}
+			<ImageGrid
+				images={post.images}
+				sizes={post.image_sizes}
+				height={detail ? 500 : 400}
+				viewable={!!detail}
+				// photos are where a double tap is most expected
+				onTap={doubleTap.tap}
+			/>
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
 			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
-			{post.quote ? <QuoteCard quote={post.quote} /> : null}
-			{!post.quote && post.linked_post ? <QuoteCard quote={post.linked_post} /> : null}
+			{post.quote ? <QuoteCard quote={post.quote} viewable={!!detail} /> : null}
+			{!post.quote && post.linked_post ? (
+				<QuoteCard quote={post.linked_post} viewable={!!detail} />
+			) : null}
 			{post.link_preview ? <LinkPreviewCard preview={post.link_preview} /> : null}
 		</View>
 	);
@@ -290,7 +304,14 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 
 	if (detail)
 		return (
-			<View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.line }}>
+			// not a button: a single tap on the open post does nothing, a double tap likes it
+			<Pressable
+				ref={doubleTap.ref}
+				accessible={false}
+				onPress={(e) => doubleTap.tap(e)}
+				style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.line }}
+			>
+				{doubleTap.hearts}
 				{banner}
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
 					<Avatar user={post.user} size={50} link />
@@ -313,28 +334,44 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 					{post.edited_at ? ` · edited ${fullDate(post.edited_at)}` : ''}
 				</Txt>
 				{actions}
-			</View>
+			</Pressable>
 		);
 
 	return (
 		<Pressable
-			onPress={() => router.push(`/post/${post.id}`)}
+			ref={doubleTap.ref}
+			onPress={(e) => doubleTap.tap(e, () => router.push(`/post/${post.id}`))}
 			style={({ pressed }) => ({
 				paddingVertical: 12,
 				paddingHorizontal: 20,
 				backgroundColor: pressed ? colors.hover : 'transparent'
 			})}
 		>
+			{doubleTap.hearts}
 			{banner}
 			<View style={{ flexDirection: 'row', gap: 10 }}>
 				<Avatar user={post.user} size={45} link />
 				<View style={{ flex: 1 }}>
 					<View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-						<Txt bold numberOfLines={1} style={{ flexShrink: 1 }}>
+						{/* the name and @username open the profile, like the avatar; the rest the post */}
+						<Txt
+							bold
+							numberOfLines={1}
+							style={{ flexShrink: 1 }}
+							onPress={openProfile}
+							suppressHighlighting
+						>
 							{post.user.name}
 						</Txt>
 						{badges}
-						<Txt size={14} muted numberOfLines={1} style={{ flexShrink: 2 }}>
+						<Txt
+							size={14}
+							muted
+							numberOfLines={1}
+							style={{ flexShrink: 2 }}
+							onPress={openProfile}
+							suppressHighlighting
+						>
 							@{post.user.username}
 						</Txt>
 						<Txt size={13} muted>

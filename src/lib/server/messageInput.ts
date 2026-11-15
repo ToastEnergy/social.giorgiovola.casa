@@ -4,6 +4,7 @@ import {
 	removeUploads,
 	saveMessageUpload,
 	sniffImage,
+	type StoredImage,
 	toWebp
 } from './images.js';
 import { readJson } from './api.js';
@@ -119,13 +120,13 @@ export function checkMessage(body: MessageBody, userId: number): Response | null
 
 /**
  * Validates every image before anything is written to disk, then saves them as WebP and claims
- * the ones uploaded beforehand, as `/dm-uploads/` message images. Returns their URL paths, or
- * the error to send back.
+ * the ones uploaded beforehand, as `/dm-uploads/` message images. Returns their URL paths and
+ * sizes, or the error to send back.
  */
 export async function saveMessageImages(
 	{ files, uploads: staged }: MessageBody,
 	userId: number
-): Promise<string[] | Response> {
+): Promise<StoredImage[] | Response> {
 	const uploads: { buffer: Buffer; ext: string }[] = [];
 	for (const file of files) {
 		if (file.size > LIMITS.imageBytes) {
@@ -155,7 +156,7 @@ export async function saveMessageImages(
 	const saved = await Promise.all(optimized.map(saveMessageUpload));
 	const claimed = await claimStaged(userId, staged, 'dm');
 	if (claimed instanceof Response) {
-		await removeUploads(saved);
+		await removeUploads(saved.map((s) => s.url));
 		return claimed;
 	}
 	return [...saved, ...claimed];

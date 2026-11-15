@@ -2,10 +2,13 @@ import { router } from 'expo-router';
 import { Tabs } from 'expo-router/tabs';
 import { Bell, House, MessageCircle, Search, UserRound } from 'lucide-react-native';
 import { useEffect, useRef } from 'react';
+import { Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { UpdateRing } from '@/components/AppUpdate';
 import { toast } from '@/components/overlays';
 import { Avatar } from '@/components/ui';
 import { errorMessage } from '@/lib/api';
+import { getHomePage, setHomePage, useHomePage } from '@/lib/homePage';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 
@@ -21,6 +24,10 @@ const badge = (count: number) => (count > 99 ? '99+' : count > 0 ? count : undef
 
 export default function TabsLayout() {
 	const { me, unread, canSwitchBack, switchBack } = useSession();
+	// home and messages share the home tab (HomePager), so their icons follow its page
+	const home = useHomePage();
+	const homeActive = home.focused && home.page === 0;
+	const messagesActive = home.focused && home.page === 1;
 	const insets = useSafeAreaInsets();
 	const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const switching = useRef(false);
@@ -71,28 +78,60 @@ export default function TabsLayout() {
 					fontSize: 11
 				},
 				sceneStyle: { backgroundColor: colors.background },
-				// tabs slide in from the side they sit on, which also makes swiping between them read right
-				animation: 'shift'
+				// tabs slide in from the side they sit on. native driven, like the default
+				animation: 'shift',
+				transitionSpec: {
+					animation: 'timing',
+					config: { duration: 200, easing: Easing.out(Easing.cubic) }
+				}
 			}}
 		>
 			<Tabs.Screen
 				name="index"
+				listeners={{
+					// on the messages page, home slides back to the feed (instead of scrolling it to the top)
+					tabPress: (e) => {
+						const { page, focused } = getHomePage();
+						if (page === 0) return;
+						if (focused) e.preventDefault();
+						setHomePage(0, focused);
+					}
+				}}
 				options={{
 					title: 'Home',
 					tabBarAccessibilityLabel: 'Home',
-					tabBarIcon: ({ color, focused }) => (
-						<House size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
+					tabBarIcon: () => (
+						<House
+							size={24}
+							color={homeActive ? colors.accent : colors.foreground}
+							strokeWidth={homeActive ? 2.5 : 2}
+						/>
 					)
 				}}
 			/>
 			<Tabs.Screen
 				name="messages"
+				// the messages are the home tab's second page: this tab only opens it
+				listeners={{
+					tabPress: (e) => {
+						e.preventDefault();
+						const { focused } = getHomePage();
+						setHomePage(1, focused);
+						if (!focused) router.navigate('/');
+					}
+				}}
 				options={{
 					title: 'Messages',
+					// only ever shown for a moment, on the way to the home tab
+					animation: 'none',
 					tabBarAccessibilityLabel: 'Messages',
 					tabBarBadge: badge(unread.messages),
-					tabBarIcon: ({ color, focused }) => (
-						<MessageCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
+					tabBarIcon: () => (
+						<MessageCircle
+							size={24}
+							color={messagesActive ? colors.accent : colors.foreground}
+							strokeWidth={messagesActive ? 2.5 : 2}
+						/>
 					)
 				}}
 			/>
@@ -131,7 +170,14 @@ export default function TabsLayout() {
 					title: 'You',
 					tabBarAccessibilityLabel: 'Profile menu',
 					tabBarIcon: ({ color }) =>
-						me ? <Avatar user={me.user} size={28} /> : <UserRound size={24} color={color} />
+						// the app update downloads out of the way: its progress rings the avatar
+						me ? (
+							<UpdateRing size={28}>
+								<Avatar user={me.user} size={28} />
+							</UpdateRing>
+						) : (
+							<UserRound size={24} color={color} />
+						)
 				}}
 			/>
 		</Tabs>

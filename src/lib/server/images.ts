@@ -4,6 +4,7 @@ import sharp from 'sharp';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { db } from './db/index.js';
 import * as storage from './storage.js';
+import type { ImageSize } from '#lib/types.js';
 import { limitConcurrency } from './concurrency.js';
 
 /**
@@ -203,17 +204,36 @@ export function uploadKey(url: string): string | null {
 	return null;
 }
 
-/** Stores a WebP image of `kind` under a random name; returns its URL path. */
-export async function storeUpload(kind: UploadKind, data: Uint8Array): Promise<string> {
-	const file = `${crypto.randomUUID()}.webp`;
-	await storage.put(UPLOAD_KINDS[kind].key + file, data, 'image/webp');
-	return UPLOAD_KINDS[kind].path + file;
+/**
+ * The size of an encoded image, one frame of an animation. Only reads its header. Throws
+ * ImageError when it can't be read.
+ */
+export async function imageSize(data: Uint8Array): Promise<ImageSize> {
+	try {
+		const meta = await sharp(data).metadata();
+		const height = meta.pageHeight ?? meta.height;
+		if (meta.width > 0 && height > 0) return { width: meta.width, height };
+	} catch {
+		// reported below
+	}
+	throw new ImageError('Invalid or corrupted image');
 }
 
-/** Writes a post image; returns the URL path stored with it. */
+/** An upload as a post or message stores it: its URL path and size. */
+export type StoredImage = { url: string; size: ImageSize };
+
+/** Stores a WebP image of `kind` under a random name; returns its URL path and size. */
+export async function storeUpload(kind: UploadKind, data: Uint8Array): Promise<StoredImage> {
+	const size = await imageSize(data);
+	const file = `${crypto.randomUUID()}.webp`;
+	await storage.put(UPLOAD_KINDS[kind].key + file, data, 'image/webp');
+	return { url: UPLOAD_KINDS[kind].path + file, size };
+}
+
+/** Writes a post image; returns its URL path and size. */
 export const saveUpload = (buf: Buffer) => storeUpload('uploads', buf);
 
-/** Writes a message image; returns the URL path stored with it. */
+/** Writes a message image; returns its URL path and size. */
 export const saveMessageUpload = (buf: Buffer) => storeUpload('dm', buf);
 
 /**

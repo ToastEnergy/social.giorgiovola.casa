@@ -135,6 +135,7 @@ Post:
     "user": { "id", "username", "name", "avatar", "bot": false, "created_at" },
     "content": "text, may contain @mentions, #hashtags, links and line breaks (\\n)",
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
+    "image_sizes": [<ImageSize>] | null,  // same order as images, see ImageSize
     "gif": <Gif> | null,                  // a GIF instead of images, see GIFs
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
@@ -154,7 +155,15 @@ Post:
   }
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
-QuotedPost: { "id", "user": User, "content", "images", "gif": <Gif> | null, "created_at", "is_quote" }
+QuotedPost: { "id", "user": User, "content", "images", "image_sizes": [<ImageSize>] | null,
+              "gif": <Gif> | null, "created_at", "is_quote" }
+ImageSize: { "width": 1600, "height": 1200 }
+  The size in px of an uploaded image as served (EXIF rotation applied, scaled down to fit
+  2048px), so you can reserve its space (aspect ratio) before it loads. "image_sizes" in a
+  Post, QuotedPost, Message or GroupMessage has one entry per path of "images", in the same
+  order. It is null when the sizes aren't known (images uploaded before sizes were saved, and
+  no images): then measure the image once it has loaded. A missing "image_sizes" field (older
+  servers) means the same as null.
 Gif: { "provider": "klipy", "slug", "title", "video": "https://static.klipy.com/….mp4",
        "poster": "https://static.klipy.com/….jpg", "width", "height" }
   A GIF from KLIPY: "video" is a short looping MP4 (play it muted, looped, inline),
@@ -205,6 +214,22 @@ Notification:
   notification is still unread add to it (its sender becomes the latest admin, its
   created_at moves to now) instead of making a new one. More types may be added: skip
   ones you don't know.
+  When they are created:
+  - A reply notifies the parent post's author ("reply"), a quote the quoted post's author
+    ("quote"). Everyone else a post @mentions gets a "mention", replies and quotes included;
+    the parent's or quoted author mentioned in it gets only the reply or quote.
+  - Mentions are case-insensitive: usernames are lowercase, and "@Alice" mentions alice. A
+    mention is "@" + username anywhere, also next to punctuation ("(@alice)", "@alice,"), but
+    not right after a letter, digit, "_", "@" or "/" (emails and post links aren't mentions).
+  - Editing a post (PATCH /posts/:id) notifies the profiles it now mentions that the previous
+    text didn't. Removing a mention by editing doesn't remove its notification.
+  - Nobody is notified of their own actions, and no notification is created between two
+    profiles when either has blocked the other. Notifications from before the block stay.
+  - Unliking, undoing a regiorg and unfollowing delete the "like", "regiorg" or "follow"
+    notification they created (ratio notifications stay). Doing it again within a day
+    brings it back as it was (read if it had been read) and sends no second push.
+  Every change to your notifications sends a realtime "notifications" event with the new
+  unread count.
 
 NotificationGroup (GET /notifications/grouped):
   { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
@@ -232,6 +257,7 @@ Me (GET /me):
 Message (direct message):
   { "id", "sender": "alice", "recipient": "bob",   // usernames
     "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
+    "image_sizes": [<ImageSize>] | null,          // same order as images, see ImageSize
     "gif": <Gif> | null,                          // a GIF instead of images, see GIFs
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
@@ -241,8 +267,8 @@ Message (direct message):
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
-    "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "gif" (like
-    Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "image_sizes",
+    "gif" (like Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.
@@ -514,7 +540,8 @@ POST /posts                                                    signed in, not mu
 GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
   Edits the text (images and poll stay), with the same line break rules as POST /posts.
-  Sets "edited_at", re-reads hashtags. 200: <Post>.
+  Sets "edited_at", re-reads hashtags, and notifies profiles it newly @mentions (see
+  Notification). 200: <Post>.
   400 when the text would be empty on a post without images or GIF, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204. When staff delete someone else's post, its open reports
@@ -533,6 +560,8 @@ GET /posts/:id/regiorgs         Users who regiorged, latest first; same limits
 GET /posts/:id/quotes           { "id", "content", "username", "name", "avatar" } quotes; same limits
 PUT /posts/:id/like / DELETE    signed in → { "liked", "likes" }   60 a minute, idempotent
 PUT /posts/:id/regiorg / DELETE signed in (PUT not muted) → { "regiorged", "regiorgs" }  30 a minute
+  Unliking and un-regiorging remove the "like" / "regiorg" notification it sent (see
+  Notification).
 PUT /posts/:id/vote   { "option": index }  → { "voted", "votes": [..] }  30 a minute;
   changeable until the poll ends; 400 when it ended.
 PUT /posts/:id/pin / DELETE     your own top-level post on your profile → { "pinned" }
@@ -554,9 +583,10 @@ GET /users/:username/followers        paginated FollowEntry, newest follow first
 GET /users/:username/following        paginated FollowEntry
 GET /users/:username/followers/known  signed in: its followers that you follow too
 PUT /users/:username/follow / DELETE  signed in → { "followers", "following", "followed" }
-  30 a minute, idempotent.
+  30 a minute, idempotent. Unfollowing removes the "follow" notification.
 PUT /users/:username/block / DELETE   signed in → { "blocked", "blocks_you" }
-  Blocking stops direct messages both ways. 30 a minute.
+  Blocking stops direct messages both ways, and new notifications between the two
+  profiles (existing ones stay). 30 a minute.
 
 ### Search and hashtags
 
@@ -572,12 +602,17 @@ GET /hashtags/:tag/posts              public, paginated Posts (replies included)
 
 ### Notifications
 
+Read notifications are deleted 6 months after they were created and no longer appear in
+any of these lists. Unread ones are kept until they are read (then deleted by the next
+hourly sweep once they are older than 6 months).
+
 GET /notifications                    signed in, paginated (default 50, at most 200)
   Every notification on its own (Notification objects).
 GET /notifications/grouped            signed in, paginated (default 50, at most 200)
   NotificationGroups, newest first: what the website shows. A group that gets a new
-  notification moves back to the top, so a later page can repeat a group already seen:
-  keep the first copy (match by "key").
+  notification moves back to the top. Later pages (?cursor) leave out every group that is
+  now above where the previous page ended, so they never repeat or skip a group: fetch the
+  first page again to see the ones that moved up, and replace your copy of each by "key".
 POST /notifications/groups/:key/read  marks every notification of the group read → 204;
   404 when you have no such group.
 GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,

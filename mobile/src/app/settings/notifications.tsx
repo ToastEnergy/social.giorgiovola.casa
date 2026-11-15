@@ -1,4 +1,3 @@
-import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router/stack';
 import { ChevronRight } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -6,7 +5,10 @@ import { AppState, Pressable, ScrollView, Switch, View } from 'react-native';
 import { Button, Hint, Notice, Section, Txt } from '@/components/ui';
 import {
 	channels,
+	importance,
+	Notifications,
 	openNotificationSettings,
+	pushInExpoGo,
 	pushSupported,
 	requestPushPermission,
 	setPushEnabled,
@@ -34,13 +36,13 @@ export default function NotificationSettings() {
 
 	// read again on coming back from Android's settings, where all of it can change
 	const refresh = useCallback(async () => {
-		if (!pushSupported) return;
+		if (!Notifications) return;
 		const p = await Notifications.getPermissionsAsync();
 		setPermission(p.granted ? 'granted' : p.canAskAgain ? 'ask' : 'blocked');
 		const next: Record<string, boolean> = {};
 		for (const { id } of channels) {
 			const channel = await Notifications.getNotificationChannelAsync(id);
-			next[id] = !channel || channel.importance !== Notifications.AndroidImportance.NONE;
+			next[id] = !channel || channel.importance !== importance.none;
 		}
 		setChannelOn(next);
 	}, []);
@@ -65,8 +67,10 @@ export default function NotificationSettings() {
 				<Stack.Screen options={{ title: 'Notifications' }} />
 				<Section title="Push notifications">
 					<Hint>
-						Push notifications aren’t available on iPhone and iPad yet. Unread counts and new
-						messages still arrive live while the app is open.
+						{pushInExpoGo
+							? 'Push notifications don’t work in Expo Go: use a development build to try them.'
+							: 'Push notifications aren’t available on iPhone and iPad yet.'}{' '}
+						Unread counts and new messages still arrive live while the app is open.
 					</Hint>
 				</Section>
 			</ScrollView>

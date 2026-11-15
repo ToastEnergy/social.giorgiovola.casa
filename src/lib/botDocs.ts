@@ -82,7 +82,7 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 				notes: [
 					'Text only, bots cannot attach images.',
 					'With a poll, "content" is the question. Polls cannot be edited.',
-					'@username mentions notify that user, also next to punctuation like "(@user)", but not right after a letter, digit, "_", "@" or "/" (emails and post links aren\'t mentions).',
+					'@username mentions notify that user, in any case ("@Alice" is alice), also next to punctuation like "(@user)", but not right after a letter, digit, "_", "@" or "/" (emails and post links aren\'t mentions). Replies and quotes notify their mentions too; the author replied to or quoted gets only the reply or quote notification. Nobody is notified between two profiles when either has blocked the other.',
 					'#hashtags are linked and searchable.'
 				]
 			},
@@ -356,6 +356,9 @@ export const postShape = (origin: string) => `{
   "user": { "name": "…", "username": "…", "avatar": "/avatars/5.webp?hash=…" | null, "created_at": "…" },
   "content": "text, may contain @mentions and #hashtags",
   "images": ["/uploads/…"],            // paths on ${origin}
+  "image_sizes": [{ "width": 1600, "height": 1200 }] | null,
+                                        // px, same order as images; null when unknown (measure
+                                        // the image once loaded), also inside "quote"
   "created_at": "ISO date", "edited_at": "ISO date" | null,
   "likes": 3, "liked": true,            // liked: by the bot
   "regiorgs": 1, "regiorged": false,    // regiorged: by the bot
@@ -383,10 +386,12 @@ export const messageShape = `{
   "recipient": "mybot",
   "content": "hi!",        // may be empty when the message only has images
   "images": ["/dm-uploads/…"],   // private: fetch with the bot's token
+  "image_sizes": [{ "width", "height" }] | null,   // like in a post
   "created_at": "ISO date",
   "linked_post": {         // the first post on this site linked in "content", or null
     "id": 57, "user": { "name", "username", "avatar" },
-    "content": "…", "images": ["/uploads/…"], "created_at": "ISO date", "is_quote": false
+    "content": "…", "images": ["/uploads/…"], "image_sizes": [ … ] | null,
+    "created_at": "ISO date", "is_quote": false
   } | null,
   "reply_to": {            // the message this one replies to, or null
     "id": 75, "sender": { "username", "name" },
@@ -406,6 +411,7 @@ export const groupMessageShape = `{
   "target": { "username", "name", "avatar" } | null,   // who was added or removed, else null
   "content": "hi all",     // for "created" and "renamed": the group name
   "images": ["/dm-uploads/…"],   // private, like in Message
+  "image_sizes": [ … ] | null,   // like in Message
   "created_at": "ISO date",
   "linked_post": { … } | null,   // like in Message
   "reply_to": {            // the message this one replies to, or null
@@ -776,7 +782,8 @@ export const v1Groups: V1Group[] = [
 				method: 'GET / PATCH / DELETE',
 				path: '/api/v1/posts/:id',
 				auth: 'public / author / author or staff',
-				summary: 'read / edit the text `{ content }` / delete'
+				summary:
+					'read / edit the text `{ content }` (newly mentioned profiles are notified) / delete'
 			},
 			{
 				method: 'GET',
@@ -906,13 +913,13 @@ export const v1Groups: V1Group[] = [
 				method: 'PUT / DELETE',
 				path: '/api/v1/users/:username/follow',
 				auth: 'signed in',
-				summary: 'follow / unfollow'
+				summary: 'follow / unfollow (unfollowing removes the follow notification)'
 			},
 			{
 				method: 'PUT / DELETE',
 				path: '/api/v1/users/:username/block',
 				auth: 'signed in',
-				summary: 'block / unblock'
+				summary: 'block / unblock (no direct messages or new notifications either way)'
 			},
 			{
 				method: 'GET',
@@ -942,7 +949,7 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/notifications',
 				auth: 'signed in',
-				summary: 'your notifications'
+				summary: 'your notifications (read ones are kept for 6 months)'
 			},
 			{
 				method: 'GET',

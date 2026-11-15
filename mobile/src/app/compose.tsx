@@ -1,17 +1,18 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { ChartNoAxesColumn, ImagePlus, X } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { AppState, KeyboardAvoidingView, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
 	AttachmentStrip,
-	MentionSuggestions,
+	PasteImageButton,
 	pickImages,
-	useMentionSuggestions,
+	useClipboardImage,
 	type Picked
 } from '@/components/attachments';
 import { GifPicker } from '@/components/GifPicker';
+import { MentionSuggestions, useMentionSuggestions } from '@/components/mentions';
 import { QuoteCard } from '@/components/media';
 import { Avatar, Button, ErrorBanner, IconButton, Input, Loading, Txt } from '@/components/ui';
 import { api, auth, errorMessage } from '@/lib/api';
@@ -59,6 +60,8 @@ export default function Compose() {
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const mention = useMentionSuggestions(text, cursor);
+	const clipboard = useClipboardImage();
+	const input = useRef<ComponentRef<typeof TextInput>>(null);
 
 	useEffect(() => {
 		if (!targetId) return;
@@ -233,6 +236,7 @@ export default function Compose() {
 				<View style={{ flexDirection: 'row', gap: 10 }}>
 					<Avatar user={me.user} size={45} />
 					<TextInput
+						ref={input}
 						autoFocus
 						multiline
 						value={text}
@@ -258,7 +262,9 @@ export default function Compose() {
 					users={mention.users}
 					onPick={(user) => {
 						const next = mention.apply(user);
-						setText(next);
+						setText(next.text);
+						setCursor(next.cursor);
+						input.current?.setSelection(next.cursor, next.cursor);
 					}}
 				/>
 				<AttachmentStrip
@@ -370,6 +376,17 @@ export default function Compose() {
 					>
 						<ChartNoAxesColumn size={22} color={iconColor} />
 					</IconButton>
+					{clipboard.available ? (
+						<PasteImageButton
+							onPress={async () => {
+								if (gif) return setError('A post can have a GIF or images, not both.');
+								if (images.length >= maxImages)
+									return setError(`You can attach at most ${maxImages} images.`);
+								const pasted = await clipboard.paste();
+								if (pasted) setImages((now) => [...now, pasted].slice(0, maxImages));
+							}}
+						/>
+					) : null}
 					<View style={{ flex: 1 }} />
 					<Txt
 						size={13}

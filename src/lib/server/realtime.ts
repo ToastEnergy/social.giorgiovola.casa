@@ -1,11 +1,12 @@
 import { version } from '$app/env';
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
-import { db, follows, inbox, likes, posts, users } from './db/index.js';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { db, follows, inbox, posts, users } from './db/index.js';
 import { unreadMessageCount } from './messages';
 import { unreadReactionCount } from './messageReactions.js';
 import { getPosts } from './posts';
-import { sendFollowPush, sendGroupMessagePush, sendMessagePush, sendPush } from './push';
+import { sendGroupMessagePush, sendMessagePush } from './push';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from '#lib/types.js';
+import type { Notification, NotificationChanges } from './notify.js';
 
 /**
  * In-process hub for server-sent events. One instance per server process, so this assumes a
@@ -159,7 +160,7 @@ export function closeSessionStreams(keys: Iterable<string>) {
 
 type BotClient = {
 	botId: number;
-	/** matches a mention of the bot, like the mention trigger does */
+	/** matches a mention of the bot, like MENTION_RE (#lib/mentions.ts), in any case */
 	mention: RegExp;
 	send: (chunk: string) => void;
 	close: () => void;
@@ -180,7 +181,7 @@ export function openBotStream(bot: { id: number; username: string }, signal: Abo
 		// usernames are [a-z0-9_], nothing to escape. same rule as MENTION_RE (#lib/mentions.ts)
 		const client: BotClient = {
 			botId: bot.id,
-			mention: new RegExp(`(?<![a-zA-Z0-9_@/])@${bot.username}(?![a-zA-Z0-9_])`),
+			mention: new RegExp(`(?<![a-zA-Z0-9_@/])@${bot.username}(?![a-zA-Z0-9_])`, 'i'),
 			send,
 			close
 		};
@@ -439,8 +440,11 @@ export async function publishGroupUpdated(
 	}
 }
 
-/** A post was created: tell everyone, and update the parent's reply count and the inbox. */
-export async function publishPost(postId: number) {
+/**
+ * A post was created: tell everyone, and update the parent's reply count and the unread counts
+ * of the `notifications` it created (see notify.ts).
+ */
+export async function publishPost(postId: number, notifications: Notification[]) {
 	try {
 		const [post] = await getPosts({ postId });
 		if (!post) return;
@@ -451,16 +455,18 @@ export async function publishPost(postId: number) {
 			broadcast('counts', { id: post.reply_to.id, replies_count });
 		}
 		if (post.quote && !('deleted' in post.quote)) await publishQuotes(post.quote.id);
-		// the inbox triggers already ran: notify whoever received something from this post
-		const received = await db
-			.selectDistinct({ user_id: inbox.user_id })
-			.from(inbox)
-			.where(eq(inbox.post_id, postId));
-		await pushUnread(received.map((r) => r.user_id));
-		await sendPush(postId);
+		await publishNotifications({ created: notifications, removed: [] });
 	} catch (e) {
 		console.error('realtime: publishPost failed', e);
 	}
+}
+
+/**
+ * Notifications were created or removed (see notify.ts): the recipients' unread counts. Their
+ * pushes are sent by the push worker (pushOutbox.ts).
+ */
+export async function publishNotifications({ created, removed }: NotificationChanges) {
+	await pushUnread([...created, ...removed].map((n) => n.user_id));
 }
 
 /** The quote count of a post changed. */
@@ -480,40 +486,33 @@ export function publishDeleted(postId: number, replyTo: number | null, quoteOf: 
 		publishQuotes(quoteOf).catch((e) => console.error('realtime: publishDeleted failed', e));
 }
 
-export async function publishLikes(postId: number, ownerId: number | null, total?: number) {
+/**
+ * A post's likes changed: its count, and the like (and ratio) notifications a like created or the
+ * one an unlike removed.
+ */
+export async function publishLikes(postId: number, total: number, changes: NotificationChanges) {
 	try {
-		total ??= await db.$count(likes, eq(likes.post_id, postId));
 		broadcast('counts', { id: postId, likes: total });
-		// the like may also have made this reply ratio its parent (see the notify_like trigger)
-		const ratios = await db
-			.selectDistinct({ user_id: inbox.user_id })
-			.from(inbox)
-			.where(
-				and(
-					eq(inbox.post_id, postId),
-					inArray(inbox.type, ['ratio', 'ratioed_by_you']),
-					gt(inbox.created_at, sql`NOW() - INTERVAL '1 minute'`)
-				)
-			);
-		await pushUnread([ownerId, ...ratios.map((r) => r.user_id)]);
-		await sendPush(postId, ['like', 'ratio', 'ratioed_by_you']);
+		await publishNotifications(changes);
 	} catch (e) {
 		console.error('realtime: publishLikes failed', e);
 	}
 }
 
 /**
- * A post's regiorgs changed: update its count everywhere. When `regiorgerId` regiorged it just
- * now, the post goes out with who regiorged it (for followers' feeds) and its author is notified.
+ * A post's regiorgs changed: update its count everywhere, and the notifications (`changes`). When
+ * `regiorgerId` regiorged it just now, the post goes out with who regiorged it (for followers'
+ * feeds).
  */
 export async function publishRegiorg(
 	postId: number,
-	ownerId: number | null,
 	total: number,
-	regiorgerId: number | null
+	regiorgerId: number | null,
+	changes: NotificationChanges
 ) {
 	try {
 		broadcast('counts', { id: postId, regiorgs: total });
+		await publishNotifications(changes);
 		if (regiorgerId === null) return;
 		const [[post], [regiorger]] = await Promise.all([
 			getPosts({ postId }),
@@ -523,9 +522,6 @@ export async function publishRegiorg(
 				.where(eq(users.id, regiorgerId))
 		]);
 		if (post && regiorger) broadcast('regiorg', { ...post, regiorged_by: regiorger });
-		// the trigger created the notification (not for regiorging your own post)
-		await pushUnread([ownerId]);
-		await sendPush(postId, ['regiorg']);
 	} catch (e) {
 		console.error('realtime: publishRegiorg failed', e);
 	}
@@ -536,11 +532,10 @@ export function publishPollVotes(postId: number, votes: number[]) {
 	broadcast('poll', { id: postId, votes });
 }
 
-/** A profile got a new follower: update its badge and send the push. */
-export async function publishFollow(followerId: number, followedId: number) {
+/** A profile was followed or unfollowed (`changes` of setFollowing): its badge. */
+export async function publishFollow(changes: NotificationChanges) {
 	try {
-		await pushUnread([followedId]);
-		await sendFollowPush(followerId, followedId);
+		await publishNotifications(changes);
 	} catch (e) {
 		console.error('realtime: publishFollow failed', e);
 	}

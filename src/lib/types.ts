@@ -82,12 +82,20 @@ export type Gif = {
 	height: number;
 };
 
+/**
+ * The size of an uploaded image in pixels, as stored (after EXIF rotation and scaling down), so
+ * clients can reserve its space before it loads.
+ */
+export type ImageSize = { width: number; height: number };
+
 /** The post a quote regiorg quotes, as shown inside the quote. */
 export type QuotedPost = {
 	id: number;
 	user: Pick<User, 'username' | 'name' | 'avatar'>;
 	content: string;
 	images: string[];
+	/** the size of each image, in the order of `images`; null when unknown (older uploads) */
+	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images; null or missing when there is none */
 	gif?: Gif | null;
 	created_at: Date;
@@ -126,6 +134,8 @@ export type Post = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** the size of each image, in the order of `images`; null when unknown (older uploads) */
+	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
 	created_at: Date;
@@ -238,6 +248,8 @@ export type ChatMessage = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** the size of each image, in the order of `images`; null when unknown (older uploads) */
+	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
 	created_at: Date;
@@ -302,6 +314,8 @@ export type GroupMessage = {
 	content: string;
 	/** URL paths of uploaded images */
 	images: string[];
+	/** the size of each image, in the order of `images`; null when unknown (older uploads) */
+	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
 	created_at: Date;

@@ -1,11 +1,12 @@
 import { Image, type ImageSource } from 'expo-image';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Pressable, View } from 'react-native';
+import { type ReactNode, useState } from 'react';
+import { type GestureResponderEvent, Pressable, View, type ViewStyle } from 'react-native';
 import { instanceImage } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
-import type { Gif, LinkPreview, QuotedPost } from '@/lib/types';
+import type { Gif, ImageSize, LinkPreview, QuotedPost } from '@/lib/types';
 import { viewImages } from './overlays';
 import { openLink, RichText } from './RichText';
 import { Avatar, Txt } from './ui';
@@ -21,6 +22,9 @@ export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: numbe
 	return (
 		<View
 			accessibilityLabel={gif.title || 'GIF'}
+			// the native video view would swallow taps: a gif has nothing to tap, so they go to
+			// what holds it (in a list, the post; in a chat, the message)
+			pointerEvents="none"
 			style={{
 				aspectRatio: ratio,
 				maxHeight,
@@ -45,24 +49,68 @@ export function GifMedia({ gif, maxHeight = 300 }: { gif: Gif; maxHeight?: numbe
 	);
 }
 
-/** The images of a post or message: one large, or a grid of two columns. Tapping opens the viewer. */
-export function ImageGrid({ images, height = 220 }: { images: string[]; height?: number }) {
+/** width / height of the images seen so far, so a list that remounts a row doesn't jump */
+const ratios = new Map<string, number>();
+
+/** The size of image `i`, when the API sent one that makes sense (older uploads have none). */
+function sizeOf(sizes: ImageSize[] | null | undefined, i: number): ImageSize | null {
+	const size = sizes?.[i];
+	return size && size.width > 0 && size.height > 0 ? size : null;
+}
+
+/**
+ * The images of a post or message: one at its own shape, or a grid of two columns, like the web
+ * app. With `viewable` tapping opens the viewer; without it a tap goes to what holds them (in a
+ * list, the post). `width` fixes the space they take (a chat bubble fits its content); without it
+ * they fill their parent.
+ */
+export function ImageGrid({
+	images,
+	sizes,
+	height = 220,
+	width,
+	viewable = true,
+	onTap
+}: {
+	images: string[];
+	/** the size of each image from the API, when it sent them */
+	sizes?: ImageSize[] | null;
+	/** the tallest a single image may be; several are square tiles */
+	height?: number;
+	width?: number;
+	viewable?: boolean;
+	/** a tap on a viewable image goes through this first (the open post's double tap like) */
+	onTap?: (e: GestureResponderEvent, open: () => void) => void;
+}) {
 	if (!images.length) return null;
 	// with the token: message images need it, and on a members-only instance all of them
 	const sources: ImageSource[] = images.map(instanceImage);
-	const single = images.length === 1;
+	const view = (index: number) =>
+		viewable
+			? (e: GestureResponderEvent) => {
+					const open = () => viewImages(sources, index);
+					if (onTap) onTap(e, open);
+					else open();
+			  }
+			: undefined;
+	if (images.length === 1)
+		return (
+			<SingleImage
+				url={images[0]}
+				source={sources[0]}
+				size={sizeOf(sizes, 0)}
+				maxHeight={height}
+				width={width}
+				onPress={view(0)}
+			/>
+		);
 	return (
-		<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+		<View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, width }}>
 			{sources.map((source, index) => (
-				<Pressable
+				<Tappable
 					key={images[index]}
-					accessibilityLabel="Open image"
-					onPress={() => viewImages(sources, index)}
-					style={{
-						flexBasis: single ? '100%' : '48%',
-						flexGrow: 1,
-						height: single ? height : height * 0.6
-					}}
+					onPress={view(index)}
+					style={{ flexBasis: '48%', flexGrow: 1, aspectRatio: 1 }}
 				>
 					<Image
 						source={source}
@@ -70,14 +118,102 @@ export function ImageGrid({ images, height = 220 }: { images: string[]; height?:
 						contentFit="cover"
 						transition={100}
 					/>
-				</Pressable>
+				</Tappable>
 			))}
 		</View>
 	);
 }
 
+/** A button when it opens the viewer, else a plain view that leaves the tap to its parent. */
+function Tappable({
+	onPress,
+	style,
+	children
+}: {
+	onPress?: (e: GestureResponderEvent) => void;
+	style: ViewStyle;
+	children: ReactNode;
+}) {
+	if (!onPress) return <View style={style}>{children}</View>;
+	return (
+		<Pressable accessibilityLabel="Open image" onPress={onPress} style={style}>
+			{children}
+		</Pressable>
+	);
+}
+
+/**
+ * One image, uncropped, like the web app: as wide as it may be without being enlarged past its own
+ * size, shrunk to stay under `maxHeight` when tall.
+ */
+function SingleImage({
+	url,
+	source,
+	size,
+	maxHeight,
+	width,
+	onPress
+}: {
+	url: string;
+	source: ImageSource;
+	size: ImageSize | null;
+	maxHeight: number;
+	width?: number;
+	onPress?: (e: GestureResponderEvent) => void;
+}) {
+	// the API's size when it sent one, else what loading it told us; square until then
+	const [loaded, setLoaded] = useState(() => ratios.get(url));
+	const ratio = size ? size.width / size.height : loaded ?? 1;
+	// the width it may take: given, or measured from the parent. not left to `aspectRatio` with
+	// `maxWidth`: yoga takes the height from the unclamped width, so a tall image got a box far
+	// taller than itself
+	const [measured, setMeasured] = useState<number | null>(null);
+	const room = width ?? measured;
+	const w = room === null ? 0 : Math.min(room, maxHeight * ratio, size?.width ?? Infinity);
+	const box: ViewStyle = { width: w, height: room === null ? Math.min(maxHeight, 200) : w / ratio };
+	const image = (
+		<Tappable onPress={onPress} style={box}>
+			<Image
+				source={source}
+				style={{ flex: 1, borderRadius: 5, backgroundColor: '#111' }}
+				// contain: if the box guessed the shape wrong, the image still shows whole
+				contentFit="contain"
+				// measuring needs the image's own size: downscaled to the box, android reports the
+				// decoded size, which follows the box, and resizing the box loads it again, so the
+				// two chased each other (a flashing image in a box of the wrong shape)
+				allowDownscaling={!!size}
+				transition={100}
+				onLoad={(e) => {
+					// once per image: later loads (a resize, a recycled row) must not move it again
+					if (size || ratios.has(url)) return;
+					const next = e.source.width / e.source.height;
+					if (!next || !isFinite(next)) return;
+					ratios.set(url, next);
+					setLoaded(next);
+				}}
+			/>
+		</Tappable>
+	);
+	if (width !== undefined) return image;
+	return (
+		<View
+			style={{ alignSelf: 'stretch' }}
+			onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}
+		>
+			{image}
+		</View>
+	);
+}
+
 /** A post shown inside another: the quoted one, or the first one linked in the text. */
-export function QuoteCard({ quote }: { quote: QuotedPost | { deleted: true } }) {
+export function QuoteCard({
+	quote,
+	viewable = true
+}: {
+	quote: QuotedPost | { deleted: true };
+	/** tapping an image opens the viewer instead of the quoted post */
+	viewable?: boolean;
+}) {
 	const frame = {
 		borderWidth: 1,
 		borderColor: colors.line,
@@ -105,7 +241,7 @@ export function QuoteCard({ quote }: { quote: QuotedPost | { deleted: true } }) 
 				</Txt>
 			</View>
 			{quote.content ? <RichText content={quote.content} size={14} numberOfLines={6} /> : null}
-			<ImageGrid images={quote.images} height={150} />
+			<ImageGrid images={quote.images} sizes={quote.image_sizes} height={150} viewable={viewable} />
 			{quote.gif ? <GifMedia gif={quote.gif} maxHeight={180} /> : null}
 			{quote.is_quote ? (
 				<Txt size={13} muted>

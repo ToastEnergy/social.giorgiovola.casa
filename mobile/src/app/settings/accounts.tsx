@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -13,6 +13,8 @@ import type { Identities, User } from '@/lib/types';
 export default function AccountSettings() {
 	const session = useSession();
 	const { me, instance } = session;
+	// from "New identity" in the profile menu: the form comes first, ready to type
+	const fresh = useLocalSearchParams<{ new?: string }>().new === '1';
 	const [data, setData] = useState<Identities | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [name, setName] = useState('');
@@ -85,6 +87,33 @@ export default function AccountSettings() {
 		</View>
 	);
 
+	const createForm =
+		data && data.owned.length < data.max_identities ? (
+			<>
+				<Field
+					label="Name"
+					value={name}
+					autoFocus={fresh}
+					onChangeText={setName}
+					autoCapitalize="words"
+					maxLength={instance?.limits.name}
+				/>
+				<Field
+					label="Username"
+					value={username}
+					onChangeText={setUsername}
+					autoCorrect={false}
+					maxLength={instance?.limits.username}
+				/>
+				<Button
+					label="Create identity"
+					disabled={!name.trim() || !username.trim()}
+					loading={busy}
+					onPress={create}
+				/>
+			</>
+		) : null;
+
 	return (
 		<ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
 			<Stack.Screen options={{ title: 'Accounts & identities' }} />
@@ -98,6 +127,7 @@ export default function AccountSettings() {
 							messages. You can have {data.max_identities}, and share each with up to{' '}
 							{data.max_members} accounts.
 						</Hint>
+						{fresh ? createForm : null}
 						{data.owned.map((identity) =>
 							row(
 								identity,
@@ -184,30 +214,7 @@ export default function AccountSettings() {
 								) : null
 							)
 						)}
-						{data.owned.length < data.max_identities ? (
-							<>
-								<Field
-									label="Name"
-									value={name}
-									onChangeText={setName}
-									autoCapitalize="words"
-									maxLength={instance?.limits.name}
-								/>
-								<Field
-									label="Username"
-									value={username}
-									onChangeText={setUsername}
-									autoCorrect={false}
-									maxLength={instance?.limits.username}
-								/>
-								<Button
-									label="Create identity"
-									disabled={!name.trim() || !username.trim()}
-									loading={busy}
-									onPress={create}
-								/>
-							</>
-						) : null}
+						{fresh ? null : createForm}
 					</Section>
 					{data.shared_with_me.length ? (
 						<Section title="Shared with you">

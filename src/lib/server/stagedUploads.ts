@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
 	ImageError,
 	POST_IMAGE_SIZE,
+	type StoredImage,
 	type UploadKind,
 	removeUploads,
 	sniffImage,
@@ -107,7 +108,7 @@ export function checkStaged(userId: number, ids: string[]): Response | null {
 }
 
 /**
- * Stores staged images as uploads of `kind`, in order, and returns their URL paths (as
+ * Stores staged images as uploads of `kind`, in order, and returns their URL paths and sizes (as
  * saveUpload does), or the 410 when one is gone. Delete them with removeUploads if the post or
  * message they're for then fails.
  */
@@ -115,21 +116,21 @@ export async function claimStaged(
 	userId: number,
 	ids: string[],
 	kind: UploadKind = 'uploads'
-): Promise<string[] | Response> {
+): Promise<StoredImage[] | Response> {
 	const missing = checkStaged(userId, ids);
 	if (missing) return missing;
 	// taken off the map first, so two concurrent requests can't both claim one
 	for (const id of ids) staged.delete(id);
-	const urls: string[] = [];
+	const stored: StoredImage[] = [];
 	try {
 		for (const id of ids) {
-			urls.push(await storeUpload(kind, await fs.promises.readFile(fileOf(id))));
+			stored.push(await storeUpload(kind, await fs.promises.readFile(fileOf(id))));
 			await drop(id);
 		}
 	} catch (e) {
-		await removeUploads(urls);
+		await removeUploads(stored.map((s) => s.url));
 		await Promise.all(ids.map(drop));
 		throw e;
 	}
-	return urls;
+	return stored;
 }

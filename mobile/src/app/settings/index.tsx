@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { ChevronRight } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
+import { AppVersion } from '@/components/AppUpdate';
 import { Hint, Txt } from '@/components/ui';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
@@ -25,7 +26,11 @@ const sections = [
 		hint: 'Password, passkeys, where you are signed in'
 	},
 	{ href: '/settings/invites', label: 'Invites', hint: 'Invite links for people to join' },
-	{ href: '/settings/developers', label: 'Developers', hint: 'Access tokens and bots' }
+	{
+		href: '/settings/developers',
+		label: 'Developers',
+		hint: 'API documentation, access tokens and bots'
+	}
 ];
 
 /** "2 to give, 1 link out": the invites row's hint once the server says */
@@ -71,6 +76,7 @@ export default function Settings() {
 					{me?.account?.username ?? me?.user.username}.
 				</Hint>
 			</View>
+			<AppVersion />
 		</ScrollView>
 	);
 }

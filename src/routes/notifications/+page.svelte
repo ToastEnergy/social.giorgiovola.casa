@@ -5,7 +5,7 @@
 	import { notisCount, user } from '#lib/store.js';
 	import type { NotificationGroup } from '#lib/types.js';
 	import Avatar from '#lib/components/Avatar.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { getPushState, type PushState } from '#lib/push.js';
 	import { api, withCursor, type Page } from '#lib/api.js';
@@ -22,7 +22,7 @@
 		loadingMore = true;
 		try {
 			const page = await api<Page<NotificationGroup>>(withCursor(data.source, next));
-			// a group that grew since the first page moved up: keep the copy already shown
+			// later pages leave out the groups that moved up, but refreshTop may have shown one
 			const seen = new Set(groups.map((g) => g.key));
 			groups = [...groups, ...page.items.filter((g) => !seen.has(g.key))];
 			next = page.next_cursor;
@@ -32,13 +32,27 @@
 			loadingMore = false;
 		}
 	}
+	/**
+	 * Puts the newest groups on top, keeping the pages already loaded below them (and the scroll):
+	 * a group that grew is in the fresh page, so its old copy goes.
+	 */
+	async function refreshTop() {
+		try {
+			const page = await api<Page<NotificationGroup>>(data.source);
+			const fresh = new Set(page.items.map((g) => g.key));
+			groups = [...page.items, ...groups.filter((g) => !fresh.has(g.key))];
+		} catch {
+			// the next notification tries again
+		}
+	}
+
 	let push: PushState | null = $state(null);
-	// the unread count is pushed by the layout; reload the list when it grows
+	// the unread count is pushed by the layout; fetch the new ones when it grows
 	onMount(() => {
 		getPushState().then((state) => (push = state));
 		let last = $notisCount;
 		return notisCount.subscribe((count) => {
-			if (count > last) invalidateAll();
+			if (count > last) void refreshTop();
 			last = count;
 		});
 	});
@@ -68,6 +82,18 @@
 		}
 		if (redirect) goto(target(group));
 	};
+
+	/** A click on the card: a link in it goes where it points, the card only gets marked read. */
+	function clickGroup(e: MouseEvent, group: NotificationGroup) {
+		readGroup(group, !(e.target as Element).closest('a'));
+	}
+
+	function keyGroup(e: KeyboardEvent, group: NotificationGroup) {
+		// keys on a link or button inside the card are theirs
+		if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+		e.preventDefault();
+		readGroup(group);
+	}
 
 	const readAll = async () => {
 		try {
@@ -120,8 +146,8 @@
 				: 'border border-accent'}"
 			role="button"
 			tabindex="0"
-			onkeypress={() => readGroup(group)}
-			onclick={() => readGroup(group)}
+			onkeydown={(e) => keyGroup(e, group)}
+			onclick={(e) => clickGroup(e, group)}
 		>
 			<div class="flex min-w-0 gap-2.5">
 				{#if group.senders.length > 1}
@@ -213,11 +239,6 @@
 				<Button
 					class="size-8 shrink-0"
 					aria-label="Mark as read"
-					onkeypress={(e) => {
-						e.stopPropagation();
-						e.preventDefault();
-						readGroup(group, false);
-					}}
 					onclick={(e) => {
 						e.stopPropagation();
 						e.preventDefault();

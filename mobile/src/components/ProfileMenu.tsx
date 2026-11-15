@@ -1,9 +1,20 @@
 import { type Href, router, useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import { Check, Code, LogOut, Plus, Settings, Shield, UserRound } from 'lucide-react-native';
+import {
+	Check,
+	Download,
+	Gift,
+	LogOut,
+	Plus,
+	Settings,
+	Shield,
+	UserPlus,
+	UserRound
+} from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { useUpdateMenuItem } from '@/components/AppUpdate';
 import { confirm, toast } from '@/components/overlays';
+import { UploadProgress } from '@/components/UploadProgress';
 import { Avatar, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useSession } from '@/lib/session';
@@ -15,6 +26,7 @@ function MenuRow({
 	label,
 	danger,
 	badge,
+	pill,
 	onPress
 }: {
 	icon: React.ReactNode;
@@ -22,11 +34,15 @@ function MenuRow({
 	danger?: boolean;
 	/** a red count on the right (reports waiting) */
 	badge?: number | null;
-	onPress: () => void;
+	/** a green outlined pill on the right ("3 left") */
+	pill?: string;
+	/** null: shown, but nothing to tap */
+	onPress: (() => void) | null;
 }) {
 	return (
 		<Pressable
-			onPress={onPress}
+			onPress={onPress ?? undefined}
+			disabled={!onPress}
 			accessibilityRole="button"
 			style={({ pressed }) => ({
 				flexDirection: 'row',
@@ -54,6 +70,20 @@ function MenuRow({
 					</Txt>
 				</View>
 			) : null}
+			{pill ? (
+				<View
+					style={{
+						borderWidth: 1,
+						borderColor: colors.accent,
+						borderRadius: 10,
+						paddingHorizontal: 7
+					}}
+				>
+					<Txt size={12} bold accent>
+						{pill}
+					</Txt>
+				</View>
+			) : null}
 		</Pressable>
 	);
 }
@@ -64,8 +94,9 @@ function MenuRow({
  */
 export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 	const session = useSession();
-	const { me, accounts, server } = session;
+	const { me, accounts } = session;
 	// each signed-in account with its identities, by its index in `accounts`
+	const appUpdate = useUpdateMenuItem();
 	const [switcher, setSwitcher] = useState<(SwitcherAccount | null)[]>([]);
 
 	const tokens = accounts.map((a) => a.token).join();
@@ -184,6 +215,20 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 				onPress={() => go(`/user/${me.user.username}`)}
 			/>
 			<MenuRow icon={<Settings {...icon} />} label="Settings" onPress={() => go('/settings')} />
+			{/* the app update, while it downloads out of the way (or waits for a tap) */}
+			{appUpdate ? (
+				<MenuRow
+					icon={
+						appUpdate.progress !== null ? (
+							<UploadProgress progress={appUpdate.progress} size={20} />
+						) : (
+							<Download size={20} color={colors.accent} />
+						)
+					}
+					label={appUpdate.label}
+					onPress={appUpdate.onPress}
+				/>
+			) : null}
 			{me.role !== 'user' ? (
 				<MenuRow
 					icon={<Shield {...icon} />}
@@ -192,11 +237,6 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 					onPress={() => go('/admin')}
 				/>
 			) : null}
-			<MenuRow
-				icon={<Code {...icon} />}
-				label="API documentation"
-				onPress={() => WebBrowser.openBrowserAsync(`${server}/developers`).catch(() => {})}
-			/>
 			<View style={{ height: 1, backgroundColor: colors.line, marginVertical: 10 }} />
 			<Txt bold size={14} muted style={{ paddingHorizontal: 20, paddingVertical: 5 }}>
 				Switch profile
@@ -214,6 +254,23 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 				label="Add an account"
 				onPress={() => go('/login?add=1')}
 			/>
+			{/* bots have no identities of their own: the account's identities settings, form ready */}
+			{me.account && !me.user.bot ? (
+				<MenuRow
+					icon={<UserPlus {...icon} />}
+					label="New identity"
+					onPress={() => go('/settings/accounts?new=1')}
+				/>
+			) : null}
+			{/* like the website's switcher: only while there are invites to give, so it's never empty */}
+			{me.invites && me.invites.available > 0 ? (
+				<MenuRow
+					icon={<Gift size={20} color={colors.accent} />}
+					label="Invite someone"
+					pill={`${me.invites.available} left`}
+					onPress={() => go('/settings/invites')}
+				/>
+			) : null}
 
 			<View style={{ height: 1, backgroundColor: colors.line, marginVertical: 10 }} />
 			<MenuRow

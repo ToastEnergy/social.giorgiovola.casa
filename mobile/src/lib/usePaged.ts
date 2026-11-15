@@ -47,11 +47,24 @@ export function usePaged<T>(
 		[path, limit]
 	);
 
-	useEffect(() => {
+	// a new list (path or profile) starts out loading in the same render: an error or items left
+	// from the one before would otherwise show for a frame before the effect below runs
+	const listKey = path && profileKey ? `${profileKey} ${path}` : null;
+	const [shownKey, setShownKey] = useState(listKey);
+	if (shownKey !== listKey) {
+		setShownKey(listKey);
 		setItems([]);
+		setError(null);
+		setLoading(!!path);
+	}
+
+	useEffect(() => {
 		next.current = null;
+		// screens mount under the start-up overlay before the stored session is read: without a
+		// profile yet the request would go out without a token and answer 401
+		if (!listKey) return;
 		load();
-	}, [load, profileKey]);
+	}, [load, listKey]);
 
 	useBus('stream_open', () => load(true));
 

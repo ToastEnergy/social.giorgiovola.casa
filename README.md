@@ -267,6 +267,17 @@ In _Settings → Environments_ create `staging` and `production`, each with a `P
 
 The first production deploy starts the registry's image on green (port `GREEN_PORT`, 7779 by default) while the container you run today (`web`, which counts as blue) keeps serving, then switches over. The data stays: both colours use the same database and volumes, which belong to the compose project. To build on the server again, set `SOCIAL_COLOR=blue`, remove `SOCIAL_IMAGE` from `.env`, run `docker compose up -d --build web` and point the upstream file back at `PORT`.
 
+## notifications
+
+Notifications are created by the app (`src/lib/server/notify.ts`), in the same transaction as what causes them:
+
+- **Replies, quotes and mentions:** a reply notifies the author of the post it answers, a quote the author of the quoted post, and everyone else the post @mentions gets a mention, in replies and quotes too. Someone mentioned in a reply to their own post (or a quote of it) gets only the reply (or quote). Editing a post notifies the people it now mentions that the previous text didn't.
+- **Mentions are case-insensitive:** usernames are lowercase, and `@Alice` mentions and links to alice. A mention can sit next to punctuation (`(@alice)`, `@alice,`), but not right after a letter, digit, `_`, `@` or `/`, so emails and post links aren't mentions.
+- **Likes, regiorgios, follows and ratios:** a like, regiorgio or follow notifies the post's author or the followed profile. Undoing it (unlike, undo the regiorgio, unfollow) deletes its notification; ratio notifications stay. Redoing it within a day of its push brings the notification back as it was, read if it had been read, without a second push, so toggling a like doesn't ping anyone again (the removed ones are kept in `inbox_removed` for that).
+- **Blocks:** no notification is created between two profiles when either blocked the other. Notifications from before the block stay.
+- Nobody is notified of their own actions.
+- **Pushes:** a notification is also a push to send. Every server process runs a worker that sends the pending ones as soon as the transaction commits (Postgres `LISTEN/NOTIFY`, with a poll every 30 seconds as a fallback), so a push survives a deploy or a crash and is sent by whichever container runs next. A push that reached no device because the push service failed is retried a few times. Likes, regiorgios and follows that arrive together go out as one push ("Alice and 2 others"). A notification read before its push went out, or more than a day old, isn't pushed.
+
 ## regiorgios
 
 The arrows button under a post opens a menu with two ways to reshare it:
@@ -360,6 +371,28 @@ GitHub Actions builds the Expo app in `mobile/` for sideloading: run **mobile-io
 - **iOS:** `SocialGiorgiovolaCasa.ipa`, unsigned (`mobile/generate-ipa.sh`); AltStore signs it with your Apple ID when you install it.
 - **Android:** `SocialGiorgiovolaCasa.apk`, for 64-bit ARM (`arm64-v8a`: phones, not old 32-bit ones or x86 emulators), signed with the keystore in the repository secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` (`mobile/plugins/android-release-signing.js` passes them to Gradle). Without them it is signed with the public debug keystore, which is fine for testing but lets anyone sign an update; Android only installs an update signed with the same key, so pick the keystore before handing the app out. The run's summary shows the certificate's SHA-256 fingerprint to put in `ANDROID_APP_FINGERPRINTS` for passkeys.
 
+The Android app updates itself from those releases: when it starts or comes back to the foreground (at most every 6 hours), it looks for the newest `mobile-v*` release on GitHub (`expo.extra.updateRepo` in `mobile/app.json`) with a `SocialGiorgiovolaCasa.apk`, and when that is newer than its own version it offers to download it and opens Android's installer (which asks once to allow installs from the app). The download runs out of the way: a ring around the avatar in the tab bar fills up and the profile menu shows it, and a card asks to install once it is done. _Settings_ shows the installed version and can check for an update right away. A tag build takes its version from the tag (`mobile-v1.2.3` → `1.2.3`, `versionCode` 10203), so tag releases with increasing versions; a build run by hand keeps the version in `app.json` and is offered the latest release. Android only installs an update signed with the same key as the installed app.
+
+### building the android app locally
+
+You need bun, JDK 17 (what CI uses; newer JDKs such as Android Studio's bundled one may not work with Gradle) and the Android SDK with the NDK (Android Studio installs both). Then, the same steps as `mobile-android.yml`:
+
+```
+cd mobile
+bun install --frozen-lockfile
+bunx expo prebuild --platform android --clean
+cd android
+# JAVA_HOME = a JDK 17, ANDROID_HOME = the SDK (Windows: %LOCALAPPDATA%\Android\Sdk)
+ORG_GRADLE_PROJECT_reactNativeArchitectures=arm64-v8a ./gradlew assembleRelease   # gradlew.bat on Windows
+```
+
+The `.apk` is `mobile/android/app/build/outputs/apk/release/app-release.apk` (about 8 minutes the first time). Without the `SGC_RELEASE_*` Gradle properties it is signed with the debug keystore, so a phone that has a release build must uninstall it first, and passkeys only work if its fingerprint (`apksigner verify --print-certs`) is in the server's `ANDROID_APP_FINGERPRINTS`. To sign with the release key, set `ORG_GRADLE_PROJECT_SGC_RELEASE_STORE_FILE`, `…_STORE_PASSWORD`, `…_KEY_ALIAS` and `…_KEY_PASSWORD` like the workflow does.
+
+**Windows:** the native (C++) steps fail with `ninja: error: manifest 'build.ninja' still dirty after 100 tries` or `ninja: error: mkdir(…): No such file or directory` when paths pass 260 characters, which a checkout in a deep folder (such as a worktree under your user folder) does. The ninja bundled with the SDK's CMake (1.10) can't use long paths, even with `LongPathsEnabled` set. Two things fix it, both needed for a deep checkout:
+
+1. Build from a short folder: copy `mobile/` there (with `node_modules`, without `android/`), for example `robocopy mobile C:\sgcb /E /XD %CD%\mobile\android %CD%\mobile\build .cxx`, and run the steps above in it. `subst` doesn't help: Expo's autolinking resolves the real paths.
+2. Even then, a codegen folder of the app is longer than Windows allows, so use a ninja that supports long paths (1.12 or later): install a newer CMake (`sdkmanager "cmake;3.31.4"`), replace its `bin\ninja.exe` with [ninja 1.12.1](https://github.com/ninja-build/ninja/releases/tag/v1.12.1) (`ninja-win.zip`), and point the build at it with `cmake.dir=C:/Users/<you>/AppData/Local/Android/Sdk/cmake/3.31.4` in `android/local.properties`. Delete the `.cxx` folders (`android/app/.cxx`, `node_modules/**/android/.cxx`) from a failed build before trying again.
+
 ## bots
 
 Create bots at `/settings/developers` (up to 5 per account), or with `POST /api/v1/me/bots`. A bot is a profile with a "bot" badge, driven only through the bot API (or the v1 API with its token): you can't switch to it, and it sends no push notifications to its owner. Its token is shown once when the bot is created. _New token_ replaces it and the old one stops working right away. Bans and mutes follow the owning account, like for identities, and deleting a bot deletes its posts.
@@ -415,6 +448,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 - **Identities:** a token acts as one profile at a time; `POST /api/v1/auth/switch` with `{ "username" }` moves it to the account or one of its identities.
 - **Conventions:** JSON in and out, errors are `{ "error": "…" }`, lists are `{ "items": [...], "next_cursor": "…" | null }` with `?limit=` and `?cursor=`. Send `Content-Type: application/json` on every write, even without a body, and upload images as the raw request body: SvelteKit refuses body-less and form writes that don't come from the site. CORS is open (`*`, no credentials).
 - **Message images:** images of direct and group messages are private. New ones are `/dm-uploads/<uuid>.webp` paths (older messages keep `/uploads/…` paths, protected the same way); fetching one needs the same cookie or `Authorization: Bearer` token (`sgu_…` or `sgc_…`) as reading the conversation, and answers 404 to anyone else (401 when the token is invalid). Post images ignore the token, even an invalid one. See [message images](#message-images).
+- **Image sizes:** posts, quoted and linked posts, and direct and group messages carry `image_sizes` next to `images`: `[{ "width", "height" }]` in px, in the same order, so clients can reserve an image's space before it loads. It is `null` for images uploaded before sizes were saved (measure those once loaded); `scripts/backfill-image-sizes.ts` fills it in for them.
 - **Compatibility:** v1 only changes additively; the original bot API under `/api/bot` (below) keeps working unchanged.
 
 **Instance and signing in**
@@ -471,7 +505,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`                      | `/api/v1/timeline?feed=all\|following` | public / signed in                | the home timeline (following brings in regiorgs; all says who regiorged) |
 | `GET`                      | `/api/v1/timeline/pinned`              | public                            | posts staff pinned above the timeline                                    |
 | `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`               |
-| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                              |
+| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` (new mentions notify) / delete        |
 | `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                             |
 | `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)                |
 | `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                             |
@@ -497,18 +531,20 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/users/:username/followers`                          | public    | followers                                                |
 | `GET`            | `/api/v1/users/:username/following`                          | public    | who it follows                                           |
 | `GET`            | `/api/v1/users/:username/followers/known`                    | signed in | its followers you follow too                             |
-| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow                                        |
-| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock                                          |
+| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow (removes the follow notification)      |
+| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock (no messages or new notifications)       |
 | `GET`            | `/api/v1/search?q=`                                          | signed in | users and hashtags                                       |
 | `GET`            | `/api/v1/search/users?q=`                                    | signed in | username / name prefix, for mention pickers              |
 | `GET`            | `/api/v1/hashtags/:tag`                                      | public    | a hashtag and its post count                             |
 | `GET`            | `/api/v1/hashtags/:tag/posts`                                | public    | posts with it                                            |
-| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications                                       |
+| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications (read ones are kept for 6 months)     |
 | `GET`            | `/api/v1/notifications/grouped`                              | signed in | your notifications, likes/regiorgs/follows grouped       |
 | `POST`           | `/api/v1/notifications/groups/:key/read`                     | signed in | mark a group read                                        |
 | `GET`            | `/api/v1/notifications/unread`                               | signed in | unread notifications, messages and reactions             |
 | `POST`           | `/api/v1/notifications/read`                                 | signed in | mark all read                                            |
 | `POST`           | `/api/v1/notifications/:id/read`                             | signed in | mark one read                                            |
+
+Read notifications are deleted by an hourly sweep once they are 6 months old. Unread ones are kept until they are read.
 
 **Messages and groups**
 

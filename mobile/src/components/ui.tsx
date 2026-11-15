@@ -232,6 +232,8 @@ export function Avatar({
 		<Pressable
 			onPress={() => router.push(`/user/${user.username}`)}
 			accessibilityLabel={`@${user.username}`}
+			// a row would stretch it to its height, and the space under the picture would open the profile
+			style={{ alignSelf: 'flex-start' }}
 		>
 			{image}
 		</Pressable>

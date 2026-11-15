@@ -70,11 +70,15 @@ export type FcmMessage = {
 };
 
 /**
- * Sends one notification to a device. Answers false when the token is gone for good (the app
- * was uninstalled or its token replaced), so the caller can forget it.
+ * Sends one notification to a device. Answers 'gone' when the token is gone for good (the app
+ * was uninstalled or its token replaced), so the caller can forget it, and 'retry' when FCM
+ * failed in a way that may pass (overloaded, down, our access token refused).
  */
-export async function sendFcm(token: string, message: FcmMessage): Promise<boolean> {
-	if (!account) return true;
+export async function sendFcm(
+	token: string,
+	message: FcmMessage
+): Promise<'sent' | 'gone' | 'retry' | 'failed'> {
+	if (!account) return 'sent';
 	// data only, in the shape expo-notifications shows by itself (title, message, body as JSON,
 	// tag, channelId): a `notification` message would be shown by Android without the app's channel
 	const data: Record<string, string> = {
@@ -97,11 +101,11 @@ export async function sendFcm(token: string, message: FcmMessage): Promise<boole
 			})
 		}
 	);
-	if (res.ok) return true;
+	if (res.ok) return 'sent';
 	const text = await res.text();
 	// UNREGISTERED (404): the app is gone from that phone. A malformed token is a 400 INVALID_ARGUMENT
-	if (res.status === 404 || text.includes('UNREGISTERED')) return false;
+	if (res.status === 404 || text.includes('UNREGISTERED')) return 'gone';
 	if (res.status === 401) cached = null;
 	console.error('push: fcm send failed', res.status, text);
-	return true;
+	return res.status === 401 || res.status === 429 || res.status >= 500 ? 'retry' : 'failed';
 }

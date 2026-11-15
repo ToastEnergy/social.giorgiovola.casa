@@ -240,7 +240,7 @@
 		<meta property="og:url" content={publicUrl()} />
 		<meta
 			property="og:title"
-			content={`${page.data.user.name} (@${page.data.user.username}) / social.giorgiovola.casa}`}
+			content={`${page.data.user.name} (@${page.data.user.username}) / social.giorgiovola.casa`}
 		/>
 		<meta
 			property="og:description"

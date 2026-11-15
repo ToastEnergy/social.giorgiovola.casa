@@ -40,8 +40,15 @@ import type {
 	Reaction,
 	User
 } from '@/lib/types';
-import { AttachmentStrip, pickImages, type Picked } from './attachments';
+import {
+	AttachmentStrip,
+	PasteImageButton,
+	pickImages,
+	useClipboardImage,
+	type Picked
+} from './attachments';
 import { GifPicker } from './GifPicker';
+import { MentionSuggestions, useMentionSuggestions } from './mentions';
 import { GifMedia, ImageGrid, QuoteCard } from './media';
 import { MessageGestures } from './MessageGestures';
 import { confirm, showMenu, toast, type MenuAnchor } from './overlays';
@@ -100,10 +107,13 @@ export function ChatView(props: Props) {
 	const list = useRef<FlatList<Msg>>(null);
 	const input = useRef<ComponentRef<typeof TextInput>>(null);
 	const focused = useRef(false);
+	/** the first load is done: from then on, focusing the chat marks it read */
+	const opened = useRef(false);
 	const scrollTries = useRef(0);
 
 	// what is being written
 	const [text, setText] = useState('');
+	const [cursor, setCursor] = useState(0);
 	const [images, setImages] = useState<Picked[]>([]);
 	const [gif, setGif] = useState<{ gif: Gif; sent: () => void } | null>(null);
 	const [picking, setPicking] = useState(false);
@@ -122,6 +132,20 @@ export function ChatView(props: Props) {
 	const outbox = useRef(Promise.resolve());
 	const imagesRef = useRef(images);
 	imagesRef.current = images;
+	// group chats suggest their members for @mentions, direct chats search everyone (like the web)
+	const mention = useMentionSuggestions(
+		text,
+		cursor,
+		group
+			? (query) =>
+					group.members.filter(
+						(m) =>
+							m.username !== myName &&
+							(m.username.startsWith(query) || m.name.toLowerCase().startsWith(query))
+					)
+			: undefined
+	);
+	const clipboard = useClipboardImage();
 	const gifRef = useRef(gif);
 	gifRef.current = gif;
 	const [typing, setTyping] = useState<string | null>(null);
@@ -192,8 +216,10 @@ export function ChatView(props: Props) {
 			setMessages(all.map(toMsg));
 			setFirstUnread(first);
 			setError(null);
+			opened.current = true;
+			// even without unread messages: unread reactions to yours also clear on read
+			if (focused.current) markRead();
 			if (first) {
-				if (focused.current) markRead();
 				// open at the divider: the list is inverted, so indexes count from the newest
 				const index = all.length - 1 - all.findIndex((m) => m.id === first);
 				scrollTries.current = 0;
@@ -218,10 +244,12 @@ export function ChatView(props: Props) {
 	useFocusEffect(
 		useCallback(() => {
 			focused.current = true;
+			// back on the chat: what arrived while another screen was on top is seen now
+			if (opened.current) markRead();
 			return () => {
 				focused.current = false;
 			};
-		}, [])
+		}, [markRead])
 	);
 
 	async function loadOlder() {
@@ -261,8 +289,12 @@ export function ChatView(props: Props) {
 	const replace = (message: Msg) =>
 		setMessages((now) => now.map((m) => (m.id === message.id ? message : m)));
 	const remove = (id: number) => setMessages((now) => now.filter((m) => m.id !== id));
-	const setReactions = (id: number, reactions: Reaction[]) =>
+	const setReactions = (id: number, reactions: Reaction[]) => {
 		setMessages((now) => now.map((m) => (m.id === id ? { ...m, reactions } : m)));
+		// a reaction to your message is unread until you see the chat, like a message
+		const message = messages.find((m) => m.id === id);
+		if (message?.sender.username === myName && focused.current) markRead();
+	};
 
 	const here = (m: Message) =>
 		direct &&
@@ -660,9 +692,12 @@ export function ChatView(props: Props) {
 										</View>
 									) : null}
 									{item.images.length ? (
-										<View style={{ width: 230 }}>
-											<ImageGrid images={item.images} height={200} />
-										</View>
+										<ImageGrid
+											images={item.images}
+											sizes={item.image_sizes}
+											width={230}
+											height={300}
+										/>
 									) : null}
 									{item.gif ? (
 										<View style={{ width: 230 }}>
@@ -795,9 +830,11 @@ export function ChatView(props: Props) {
 							</View>
 						) : undefined
 					}
+					// the list flips the empty component back itself (scaleY on iOS, scale on Android):
+					// a transform of our own would replace that one, and mirror the text on Android
 					ListEmptyComponent={
 						pending.length ? undefined : (
-							<View style={{ transform: [{ scaleY: -1 }] }}>
+							<View>
 								<Txt muted style={{ textAlign: 'center', padding: 40 }}>
 									No messages yet. Say hi!
 								</Txt>
@@ -870,6 +907,27 @@ export function ChatView(props: Props) {
 								setImages((now) => now.map((image) => (image === old ? edited : image)))
 							}
 						/>
+						<MentionSuggestions
+							users={mention.users}
+							max={4}
+							onPick={(user) => {
+								const next = mention.apply(user);
+								onChangeText(next.text);
+								setCursor(next.cursor);
+								input.current?.setSelection(next.cursor, next.cursor);
+							}}
+						/>
+						{clipboard.available && !editing ? (
+							<PasteImageButton
+								onPress={async () => {
+									if (gif) return toast('A message can have a GIF or images, not both');
+									if (images.length >= maxImages)
+										return toast(`You can attach at most ${maxImages} images`);
+									const pasted = await clipboard.paste();
+									if (pasted) setImages((now) => [...now, pasted].slice(0, maxImages));
+								}}
+							/>
+						) : null}
 						<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
 							{editing ? null : (
 								<>
@@ -906,6 +964,7 @@ export function ChatView(props: Props) {
 								multiline
 								value={text}
 								onChangeText={onChangeText}
+								onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
 								maxLength={instance?.limits.messageContent}
 								placeholder={editing ? 'Edit your message' : 'Write a message'}
 								placeholderTextColor={colors.muted}

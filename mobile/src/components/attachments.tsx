@@ -1,13 +1,14 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Pencil, X } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Directory, File, Paths } from 'expo-file-system';
+import { ClipboardPaste, Pencil, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
-import { api, withQuery } from '@/lib/api';
+import { AppState, Pressable, ScrollView, View } from 'react-native';
 import { colors } from '@/lib/theme';
-import type { Gif, Page, User } from '@/lib/types';
+import type { Gif } from '@/lib/types';
 import { canEdit, PhotoEditor } from './PhotoEditor';
-import { Avatar, Txt } from './ui';
+import { Txt } from './ui';
 
 export type Picked = { uri: string; mimeType?: string | null };
 
@@ -141,70 +142,68 @@ export function AttachmentStrip({
 }
 
 /**
- * The @mention being typed at the cursor and who it could be. `apply` answers the text with the
- * chosen username filled in.
+ * Whether the clipboard holds an image, checked when the screen opens, when the app comes back
+ * to the front and when something new is copied. Only asks whether there is one: reading it (which
+ * iOS may confirm with a prompt) waits for `paste`.
  */
-export function useMentionSuggestions(text: string, cursor: number) {
-	const before = text.slice(0, cursor);
-	const match = /(?:^|[^a-zA-Z0-9_@/])@([a-zA-Z0-9_]*)$/.exec(before);
-	const query = match ? match[1] : null;
-	const [users, setUsers] = useState<User[]>([]);
+export function useClipboardImage() {
+	const [available, setAvailable] = useState(false);
 	useEffect(() => {
-		if (query === null) return setUsers([]);
-		const controller = new AbortController();
-		const timer = setTimeout(() => {
-			api<Page<User>>(withQuery('search/users', { q: query, limit: 6 }), {
-				signal: controller.signal
-			})
-				.then((page) => setUsers(page.items))
+		let alive = true;
+		const check = () =>
+			Clipboard.hasImageAsync()
+				.then((has) => alive && setAvailable(has))
 				.catch(() => {});
-		}, 150);
+		check();
+		const app = AppState.addEventListener('change', (state) => state === 'active' && check());
+		const copied = Clipboard.addClipboardListener(check);
 		return () => {
-			clearTimeout(timer);
-			controller.abort();
+			alive = false;
+			app.remove();
+			copied.remove();
 		};
-	}, [query]);
-	const apply = (user: User) => {
-		const start = before.length - (query?.length ?? 0);
-		return `${text.slice(0, start)}${user.username} ${text.slice(cursor)}`;
+	}, []);
+	/** the clipboard's image as a file, like a picked one; null when there's none (or it's refused) */
+	const paste = async (): Promise<Picked | null> => {
+		const image = await Clipboard.getImageAsync({ format: 'png' }).catch(() => null);
+		if (!image) {
+			setAvailable(false);
+			return null;
+		}
+		// a file, not the data: URI, so drafts can keep it and uploads read it like any pick
+		const dir = new Directory(Paths.cache, 'pasted-images');
+		dir.create({ idempotent: true, intermediates: true });
+		const file = new File(dir, `${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+		file.create();
+		await file.write(image.data.replace(/^data:[^,]*,/, ''), { encoding: 'base64' });
+		return { uri: file.uri, mimeType: 'image/png' };
 	};
-	return { users: query === null ? [] : users, apply };
+	return { available, paste };
 }
 
-export function MentionSuggestions({
-	users,
-	onPick
-}: {
-	users: User[];
-	onPick: (user: User) => void;
-}) {
-	if (!users.length) return null;
+/** "Paste image": shown while the clipboard holds one, next to the other attach buttons. */
+export function PasteImageButton({ onPress }: { onPress: () => void }) {
 	return (
-		<ScrollView
-			horizontal
-			keyboardShouldPersistTaps="always"
-			showsHorizontalScrollIndicator={false}
-			style={{ flexGrow: 0 }}
-			contentContainerStyle={{ gap: 5, paddingVertical: 5 }}
+		<Pressable
+			accessibilityRole="button"
+			accessibilityLabel="Paste image from clipboard"
+			hitSlop={6}
+			onPress={onPress}
+			style={({ pressed }) => ({
+				flexDirection: 'row',
+				alignItems: 'center',
+				gap: 5,
+				alignSelf: 'flex-start',
+				borderWidth: 1,
+				borderColor: colors.accent,
+				borderRadius: 5,
+				paddingVertical: 4,
+				paddingHorizontal: 8,
+				backgroundColor: pressed ? colors.accent : 'transparent'
+			})}
 		>
-			{users.map((user) => (
-				<Pressable
-					key={user.username}
-					onPress={() => onPick(user)}
-					style={{
-						flexDirection: 'row',
-						alignItems: 'center',
-						gap: 5,
-						borderWidth: 1,
-						borderColor: colors.accent,
-						borderRadius: 5,
-						padding: 5
-					}}
-				>
-					<Avatar user={user} size={24} />
-					<Txt size={14}>@{user.username}</Txt>
-				</Pressable>
-			))}
-		</ScrollView>
+			<ClipboardPaste size={16} color={colors.foreground} />
+			<Txt size={13}>Paste image</Txt>
+		</Pressable>
 	);
 }

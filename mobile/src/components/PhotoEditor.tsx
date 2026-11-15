@@ -25,7 +25,8 @@ import { Button, Txt } from './ui';
 // the web app's photo editor (src/lib/components/PhotoEditor.svelte): crop (with fixed ratios) and
 // rotate, draw, and text that can be moved, pinched, rotated and edited. Crops and turns are done
 // by expo-image-manipulator; strokes and text stay vectors on top until saving, when the whole
-// thing is drawn once at the image's size and captured with react-native-view-shot
+// thing is drawn once at the image's own pixel size, captured losslessly with
+// react-native-view-shot and encoded once
 
 export type EditableImage = { uri: string; mimeType?: string | null };
 
@@ -245,17 +246,19 @@ function CaptionView({
 	onSize?: (id: number, size: { width: number; height: number }) => void;
 }) {
 	const px = c.size * width;
-	// a wide, flat anchor around the point, so the text centres on it without wrapping
-	const span = width * 4;
+	// a big square anchor centred on the point, so the text centres on it without wrapping and
+	// turns around it. not a zero-height one: Android's software drawing (what the capture uses)
+	// skips views with no area, children and all, so the text went missing from the saved image
+	const span = Math.max(width, height) * 4;
 	return (
 		<View
 			pointerEvents="none"
 			style={{
 				position: 'absolute',
 				left: c.x * width - span / 2,
-				top: c.y * height,
+				top: c.y * height - span / 2,
 				width: span,
-				height: 0,
+				height: span,
 				alignItems: 'center',
 				justifyContent: 'center',
 				transform: [{ rotate: `${c.rot}rad` }],
@@ -464,6 +467,15 @@ function Editor({
 	const nextId = useRef(1);
 	const captionSizes = useRef(new Map<number, { width: number; height: number }>());
 	const origin = useRef<Point>([0, 0]);
+	const input = useRef<React.ComponentRef<typeof TextInput>>(null);
+	const isTyping = typing !== null;
+
+	// autoFocus alone often leaves the keyboard closed inside a Modal on Android
+	useEffect(() => {
+		if (!isTyping) return;
+		const timer = setTimeout(() => input.current?.focus(), 150);
+		return () => clearTimeout(timer);
+	}, [isTyping]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -897,17 +909,13 @@ function Editor({
 		return next;
 	}
 
-	/** the edited image as a file; strokes and captions are drawn in by capturing them */
-	async function render(d: Doc): Promise<EditableImage> {
-		const png = keepsAlpha(image);
-		if (!d.strokes.length && !d.captions.length) {
-			const out = await d.img.ref.saveAsync({
-				format: png ? SaveFormat.PNG : SaveFormat.JPEG,
-				compress: 0.92
-			});
-			return { uri: out.uri, mimeType: png ? 'image/png' : 'image/jpeg' };
-		}
-		// drawn once at the image's own size, behind the editor, and captured when the image shows
+	/**
+	 * the strokes and captions drawn over the image, at the image's own pixel size, as a lossless
+	 * png. the view is laid out at size / pixel ratio, so the capture's natural size (the view's
+	 * size times the screen scale) is the image's. no width / height options: Android reads them as
+	 * pixels, not points, so passing the point size shrank the image by the pixel ratio
+	 */
+	async function capture(d: Doc): Promise<string> {
 		const loaded = new Promise<void>((resolve) => {
 			flatLoaded.current = resolve;
 			setTimeout(resolve, 3000);
@@ -915,23 +923,33 @@ function Editor({
 		setFlat(d);
 		try {
 			await loaded;
+			// the captions lay out in the frame after the image
 			await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-			const ratio = PixelRatio.get();
-			const uri = await captureRef(flatView, {
-				format: png ? 'png' : 'jpg',
-				quality: 0.92,
-				result: 'tmpfile',
-				width: d.img.width / ratio,
-				height: d.img.height / ratio
-			});
-			return {
-				uri: uri.startsWith('file://') ? uri : `file://${uri}`,
-				mimeType: png ? 'image/png' : 'image/jpeg'
-			};
+			const uri = await captureRef(flatView, { format: 'png', result: 'tmpfile' });
+			return uri.startsWith('file://') ? uri : `file://${uri}`;
 		} finally {
 			flatLoaded.current = null;
 			setFlat(null);
 		}
+	}
+
+	/** the edited image as a file, encoded once, at the size it was edited at */
+	async function render(d: Doc): Promise<EditableImage> {
+		const png = keepsAlpha(image);
+		let ref = d.img.ref;
+		if (d.strokes.length || d.captions.length) {
+			ref = await ImageManipulator.manipulate(await capture(d)).renderAsync();
+			// rounding to the screen's pixel grid can be a pixel or so out
+			if (ref.width !== d.img.width || ref.height !== d.img.height)
+				ref = await ImageManipulator.manipulate(ref)
+					.resize({ width: d.img.width, height: d.img.height })
+					.renderAsync();
+		}
+		const out = await ref.saveAsync({
+			format: png ? SaveFormat.PNG : SaveFormat.JPEG,
+			compress: 0.95
+		});
+		return { uri: out.uri, mimeType: png ? 'image/png' : 'image/jpeg' };
 	}
 
 	async function save() {
@@ -976,6 +994,8 @@ function Editor({
 				>
 					<Image
 						source={flat.img.ref}
+						// shown at its own pixel size, so nothing to gain from a smaller decode
+						allowDownscaling={false}
 						style={{ width: flatW, height: flatH }}
 						onLoad={() => flatLoaded.current?.()}
 						onError={() => flatLoaded.current?.()}
@@ -1300,6 +1320,8 @@ function Editor({
 					</View>
 					<ScrollView
 						horizontal
+						// a colour is picked with the keyboard open, not used to close it
+						keyboardShouldPersistTaps="always"
 						showsHorizontalScrollIndicator={false}
 						style={{ flexGrow: 0 }}
 						contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
@@ -1335,6 +1357,7 @@ function Editor({
 						contentContainerStyle={{ alignItems: 'center', paddingTop: 40 }}
 					>
 						<TextInput
+							ref={input}
 							autoFocus
 							multiline
 							value={typing.text}

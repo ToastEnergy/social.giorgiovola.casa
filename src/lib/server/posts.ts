@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
-import type { Gif, Post, User } from '#lib/types.js';
+import type { Gif, ImageSize, Post, User } from '#lib/types.js';
 import { extractHashtags } from '#lib/hashtags.js';
 import { getAvatar } from '#lib/utils.js';
 import { DISCORD_WEBHOOK_URL } from '$app/env/private';
@@ -9,6 +9,14 @@ import type { PollInput } from './validation.js';
 import { imagesOfPostTrees, removeUploads } from './images.js';
 import { linkedPosts } from './linkedPosts.js';
 import { linkPreviews, warmLinkPreview } from './linkPreviews.js';
+import {
+	onLike,
+	onPostCreated,
+	onRegiorg,
+	onUnlike,
+	onUnregiorg,
+	type Notification
+} from './notify.js';
 import { publishDeleted, publishLikes, publishPost, publishRegiorg } from './realtime.js';
 
 export type GetPostsOptions = {
@@ -78,6 +86,7 @@ export async function getPosts({
 		.select({
 			content: posts.content,
 			images: posts.images,
+			image_sizes: posts.image_sizes,
 			gif: posts.gif,
 			id: posts.id,
 			created_at: posts.created_at,
@@ -102,6 +111,7 @@ export async function getPosts({
 					'id', p.id,
 					'content', p.content,
 					'images', p.images,
+					'image_sizes', p.image_sizes,
 					'gif', p.gif,
 					'created_at', p.created_at,
 					'is_quote', p.is_quote,
@@ -326,6 +336,7 @@ export async function createPost(
 	{
 		content,
 		images = [],
+		image_sizes = null,
 		gif = null,
 		reply_to,
 		quote_of = null,
@@ -333,20 +344,23 @@ export async function createPost(
 	}: {
 		content: string;
 		images?: string[];
+		/** in the order of `images`, null when unknown */
+		image_sizes?: ImageSize[] | null;
 		gif?: Gif | null;
 		reply_to: number | null;
 		quote_of?: number | null;
 		poll?: PollInput | null;
 	}
 ) {
-	// the post, its hashtags and poll together, so a post never shows up without them
-	const created = await db.transaction(async (tx) => {
+	// the post, its hashtags, poll and notifications together, so a post never shows up without them
+	const { created, notifications } = await db.transaction(async (tx) => {
 		const [row] = await tx
 			.insert(posts)
 			.values({
 				user_id: user.id,
 				content,
 				images,
+				image_sizes: images.length ? image_sizes : null,
 				gif,
 				reply_to,
 				quote_of,
@@ -363,7 +377,14 @@ export async function createPost(
 				// the database clock, which also decides whether it is closed
 				ends_at: sql`NOW() + make_interval(mins => ${poll.minutes})`
 			});
-		return row;
+		const notifications = await onPostCreated(tx, {
+			id: row.id,
+			user_id: user.id,
+			content,
+			reply_to,
+			quote_of
+		});
+		return { created: row, notifications };
 	});
 
 	// so the post shows up with its link preview, unless the site is slow
@@ -371,7 +392,7 @@ export async function createPost(
 	// read back like everywhere else, with the quoted post and the counts
 	const [post] = await getPosts({ postId: created.id, loggedUser: user });
 
-	void publishPost(post.id);
+	void publishPost(post.id, notifications);
 	// a broken or slow webhook shouldn't make posting fail or wait: it isn't awaited, and gives up
 	// after a few seconds
 	if (!reply_to && DISCORD_WEBHOOK_URL)
@@ -416,16 +437,30 @@ export async function setLiked(userId: number, postId: number, liked: boolean) {
 		.from(posts)
 		.where(eq(posts.id, postId));
 	if (!post) return null;
-	const total = await db.transaction(async (tx) => {
-		if (liked)
-			await tx
+	const { total, changes } = await db.transaction(async (tx) => {
+		let created: Notification[] = [];
+		let removed: Notification[] = [];
+		// liking (or unliking) again changes nothing
+		if (liked) {
+			const added = await tx
 				.insert(likes)
 				.values({ user_id: userId, post_id: postId })
-				.onConflictDoNothing({ target: [likes.user_id, likes.post_id] });
-		else await tx.delete(likes).where(and(eq(likes.user_id, userId), eq(likes.post_id, postId)));
-		return tx.$count(likes, eq(likes.post_id, postId));
+				.onConflictDoNothing({ target: [likes.user_id, likes.post_id] })
+				.returning({ post_id: likes.post_id });
+			if (added.length) created = await onLike(tx, userId, postId);
+		} else {
+			const gone = await tx
+				.delete(likes)
+				.where(and(eq(likes.user_id, userId), eq(likes.post_id, postId)))
+				.returning({ post_id: likes.post_id });
+			if (gone.length) removed = await onUnlike(tx, userId, postId);
+		}
+		return {
+			total: await tx.$count(likes, eq(likes.post_id, postId)),
+			changes: { created, removed }
+		};
 	});
-	void publishLikes(postId, post.user_id, total);
+	void publishLikes(postId, total, changes);
 	return { liked, likes: total };
 }
 
@@ -436,8 +471,10 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 		.from(posts)
 		.where(eq(posts.id, postId));
 	if (!post) return null;
-	const { added, total } = await db.transaction(async (tx) => {
+	const { added, total, changes } = await db.transaction(async (tx) => {
 		let added = false;
+		let created: Notification[] = [];
+		let removed: Notification[] = [];
 		if (regiorged) {
 			const res = await tx
 				.insert(regiorgs)
@@ -445,13 +482,21 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 				.onConflictDoNothing({ target: [regiorgs.user_id, regiorgs.post_id] })
 				.returning({ post_id: regiorgs.post_id });
 			added = res.length > 0;
-		} else
-			await tx
+			if (added) created = await onRegiorg(tx, userId, postId);
+		} else {
+			const gone = await tx
 				.delete(regiorgs)
-				.where(and(eq(regiorgs.user_id, userId), eq(regiorgs.post_id, postId)));
-		return { added, total: await tx.$count(regiorgs, eq(regiorgs.post_id, postId)) };
+				.where(and(eq(regiorgs.user_id, userId), eq(regiorgs.post_id, postId)))
+				.returning({ post_id: regiorgs.post_id });
+			if (gone.length) removed = await onUnregiorg(tx, userId, postId);
+		}
+		return {
+			added,
+			total: await tx.$count(regiorgs, eq(regiorgs.post_id, postId)),
+			changes: { created, removed }
+		};
 	});
-	void publishRegiorg(postId, post.user_id, total, added ? userId : null);
+	void publishRegiorg(postId, total, added ? userId : null, changes);
 	return { regiorged, regiorgs: total };
 }
 

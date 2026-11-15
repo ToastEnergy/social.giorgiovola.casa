@@ -9,17 +9,18 @@ import {
 	pgTable,
 	primaryKey,
 	serial,
+	smallint,
 	text,
 	timestamp,
 	unique,
 	uniqueIndex,
 	type AnyPgColumn
 } from 'drizzle-orm/pg-core';
-import type { Gif } from '../../types.js';
+import type { Gif, ImageSize } from '../../types.js';
 
 // Property names match the column names (snake_case) so rows line up with the types in
-// src/lib/types.ts. The triggers that create notifications can't be expressed here, they live
-// in a hand written migration (see drizzle/).
+// src/lib/types.ts. Notifications (inbox) are created and removed by src/lib/server/notify.ts,
+// inside the transaction of the event that causes them: there are no triggers.
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -131,6 +132,9 @@ export const posts = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// the size of each image, in the order of `images`; null for rows written before sizes
+		// were saved (clients measure those)
+		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images (src/lib/server/gifs.ts); only its URLs, never a copy
 		gif: jsonb('gif').$type<Gif>(),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
@@ -258,8 +262,16 @@ export const inbox = pgTable(
 		invites: integer('invites'),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		read_at: timestamptz('read_at'),
-		// set once a push for this row has been sent, so it never goes out twice
-		pushed_at: timestamptz('pushed_at')
+		// set once the push of this row has been sent (or skipped). null: a push still to send, the
+		// outbox the push worker reads (src/lib/server/pushOutbox.ts)
+		pushed_at: timestamptz('pushed_at'),
+		// when a push worker claimed the row: its lease, so another one retries it if it never
+		// finishes. and how many times it was claimed, to give up after a few
+		push_claimed_at: timestamptz('push_claimed_at'),
+		push_attempts: smallint('push_attempts').notNull().default(0),
+		// the group of a like, regiorg or follow (see src/lib/server/notifications.ts); null for
+		// the others, which are groups of one ('n-<id>')
+		group_key: text('group_key')
 	},
 	(t) => [
 		unique().on(t.user_id, t.sender_id, t.post_id, t.type),
@@ -268,10 +280,61 @@ export const inbox = pgTable(
 		uniqueIndex('inbox_follow_unique')
 			.on(t.user_id, t.sender_id)
 			.where(sql`${t.type} = 'follow'`),
+		// new posts and likes look up the rows they created, and deleting a post cascades here
+		index('inbox_post_id').on(t.post_id),
+		// unread counts, read on every page load and realtime update
+		index('inbox_unread')
+			.on(t.user_id)
+			.where(sql`${t.read_at} IS NULL`),
+		// the notifications page, newest first (scanned backwards)
+		index('inbox_user_created').on(t.user_id, t.created_at, t.id),
+		// the members of a group
+		index('inbox_user_group_key')
+			.on(t.user_id, t.group_key)
+			.where(sql`${t.group_key} IS NOT NULL`),
+		// likes, regiorgs and follows inserted without a key by the previous release while a
+		// deploy switches over: found by their computed key. stays (nearly) empty
+		index('inbox_group_key_missing')
+			.on(t.user_id)
+			.where(sql`${t.group_key} IS NULL AND ${t.type} IN ('like', 'regiorg', 'follow')`),
+		// the pushes still to send (pushOutbox.ts): almost every row is pushed, so this stays small
+		index('inbox_unpushed')
+			.on(t.id)
+			.where(sql`${t.pushed_at} IS NULL`),
+		// the sweep deleting read notifications older than 6 months (notificationRetention.ts);
+		// unread ones are kept, so they stay out of the range it scans
+		index('inbox_read_created_at')
+			.on(t.created_at)
+			.where(sql`${t.read_at} IS NOT NULL`),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`
 		)
+	]
+);
+
+// A like, regiorg or follow notification that was pushed and then removed by undoing it (unlike,
+// un-regiorg, unfollow), kept for a while so that redoing it doesn't push again: the new inbox row
+// takes over pushed_at and read_at (see src/lib/server/notify.ts). Not shown anywhere.
+export const inbox_removed = pgTable(
+	'inbox_removed',
+	{
+		user_id: integer('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		sender_id: integer('sender_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		// null for a follow
+		post_id: integer('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+		type: text('type', { enum: ['like', 'regiorg', 'follow'] }).notNull(),
+		pushed_at: timestamptz('pushed_at').notNull(),
+		read_at: timestamptz('read_at')
+	},
+	(t) => [
+		unique('inbox_removed_key').on(t.user_id, t.sender_id, t.post_id, t.type).nullsNotDistinct(),
+		// expired rows are cleared by pushed_at
+		index('inbox_removed_pushed_at').on(t.pushed_at)
 	]
 );
 
@@ -292,6 +355,8 @@ export const messages = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// the size of each image, like posts.image_sizes
+		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images, like posts.gif
 		gif: jsonb('gif').$type<Gif>(),
 		// the message this one answers; the reply stays when it is deleted
@@ -378,6 +443,8 @@ export const group_messages = pgTable(
 			.array()
 			.notNull()
 			.default(sql`'{}'::text[]`),
+		// the size of each image, like posts.image_sizes
+		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images, like posts.gif
 		gif: jsonb('gif').$type<Gif>(),
 		// the message this one answers; the reply stays when it is deleted

@@ -229,8 +229,7 @@ export class VoiceSession {
 
 	/** Escape, the back button: deleting more than a few seconds asks first. */
 	confirmDiscard() {
-		const long =
-			(this.reviewing ? this.note?.durationMs ?? 0 : this.recorder.elapsed) > CONFIRM_MS;
+		const long = (this.reviewing ? this.note?.durationMs ?? 0 : this.recorder.elapsed) > CONFIRM_MS;
 		if (long && !confirm('Discard voice note?')) return false;
 		this.discard();
 		return true;

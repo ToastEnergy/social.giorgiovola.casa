@@ -20,6 +20,8 @@ export type ComposerDraft = {
 	files: File[];
 	/** a chosen KLIPY GIF (only its URLs) */
 	gif?: Gif | null;
+	/** the voice note recorded for it: its key in voiceDraft.ts, which keeps the recording */
+	voice?: string | null;
 };
 
 type Stored = {
@@ -31,6 +33,7 @@ type Stored = {
 	pollMinutes: number;
 	files: File[];
 	gif?: Gif | null;
+	voice?: string | null;
 	savedAt: number;
 	/** switch drafts: the username switched to, the only one that may take it */
 	to?: string;
@@ -113,7 +116,8 @@ function toDraft(s: Stored): ComposerDraft {
 		pollOptions: s.pollOptions,
 		pollMinutes: s.pollMinutes,
 		files,
-		gif: s.gif ?? null
+		gif: s.gif ?? null,
+		voice: s.voice ?? null
 	};
 }
 
@@ -160,6 +164,7 @@ export async function saveDraft(user: number, draft: ComposerDraft) {
 		pollMinutes: draft.pollMinutes,
 		files: [...draft.files],
 		gif: draft.gif ? { ...draft.gif } : null,
+		voice: draft.voice ?? null,
 		savedAt: Date.now()
 	};
 	await withStore('readwrite', (s) => s.put(stored)).catch(() => {});

@@ -22,19 +22,19 @@
 			<p class="font-bold">Microphone access is off</p>
 			{#if platform === 'ios'}
 				<p class="text-muted">
-					Open Settings › Apps › Safari › Microphone and choose Ask or Allow (in Safari you can
-					also tap ᴀA in the address bar › Website Settings › Microphone). Then try again.
+					Open Settings › Apps › Safari › Microphone and choose Ask or Allow (in Safari you can also
+					tap ᴀA in the address bar › Website Settings › Microphone). Then try again.
 				</p>
 			{:else if platform === 'android'}
 				<p class="text-muted">
 					In Chrome, tap the icon left of the address bar › Permissions › Microphone and allow it.
-					For the installed app: Chrome › ⋮ › Settings › Site settings › Microphone, then this
-					site. Then try again.
+					For the installed app: Chrome › ⋮ › Settings › Site settings › Microphone, then this site.
+					Then try again.
 				</p>
 			{:else}
 				<p class="text-muted">
-					Click the icon at the left of the address bar, allow the microphone for this site and
-					try again.
+					Click the icon at the left of the address bar, allow the microphone for this site and try
+					again.
 				</p>
 			{/if}
 		{:else if error === 'nomic'}

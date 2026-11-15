@@ -24,6 +24,12 @@ import { discardVoice, type LocalVoice } from './voiceUpload';
  * Never sends by itself and never loses audio: an interruption (a call, Siri, another app taking
  * the microphone, the media services resetting, a headset coming or going, a hold while the app
  * goes to the background) stops into review. A locked recording goes on in the background.
+ *
+ * Android shows a "Recording audio" notification for as long as a recording can go on in the
+ * background (its foreground service), and the service can only be chosen before the recording
+ * starts. Most holds are a few seconds and stop when the app leaves anyway, so there a recording
+ * only gets it when it starts locked (a composer's mic); a hold locked later stops into review if
+ * the app leaves. iOS shows nothing, so there every recording may go on in the background.
  */
 
 export type Phase = 'idle' | 'requesting' | 'recording' | 'paused' | 'review';
@@ -146,6 +152,8 @@ export function useVoiceRecorder(options: Options = {}) {
 		peaks: [] as number[],
 		durationMs: 0,
 		input: null as string | null,
+		/** it may go on in the background (see the top) */
+		background: false,
 		ticks: 0,
 		lastPing: 0,
 		warned: 0
@@ -295,6 +303,7 @@ export function useVoiceRecorder(options: Options = {}) {
 			r.peaks = [];
 			r.durationMs = 0;
 			r.input = null;
+			r.background = Platform.OS === 'ios' || mode === 'locked';
 			r.ticks = 0;
 			r.lastPing = 0;
 			r.warned = 0;
@@ -312,7 +321,7 @@ export function useVoiceRecorder(options: Options = {}) {
 			announce(mode === 'locked' ? 'Recording' : 'Recording. Release to send');
 			r.starting = (async () => {
 				try {
-					await recordingMode();
+					await recordingMode(r.background);
 					await recorder.prepareToRecordAsync({
 						...OPTIONS,
 						fileName: `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -417,7 +426,7 @@ export function useVoiceRecorder(options: Options = {}) {
 		}
 		update({ phase: 'paused' });
 		haptic.tick();
-		announce('Paused');
+		announce('Recording paused');
 	}, [recorder, update]);
 
 	const resume = useCallback(() => {
@@ -473,12 +482,15 @@ export function useVoiceRecorder(options: Options = {}) {
 	const clearHint = useCallback(() => update({ hint: null, notice: null }), [update]);
 
 	// the app leaves: a hold can't go on (the finger is gone), a paused one is finished so it's
-	// kept whole if the system ends the app. a locked recording goes on in the background
+	// kept whole if the system ends the app. a locked recording goes on in the background, unless
+	// it started as a hold on Android (no foreground service, see the top)
 	useEffect(() => {
 		const sub = AppState.addEventListener('change', (next) => {
 			if (next !== 'background') return;
 			const s = stateRef.current;
-			if ((s.phase === 'recording' && s.mode === 'hold') || s.phase === 'paused') toReview();
+			if (s.phase === 'recording' && s.mode === 'locked' && !run.current.background)
+				toReview('Recording stopped when you left the app.');
+			else if ((s.phase === 'recording' && s.mode === 'hold') || s.phase === 'paused') toReview();
 		});
 		return () => sub.remove();
 	}, [toReview]);

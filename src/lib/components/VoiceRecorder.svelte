@@ -358,7 +358,7 @@
 			binning = true;
 			setTimeout(() => (binning = false), 450);
 		}
-		announce('Voice message deleted');
+		announce('Voice note deleted');
 	}
 
 	function cancelQuietly() {
@@ -504,7 +504,7 @@
 	<div
 		class="absolute bottom-0 left-0 right-[56px] z-10 flex min-h-[46px] items-center gap-[5px] rounded-[10px] border border-line bg-background px-[5px] select-none [-webkit-touch-callout:none]"
 		role="group"
-		aria-label="Voice message"
+		aria-label="Voice note recorder"
 		onmousedown={keepFocus}
 	>
 		{#if binning}

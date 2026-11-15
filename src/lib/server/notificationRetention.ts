@@ -3,7 +3,7 @@ import { db } from './db/index.js';
 
 /**
  * Notifications are kept for 6 months, read or unread; older ones are deleted by a sweep.
- * Imported from hooks.server.ts so the sweep starts with the server, like the other sweeps.
+ * hooks.server.ts starts the sweep with the server (startNotificationRetention).
  */
 
 export const NOTIFICATION_RETENTION = '6 months';
@@ -46,6 +46,16 @@ function sweep() {
 	);
 }
 
-// shortly after start (not during it, while migrations and the first requests run), then hourly
-setTimeout(sweep, 60_000).unref?.();
-setInterval(sweep, SWEEP_MS).unref?.();
+let started = false;
+
+/**
+ * Starts the sweep, from `init` in hooks.server.ts: not on import, since the build imports that
+ * file too, without a database.
+ */
+export function startNotificationRetention() {
+	if (started) return;
+	started = true;
+	// shortly after start (not during it, while the first requests run), then hourly
+	setTimeout(sweep, 60_000).unref?.();
+	setInterval(sweep, SWEEP_MS).unref?.();
+}

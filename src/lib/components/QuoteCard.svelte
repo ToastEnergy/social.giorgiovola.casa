@@ -5,6 +5,7 @@
 	import LocalTime from './LocalTime.svelte';
 	import { DATE } from '#lib/time.svelte.js';
 	import { unwrapMarkdownImages } from '#lib/utils.js';
+	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
 
 	// the post a quote regiorg quotes, embedded in the quote (or in the composer, as a preview).
 	// Post.svelte leaves clicks on links inside it alone, so this one opens the quoted post.
@@ -13,6 +14,7 @@
 	const href = $derived('deleted' in quote ? null : `/@${quote.user.username}/${quote.id}`);
 	// markdown-linked images show as their URL, like in a post (unwrapMarkdownImages)
 	const text = $derived('deleted' in quote ? '' : unwrapMarkdownImages(quote.content).trim());
+	const playable = $derived(!('deleted' in quote) && !!quote.audio);
 </script>
 
 {#if 'deleted' in quote}
@@ -20,13 +22,19 @@
 		This post was deleted.
 	</div>
 {:else}
+	<!-- a voice note's player can't sit inside a link: then the link covers the card from behind
+		the player instead -->
 	<svelte:element
-		this={link ? 'a' : 'div'}
-		href={link ? href : undefined}
-		class="flex flex-col gap-[5px] rounded-[5px] border border-line p-2.5 text-foreground {link
+		this={link && !playable ? 'a' : 'div'}
+		href={link && !playable ? href : undefined}
+		class="relative flex flex-col gap-[5px] rounded-[5px] border border-line p-2.5 text-foreground {link
 			? 'hover:bg-white/5 hover:no-underline'
 			: ''}"
 	>
+		{#if link && playable}
+			<!-- prettier-ignore -->
+			<a class="absolute inset-0 rounded-[5px] hover:no-underline" {href} aria-label="Post by {quote.user.name}"></a>
+		{/if}
 		<div class="flex min-w-0 items-center gap-[5px] text-[0.9em]">
 			<Avatar user={quote.user} size={20} clickable={false} />
 			<span class="truncate font-bold"
@@ -43,6 +51,20 @@
 		{/if}
 		{#if quote.is_quote}
 			<p class="text-[0.85em] text-muted">Quoting another post</p>
+		{/if}
+		{#if quote.audio}
+			<!-- above the link that covers the card, so it plays instead of opening the post -->
+			<div class="relative z-1">
+				<VoiceNotePlayer
+					compact
+					track={{
+						note: quote.audio,
+						sender: quote.user,
+						href: href ?? undefined,
+						caption: quote.content
+					}}
+				/>
+			</div>
 		{/if}
 		{#if quote.gif}
 			<!-- a still frame: a quote is small, and a click opens the quoted post -->

@@ -22,7 +22,9 @@
 	import GifMedia from './GifMedia.svelte';
 	import GifPicker from './GifPicker.svelte';
 	import { shareGif } from '#lib/klipy.js';
-	import { mediaPreview } from '#lib/mediaPreview.js';
+	import { messagePreview } from '#lib/mediaPreview.js';
+	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
+	import { play, wasPlayed, type Track } from '#lib/audioPlayer.svelte.js';
 	import { page as appPage } from '$app/state';
 	import { onRealtime } from '#lib/realtime.js';
 	import BottomNav from './BottomNav.svelte';
@@ -271,8 +273,12 @@
 	}
 
 	/** what a reply shows of a message: its text, or that it is a photo or GIF */
-	const previewOf = (m: { content: string; images: number; gif?: unknown }) =>
-		m.content || mediaPreview({ images: m.images, gif: !!m.gif });
+	const previewOf = (m: {
+		content: string;
+		images: number;
+		gif?: unknown;
+		audio_ms?: number | null;
+	}) => messagePreview({ ...m, gif: !!m.gif });
 	const replyNameOf = (sender: MessageReplyTo['sender']) =>
 		sender.username === $user?.username ? 'You' : sender.name;
 	const authorNameOf = (m: Message) =>
@@ -388,11 +394,62 @@
 		);
 	}
 
+	/** what the shared player plays for a message's voice note */
+	function trackOf(message: Message & { audio: NonNullable<Message['audio']> }): Track {
+		const sender =
+			typeof message.sender === 'string' ? (isMine(message) ? me() : peer) : message.sender;
+		return {
+			note: message.audio,
+			sender: sender ?? { username: senderOf(message), name: senderOf(message), avatar: null },
+			href: `${appPage.url.pathname}#message-${message.id}`,
+			caption: message.content,
+			onstart: () => markPlayed(message.id),
+			onend: () => playNextAfter(message.id)
+		};
+	}
+	const me = () =>
+		$user ? { username: $user.username, name: $user.name, avatar: $user.avatar } : undefined;
+
+	/** the recipient hasn't played a direct message's voice note (nor has this device) */
+	const unplayed = (m: Message) =>
+		!!m.audio && !isMine(m) && !('kind' in m) && !m.audio_played_at && !wasPlayed(m.audio);
+
+	// listened receipts: the recipient tells the server the first time a note plays
+	const markingPlayed = new Set<number>();
+	function markPlayed(id: number) {
+		const message = messages.find((m) => m.id === id);
+		if (groupId !== null || !message || 'kind' in message || isMine(message)) return;
+		if (message.audio_played_at || markingPlayed.has(id)) return;
+		markingPlayed.add(id);
+		api<{ id: number; audio_played_at: Date }>(
+			`conversations/${encodeURIComponent(peerUsername)}/messages/${id}/played`,
+			{ method: 'POST' }
+		)
+			.then(({ audio_played_at }) => setPlayed(id, audio_played_at))
+			.catch(() => markingPlayed.delete(id));
+	}
+
+	function setPlayed(id: number, at: Date) {
+		messages = messages.map((m) =>
+			m.id === id && !('kind' in m) ? { ...m, audio_played_at: at } : m
+		);
+	}
+
+	// a note played to the end: the next message goes on playing when it's a voice note from
+	// the other side not played yet, like on WhatsApp
+	function playNextAfter(id: number) {
+		const index = messages.findIndex((m) => m.id === id);
+		const next = index === -1 ? undefined : messages[index + 1];
+		if (!next?.audio || isEvent(next) || isMine(next) || wasPlayed(next.audio)) return;
+		if (!('kind' in next) && next.audio_played_at) return;
+		play(trackOf(next as Message & { audio: NonNullable<Message['audio']> }));
+	}
+
 	async function saveEdit(message: Message) {
 		const text = content.trim();
 		stopEditing();
 		if (text === message.content) return;
-		if (!text && !message.images?.length) {
+		if (!text && !message.images?.length && !message.gif && !message.audio) {
 			showError('A message needs some text. Delete it instead.');
 			return;
 		}
@@ -1191,7 +1248,11 @@
 						// ids are unique across conversations: only a message shown here is replaced
 						onRealtime('message_edited', replace),
 						// ids are unique across conversations: only a message shown here is updated
-						onRealtime('message_reactions', ({ id, reactions }) => setReactions(id, reactions))
+						onRealtime('message_reactions', ({ id, reactions }) => setReactions(id, reactions)),
+						// ids are unique across conversations: only a message shown here is updated
+						onRealtime('message_played', ({ id, audio_played_at }) =>
+							setPlayed(id, audio_played_at)
+						)
 				  ];
 		offs.push(onRealtime('open', sync));
 		const onVisibility = () => {
@@ -1636,6 +1697,19 @@
 							{#if message.gif}
 								<GifMedia gif={message.gif} maxHeight={360} maxWidth="min(320px, 60vw)" />
 							{/if}
+							{#if message.audio}
+								<!-- direct messages: the sender sees whether it was played -->
+								<div class="w-[min(300px,62vw)]">
+									<VoiceNotePlayer
+										track={trackOf({ ...message, audio: message.audio })}
+										tone={mine ? 'inverse' : 'default'}
+										unplayed={unplayed(message)}
+										played={mine && groupId === null && 'audio_played_at' in message
+											? !!message.audio_played_at
+											: undefined}
+									/>
+								</div>
+							{/if}
 							{#if message.content}
 								<p class="wrap-anywhere whitespace-pre-wrap">
 									{#each richText(message.content) as piece}{#if piece.type === 'link'}<a
@@ -1785,7 +1859,8 @@
 								>{previewOf({
 									content: draft.replyingTo.content,
 									images: draft.replyingTo.images?.length ?? 0,
-									gif: draft.replyingTo.gif
+									gif: draft.replyingTo.gif,
+									audio_ms: draft.replyingTo.audio?.duration_ms ?? null
 								})}</span
 							>
 						</div>
@@ -1930,7 +2005,8 @@
 					{previewOf({
 						content: editing.content,
 						images: editing.images?.length ?? 0,
-						gif: editing.gif
+						gif: editing.gif,
+						audio_ms: editing.audio?.duration_ms ?? null
 					})}
 				</p>
 			</button>
@@ -1961,7 +2037,8 @@
 					{previewOf({
 						content: replyingTo.content,
 						images: replyingTo.images?.length ?? 0,
-						gif: replyingTo.gif
+						gif: replyingTo.gif,
+						audio_ms: replyingTo.audio?.duration_ms ?? null
 					})}
 				</p>
 			</button>

@@ -21,6 +21,8 @@
 	import Splash from '#lib/components/Splash.svelte';
 	import NavHistory from '#lib/components/NavHistory.svelte';
 	import PullToRefresh from '#lib/components/PullToRefresh.svelte';
+	import AudioHost from '#lib/components/AudioHost.svelte';
+	import NowPlaying from '#lib/components/NowPlaying.svelte';
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
@@ -178,6 +180,21 @@
 	{#if !isChat(page.route.id)}
 		<BottomNav />
 	{/if}
+	<!-- the voice note player: one <audio> for the whole app, and the pill showing what plays
+		while its note is out of view. the rail has its own pill; elsewhere it floats above the
+		bottom bar, or at the top of a chat, whose input is at the bottom -->
+	<AudioHost />
+	<div
+		class="pointer-events-none fixed z-998 flex justify-center *:pointer-events-auto pointer-coarse:right-0 pointer-coarse:left-0 not-pointer-coarse:left-[calc(var(--left)+var(--side))] not-pointer-coarse:w-(--panel) {isChat(
+			page.route.id
+		)
+			? 'top-[calc(env(safe-area-inset-top)+75px)] not-pointer-coarse:top-[calc(20px+var(--bar)+75px)]'
+			: 'bottom-[calc(var(--bottom-bar)+10px)] not-pointer-coarse:bottom-10'} {isWide(page.route.id)
+			? ''
+			: 'not-pointer-coarse:rail:hidden'}"
+	>
+		<NowPlaying />
+	</div>
 	<ImageViewer />
 	<ProfileCard />
 	<ShareDialog />

@@ -2,6 +2,7 @@
 	import AccountSwitcher from './AccountSwitcher.svelte';
 	import Search from './Search.svelte';
 	import SocialLinks from './SocialLinks.svelte';
+	import NowPlaying from './NowPlaying.svelte';
 </script>
 
 <!-- devices with a mouse, when there is room: right of the content panel (the layout's centred
@@ -17,6 +18,8 @@
 		<div class="relative flex flex-col gap-2.5">
 			<AccountSwitcher badge size={45} />
 			<Search rail />
+			<!-- the voice note playing elsewhere -->
+			<NowPlaying rail />
 		</div>
 		<!-- 20px under the links, as in the sidebar -->
 		<div class="mt-auto flex flex-col items-end gap-[5px] pb-5">

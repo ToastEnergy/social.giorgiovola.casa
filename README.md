@@ -537,14 +537,14 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/search/users?q=`                                    | signed in | username / name prefix, for mention pickers              |
 | `GET`            | `/api/v1/hashtags/:tag`                                      | public    | a hashtag and its post count                             |
 | `GET`            | `/api/v1/hashtags/:tag/posts`                                | public    | posts with it                                            |
-| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications (kept for 6 months, read or unread)   |
+| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications (read ones are kept for 6 months)     |
 | `GET`            | `/api/v1/notifications/grouped`                              | signed in | your notifications, likes/regiorgs/follows grouped       |
 | `POST`           | `/api/v1/notifications/groups/:key/read`                     | signed in | mark a group read                                        |
 | `GET`            | `/api/v1/notifications/unread`                               | signed in | unread notifications, messages and reactions             |
 | `POST`           | `/api/v1/notifications/read`                                 | signed in | mark all read                                            |
 | `POST`           | `/api/v1/notifications/:id/read`                             | signed in | mark one read                                            |
 
-Notifications are kept for 6 months, read or unread, then deleted by an hourly sweep.
+Read notifications are deleted by an hourly sweep once they are 6 months old. Unread ones are kept until they are read.
 
 **Messages and groups**
 

@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { db } from './db/index.js';
 
 /**
- * Notifications are kept for 6 months, read or unread; older ones are deleted by a sweep.
+ * Read notifications are kept for 6 months (from when they were created), then deleted by a
+ * sweep. Unread ones are kept until they are read: nobody loses a notification they never saw.
  * hooks.server.ts starts the sweep with the server (startNotificationRetention).
  */
 
@@ -13,7 +14,7 @@ const SWEEP_MS = 60 * 60_000;
 
 let running = false;
 
-/** Deletes notifications older than the retention period. Returns how many were deleted. */
+/** Deletes read notifications older than the retention period. Returns how many were deleted. */
 export async function sweepOldNotifications(): Promise<number> {
 	// a slow run on a big backlog shouldn't overlap the next one in this process
 	if (running) return 0;
@@ -26,7 +27,8 @@ export async function sweepOldNotifications(): Promise<number> {
 			const deleted = await db.execute(sql`
 				DELETE FROM inbox WHERE id IN (
 					SELECT id FROM inbox
-					WHERE created_at < NOW() - ${NOTIFICATION_RETENTION}::interval
+					WHERE read_at IS NOT NULL
+						AND created_at < NOW() - ${NOTIFICATION_RETENTION}::interval
 					LIMIT ${BATCH}
 					FOR UPDATE SKIP LOCKED
 				)

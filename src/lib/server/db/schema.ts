@@ -301,8 +301,11 @@ export const inbox = pgTable(
 		index('inbox_unpushed')
 			.on(t.id)
 			.where(sql`${t.pushed_at} IS NULL`),
-		// the sweep deleting notifications older than 6 months (notificationRetention.ts)
-		index('inbox_created_at').on(t.created_at),
+		// the sweep deleting read notifications older than 6 months (notificationRetention.ts);
+		// unread ones are kept, so they stay out of the range it scans
+		index('inbox_read_created_at')
+			.on(t.created_at)
+			.where(sql`${t.read_at} IS NOT NULL`),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`

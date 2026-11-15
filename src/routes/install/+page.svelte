@@ -7,6 +7,11 @@
 	let ready = $state(false);
 	onMount(() => (ready = true));
 
+	// the mobile workflows attach both files to every mobile-v* release (README "mobile app builds"),
+	// and GitHub redirects /releases/latest/download/<file> to the newest one
+	const repo = 'https://github.com/ToastEnergy/social.giorgiovola.casa';
+	const latest = (file: string) => `${repo}/releases/latest/download/${file}`;
+
 	const guides = [
 		{
 			name: 'iPhone and iPad (Safari)',
@@ -70,3 +75,29 @@
 	Desktop Firefox can't install web apps. Once installed, turn on push notifications in
 	<a href="/settings/notifications">Settings → Notifications</a>.
 </p>
+
+<section class="mt-10 flex flex-col gap-2.5">
+	<h2 class="font-bold">Mobile app</h2>
+	<p class="text-muted">
+		There is also a native app for phones, outside the app stores. Download it from the latest
+		release:
+	</p>
+	<div class="flex flex-wrap gap-2.5">
+		<Button href={latest('SocialGiorgiovolaCasa.apk')} rel="external">Android (.apk)</Button>
+		<Button href={latest('SocialGiorgiovolaCasa.ipa')} rel="external">iPhone (.ipa)</Button>
+	</div>
+	<ul class="flex list-disc flex-col gap-[5px] pl-5 text-[0.85em] text-muted">
+		<li>
+			Android: open the downloaded file and allow installs from your browser when asked. The app
+			then updates itself.
+		</li>
+		<li>
+			iPhone: the .ipa is unsigned, install it with <a href="https://altstore.io" rel="external"
+				>AltStore</a
+			>, which signs it with your Apple ID.
+		</li>
+		<li>
+			<a href={`${repo}/releases`} rel="external">All releases</a>
+		</li>
+	</ul>
+</section>

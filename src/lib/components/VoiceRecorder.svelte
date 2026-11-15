@@ -211,7 +211,9 @@
 			id: e.pointerId,
 			x: e.clientX,
 			y: e.clientY,
-			at: performance.now(),
+			// when the finger went down, not when this ran: starting the mic can hold up the page
+			// for a moment, which mustn't turn a tap into a hold
+			at: e.timeStamp,
 			mouse: e.pointerType === 'mouse',
 			cancelAt: Math.max(80, (form?.clientWidth ?? 300) * CANCEL_SHARE)
 		};
@@ -267,7 +269,7 @@
 
 	async function onPointerUp(e: PointerEvent) {
 		if (!gesture || e.pointerId !== gesture.id) return;
-		const held = performance.now() - gesture.at;
+		const held = e.timeStamp - gesture.at;
 		const mouse = gesture.mouse;
 		release(e);
 		if (!holding) return;
@@ -294,7 +296,7 @@
 	/** The browser took the pointer (a system gesture): stop into review, never lose it. */
 	async function onPointerCancel(e: PointerEvent) {
 		if (!gesture || e.pointerId !== gesture.id) return;
-		const held = performance.now() - gesture.at;
+		const held = e.timeStamp - gesture.at;
 		release(e);
 		if (!holding) return;
 		if (held < MIN_HOLD_MS || phase === 'requesting') cancelQuietly();

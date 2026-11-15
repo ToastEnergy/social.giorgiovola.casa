@@ -1,5 +1,5 @@
 import * as webpush from 'web-push';
-import { and, desc, eq, gt, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
 	db,
@@ -17,6 +17,7 @@ import { PUBLIC_URL } from '$app/env/public';
 import type { ChatMessage, GroupMessage, NotificationType } from '#lib/types.js';
 import { mentions } from '#lib/mentions.js';
 import { fcmConfigured, sendFcm } from './fcm.js';
+import type { Notification } from './notify.js';
 
 /**
  * Push notifications: web push to the browsers subscribed by the recipient's account(s), and FCM
@@ -312,21 +313,18 @@ export async function sendGroupMessagePush(
 	}
 }
 
-/** Notifies `followedId` of a new follower, once: the inbox row is claimed like in sendPush. */
-export async function sendFollowPush(followerId: number, followedId: number) {
+/** Sends the push of follow `notifications`, once: the rows are claimed like in sendPush. */
+export async function sendFollowPush(notifications: Notification[]) {
+	for (const n of notifications)
+		if (n.type === 'follow' && n.sender_id !== null) await followPush(n.id, n.sender_id, n.user_id);
+}
+
+async function followPush(id: number, followerId: number, followedId: number) {
 	try {
 		const claimed = await db
 			.update(inbox)
 			.set({ pushed_at: sql`NOW()` })
-			.where(
-				and(
-					eq(inbox.type, 'follow'),
-					eq(inbox.user_id, followedId),
-					eq(inbox.sender_id, followerId),
-					isNull(inbox.pushed_at),
-					gt(inbox.created_at, sql`NOW() - INTERVAL '1 minute'`)
-				)
-			)
+			.where(and(eq(inbox.id, id), isNull(inbox.pushed_at)))
 			.returning({ id: inbox.id });
 		if (claimed.length === 0) return;
 		const found = await db
@@ -410,10 +408,13 @@ export async function sendInvitesPush(accountIds: number[]) {
 }
 
 /**
- * Sends a push for the inbox rows `postId` just created. Rows are claimed (pushed_at) before
- * sending, so a like that is toggled off and on, or a retry, never notifies twice.
+ * Sends the push of post `notifications` (from notify.ts). Rows are claimed (pushed_at) before
+ * sending, so a row is never pushed twice.
  */
-export async function sendPush(postId: number, types?: NotificationType[]) {
+export async function sendPush(notifications: Notification[]) {
+	// follows and invites have their own pushes
+	const ids = notifications.filter((n) => n.post_id !== null).map((n) => n.id);
+	if (ids.length === 0) return;
 	try {
 		const sender = alias(users, 'sender');
 		const recipient = alias(users, 'recipient');
@@ -421,14 +422,7 @@ export async function sendPush(postId: number, types?: NotificationType[]) {
 			db
 				.update(inbox)
 				.set({ pushed_at: sql`NOW()` })
-				.where(
-					and(
-						eq(inbox.post_id, postId),
-						isNull(inbox.pushed_at),
-						gt(inbox.created_at, sql`NOW() - INTERVAL '1 minute'`),
-						types ? inArray(inbox.type, types) : undefined
-					)
-				)
+				.where(and(inArray(inbox.id, ids), isNull(inbox.pushed_at)))
 				.returning({
 					user_id: inbox.user_id,
 					sender_id: inbox.sender_id,

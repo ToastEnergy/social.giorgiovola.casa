@@ -12,8 +12,7 @@ const follow = (following: boolean): RequestHandler =>
 		const target = (await findPeer(usernameParam(params.username))) ?? fail(404, 'User not found');
 		if (target.id === user.id) fail(400, "You can't follow yourself");
 		rateLimit(`follow:${user.id}`, MAX_TOGGLES);
-		// the trigger created the notification
-		if (await setFollowing(user.id, target.id, following)) void publishFollow(user.id, target.id);
+		void publishFollow(await setFollowing(user.id, target.id, following));
 		return getFollowStats(target.id, user.id);
 	});
 

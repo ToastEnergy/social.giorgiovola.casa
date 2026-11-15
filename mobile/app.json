@@ -47,6 +47,15 @@
 			"expo-secure-store",
 			"expo-image",
 			"expo-video",
+			[
+				"expo-audio",
+				{
+					"microphonePermission": false,
+					"recordAudioAndroid": false,
+					"enableBackgroundPlayback": true,
+					"enableBackgroundRecording": false
+				}
+			],
 			"expo-font",
 			"expo-web-browser",
 			[

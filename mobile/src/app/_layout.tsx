@@ -15,9 +15,11 @@ import { AppUpdate } from '@/components/AppUpdate';
 import { Overlays } from '@/components/overlays';
 import { PostingStatus } from '@/components/PostingStatus';
 import { Button, Txt } from '@/components/ui';
+import { NowPlayingOverlay } from '@/components/voice';
 import { PushNotifications } from '@/lib/push';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
+import { VoicePlayerHost } from '@/lib/voicePlayer';
 
 const theme = {
 	...DarkTheme,
@@ -124,6 +126,8 @@ export default function RootLayout() {
 					<SessionProvider>
 						<StatusBar style="light" />
 						<Navigation />
+						<VoicePlayerHost />
+						<NowPlayingOverlay />
 						<PostingStatus />
 						<Overlays />
 						<PushNotifications />

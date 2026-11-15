@@ -28,6 +28,7 @@ import { GifMedia, ImageGrid, LinkPreviewCard, QuoteCard } from './media';
 import { confirm, showMenu, toast } from './overlays';
 import { RichText } from './RichText';
 import { Avatar, IconButton, Txt } from './ui';
+import { VoiceNotePlayer } from './voice';
 
 function PollCard({ poll, onVote }: { poll: Poll; onVote: (option: number) => void }) {
 	const total = poll.votes.reduce((a, b) => a + b, 0);
@@ -195,6 +196,12 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 		<View style={{ gap: 8 }}>
 			{post.content ? (
 				<RichText content={post.content} size={detail ? 18 : 16} selectable={detail} />
+			) : null}
+			{post.audio ? (
+				<VoiceNotePlayer
+					note={post.audio}
+					track={{ title: post.user.name, user: post.user, href: `/post/${post.id}` }}
+				/>
 			) : null}
 			{/* in a list a photo is part of the post and opens it; the viewer is for the open post */}
 			<ImageGrid

@@ -88,6 +88,20 @@ export type Gif = {
  */
 export type ImageSize = { width: number; height: number };
 
+/**
+ * A voice note attached to a post or message: AAC in an M4A file, transcoded by the server
+ * (src/lib/server/audio.ts), so it plays everywhere.
+ */
+export type VoiceNote = {
+	/** /uploads/<uuid>.m4a (posts) or /dm-uploads/<uuid>.m4a (messages, private) */
+	url: string;
+	duration_ms: number;
+	/** 64 peaks, 0–255, to draw without downloading the file */
+	waveform: number[];
+	/** of the file, in bytes */
+	size: number;
+};
+
 /** The post a quote regiorg quotes, as shown inside the quote. */
 export type QuotedPost = {
 	id: number;
@@ -98,6 +112,8 @@ export type QuotedPost = {
 	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images; null or missing when there is none */
 	gif?: Gif | null;
+	/** a voice note (the content is its caption); null or missing when there is none */
+	audio?: VoiceNote | null;
 	created_at: Date;
 	/** it quotes another post itself (that one isn't shown) */
 	is_quote: boolean;
@@ -138,6 +154,8 @@ export type Post = {
 	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
+	/** a voice note (the content is its caption), null when there is none */
+	audio?: VoiceNote | null;
 	created_at: Date;
 	edited_at: Date | null;
 	likes: number;
@@ -232,6 +250,8 @@ export type MessageReplyTo = {
 	images: number;
 	/** it is a GIF */
 	gif: boolean;
+	/** the length of its voice note in ms, null or missing when it has none */
+	audio_ms?: number | null;
 };
 
 export type MessageReaction = {
@@ -252,6 +272,10 @@ export type ChatMessage = {
 	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
+	/** a voice note (the content is its caption), null when there is none */
+	audio?: VoiceNote | null;
+	/** when the recipient first played the voice note, null until then */
+	audio_played_at?: Date | null;
 	created_at: Date;
 	/** when the sender last changed the text, null if never */
 	edited_at: Date | null;
@@ -318,6 +342,8 @@ export type GroupMessage = {
 	image_sizes?: ImageSize[] | null;
 	/** a GIF instead of images, null when there is none */
 	gif: Gif | null;
+	/** a voice note (the content is its caption), null when there is none */
+	audio?: VoiceNote | null;
 	created_at: Date;
 	/** when the sender last changed the text, null if never */
 	edited_at: Date | null;

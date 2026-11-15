@@ -24,7 +24,7 @@ import { LIMITS } from './validation.js';
 // on local disk whatever the storage driver, so a staged image costs nothing in the bucket until
 // it's claimed. Named after the app's directory so two instances on one machine don't wipe each
 // other's on boot
-const STAGING_DIR = path.join(
+export const STAGING_DIR = path.join(
 	os.tmpdir(),
 	`social-staged-${crypto.createHash('sha256').update(process.cwd()).digest('hex').slice(0, 12)}`
 );
@@ -33,7 +33,7 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 type Staged = { userId: number; expires: number };
 const staged = new Map<string, Staged>();
 
-const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const fileOf = (id: string) => path.join(STAGING_DIR, `${id}.webp`);
 
 async function drop(id: string) {
@@ -42,7 +42,7 @@ async function drop(id: string) {
 }
 
 // what a previous run left behind can't be claimed any more
-const ready = fs.promises
+export const stagingReady = fs.promises
 	.rm(STAGING_DIR, { recursive: true, force: true })
 	.then(() => fs.promises.mkdir(STAGING_DIR, { recursive: true }));
 
@@ -70,7 +70,7 @@ export async function stageImage(userId: number, file: File): Promise<string | R
 		if (e instanceof ImageError) return new Response(e.message, { status: 400 });
 		throw e;
 	}
-	await ready;
+	await stagingReady;
 	const id = crypto.randomUUID();
 	await fs.promises.writeFile(fileOf(id), webp);
 	staged.set(id, { userId, expires: Date.now() + TTL_MS });

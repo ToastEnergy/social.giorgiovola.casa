@@ -9,6 +9,7 @@ import {
 } from './images.js';
 import { readJson } from './api.js';
 import { checkStaged, claimStaged, parseStagedIds } from './stagedUploads.js';
+import { checkStagedAudio, parseAudioId } from './stagedAudio.js';
 import { hit, isLimited } from './ratelimit.js';
 import { LIMITS, parseId } from './validation.js';
 import { parseGif } from './gifs.js';
@@ -51,6 +52,8 @@ export type MessageBody = {
 	uploads: string[];
 	/** a KLIPY GIF instead of images */
 	gif: Gif | null;
+	/** the id of a staged voice note (api/uploads/audio), with nothing else but a caption */
+	audio: string | null;
 };
 
 /** Multipart when the message has images, plain JSON otherwise. */
@@ -70,7 +73,8 @@ export async function readMessageBody(request: Request): Promise<MessageBody | R
 			content: typeof raw === 'string' ? raw.trim() : '',
 			files: form.getAll('images').filter((f): f is File => f instanceof File && f.size > 0),
 			uploads,
-			gif: parseGif(form.get('gif')) ?? null
+			gif: parseGif(form.get('gif')) ?? null,
+			audio: parseAudioId(form.get('audio'))
 		};
 	}
 	const fields = await readJson(request);
@@ -81,7 +85,8 @@ export async function readMessageBody(request: Request): Promise<MessageBody | R
 		content: typeof fields.content === 'string' ? fields.content.trim() : '',
 		files: [],
 		uploads,
-		gif: parseGif(fields.gif) ?? null
+		gif: parseGif(fields.gif) ?? null,
+		audio: parseAudioId(fields.audio)
 	};
 }
 
@@ -100,10 +105,16 @@ export const hasImages = (body: MessageBody) => body.files.length + body.uploads
 
 /** The error to send back for a message that can't be sent as is, or null. */
 export function checkMessage(body: MessageBody, userId: number): Response | null {
-	const { content, files, uploads, gif } = body;
-	if (!content && !gif && !hasImages(body)) return new Response('Missing content', { status: 400 });
+	const { content, files, uploads, gif, audio } = body;
+	if (!content && !gif && !audio && !hasImages(body))
+		return new Response('Missing content', { status: 400 });
 	if (gif && hasImages(body)) {
 		return new Response('A message can have a GIF or images, not both', { status: 400 });
+	}
+	if (audio && (gif || hasImages(body))) {
+		return new Response("A voice note can't have images or a GIF: only a caption", {
+			status: 400
+		});
 	}
 	if (content.length > LIMITS.messageContent) {
 		return new Response(`Messages can be at most ${LIMITS.messageContent} characters`, {
@@ -115,6 +126,7 @@ export function checkMessage(body: MessageBody, userId: number): Response | null
 			status: 400
 		});
 	}
+	if (audio) checkStagedAudio(userId, audio);
 	return checkStaged(userId, uploads);
 }
 

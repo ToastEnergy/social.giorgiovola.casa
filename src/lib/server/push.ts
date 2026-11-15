@@ -16,6 +16,7 @@ import {
 import { PUBLIC_URL } from '$app/env/public';
 import type { ChatMessage, GroupMessage, NotificationType } from '#lib/types.js';
 import { mentions } from '#lib/mentions.js';
+import { audioPreview } from '#lib/mediaPreview.js';
 import { fcmConfigured, sendFcm } from './fcm.js';
 
 /**
@@ -267,6 +268,16 @@ async function deliverApp(
 	return tally;
 }
 
+/** What a push says of a message: its voice note, text, GIF or photo. */
+const messageText = (message: ChatMessage | GroupMessage) =>
+	message.audio
+		? audioPreview(message.audio.duration_ms, message.content && clip(message.content))
+		: message.content
+		? clip(message.content)
+		: message.gif
+		? '🎞️ GIF'
+		: '📷 Photo';
+
 /** Notifies the recipient of a direct message, unless they muted the conversation. */
 export async function sendMessagePush(
 	recipientId: number,
@@ -284,7 +295,7 @@ export async function sendMessagePush(
 			.from(users)
 			.where(eq(users.id, recipientId));
 		if (!recipient || recipient.muted) return;
-		let body = message.content ? clip(message.content) : message.gif ? '🎞️ GIF' : '📷 Photo';
+		let body = messageText(message);
 		// identities share the devices of the accounts using them: say which profile it is for
 		if (recipient.owner_id !== null) body += ` (@${message.recipient})`;
 		await deliver(recipient.id, {
@@ -323,7 +334,7 @@ export async function sendGroupMessagePush(
 				and(eq(group_members.user_id, users.id), eq(group_members.group_id, message.group_id))
 			)
 			.where(inArray(users.id, recipientIds));
-		const text = message.content ? clip(message.content) : message.gif ? '🎞️ GIF' : '📷 Photo';
+		const text = messageText(message);
 		for (const recipient of recipients) {
 			const mentioned = mentions(message.content.toLowerCase(), recipient.username);
 			if (recipient.muted && !mentioned) continue;

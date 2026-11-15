@@ -372,19 +372,40 @@ function sendToBots(userIds: number[], chunk: string) {
 }
 
 /**
- * Someone is writing a message: in a direct conversation (`groupId` null) to `recipients`' only
- * member, else in that group. Sent to the web streams only: bots don't get typing events.
+ * Someone is writing a message (`typing`) or recording a voice note (`recording`): in a direct
+ * conversation (`groupId` null) to `recipients`' only member, else in that group. Sent to the
+ * web streams only: bots don't get typing events.
  */
 export function publishTyping(
 	from: { id: number; username: string; name: string },
 	recipients: number[],
-	groupId: number | null
+	groupId: number | null,
+	action: TypingAction = 'typing'
 ) {
 	sendTo(
 		recipients.filter((id) => id !== from.id),
 		'typing',
-		{ group_id: groupId, user: { username: from.username, name: from.name } }
+		{ group_id: groupId, user: { username: from.username, name: from.name }, action }
 	);
+}
+
+export type TypingAction = 'typing' | 'recording';
+
+/**
+ * The recipient played a voice note of a direct message: its sender (and the recipient's other
+ * screens) see `audio_played_at`.
+ */
+export function publishMessagePlayed(
+	id: number,
+	audioPlayedAt: Date,
+	participants: [number, number]
+) {
+	sendTo(participants, 'message_played', { id, audio_played_at: audioPlayedAt });
+}
+
+/** An event for the web streams of one profile only (its own uploads, say). */
+export function publishToProfile(userId: number, event: string, data: unknown) {
+	sendTo([userId], event, data);
 }
 
 /** A group message was sent: only the group's current members may receive it. */

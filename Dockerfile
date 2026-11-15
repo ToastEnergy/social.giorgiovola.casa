@@ -23,6 +23,9 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends fonts-roboto fontconfig \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& mkdir -p static/avatars static/uploads data/dm data/previews
+# ffmpeg and ffprobe transcode voice notes (src/lib/server/audio.ts): static builds, pinned by
+# digest. About 270MB, against about 660MB for Debian's ffmpeg package and its X11/GL libraries
+COPY --from=mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json migrate.ts admin.ts ./

@@ -7,12 +7,13 @@ import type {
 	GroupConversation,
 	GroupMessage,
 	GroupMessageKind,
-	Gif
+	Gif,
+	VoiceNote
 } from '#lib/types.js';
-import { mediaPreview } from '#lib/mediaPreview.js';
+import { messagePreview } from '#lib/mediaPreview.js';
 import { groupEventText } from '#lib/groupEvents.js';
 import { linkedPosts } from './linkedPosts.js';
-import type { StoredImage } from './images.js';
+import { filesOf, type StoredImage } from './images.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
 import { markGroupReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { hit, isLimited } from './ratelimit.js';
@@ -317,14 +318,9 @@ export async function removeMember(groupId: number, actorId: number, userId: num
 			.orderBy(asc(group_members.joined_at), asc(group_members.user_id))
 			.limit(1);
 		if (!next) {
-			const withImages = await tx
-				.select({ images: group_messages.images })
-				.from(group_messages)
-				.where(
-					and(eq(group_messages.group_id, groupId), sql`CARDINALITY(${group_messages.images}) > 0`)
-				);
+			const withFiles = await groupFiles(tx, groupId);
 			await tx.delete(group_chats).where(eq(group_chats.id, groupId));
-			const images = withImages.flatMap((m) => m.images);
+			const images = withFiles.flatMap((m) => m.files);
 			return { ...nothing, removed: true, deleted: true, images };
 		}
 		const events: GroupEvent[] = [
@@ -364,6 +360,7 @@ function selectMessages(where: SQL | undefined) {
 			images: group_messages.images,
 			image_sizes: group_messages.image_sizes,
 			gif: group_messages.gif,
+			audio: group_messages.audio,
 			reply_to_id: group_messages.reply_to_id,
 			created_at: group_messages.created_at,
 			edited_at: group_messages.edited_at,
@@ -402,6 +399,7 @@ async function toGroupMessages(rows: MessageRow[]): Promise<GroupMessage[]> {
 		images: r.images,
 		image_sizes: r.image_sizes,
 		gif: r.gif,
+		audio: r.audio,
 		created_at: r.created_at,
 		edited_at: r.edited_at,
 		linked_post: linked[i],
@@ -454,7 +452,8 @@ export async function sendGroupMessage(
 	content: string,
 	images: StoredImage[] = [],
 	replyTo: number | null = null,
-	gif: Gif | null = null
+	gif: Gif | null = null,
+	audio: VoiceNote | null = null
 ): Promise<GroupMessage> {
 	const [row] = await db
 		.insert(group_messages)
@@ -465,6 +464,7 @@ export async function sendGroupMessage(
 			images: images.map((i) => i.url),
 			image_sizes: images.length ? images.map((i) => i.size) : null,
 			gif,
+			audio,
 			reply_to_id: replyTo
 		})
 		.returning({ id: group_messages.id });
@@ -494,13 +494,14 @@ export async function editGroupMessage(
 			content: group_messages.content,
 			images: group_messages.images,
 			gif: group_messages.gif,
+			audio: group_messages.audio,
 			created_at: group_messages.created_at
 		})
 		.from(group_messages)
 		.where(theirs);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
-	if (!content && found.images.length === 0 && !found.gif) return 'empty';
+	if (!content && found.images.length === 0 && !found.gif && !found.audio) return 'empty';
 	// the same text: nothing to mark as edited
 	if (content !== found.content) {
 		const updated = await db
@@ -527,9 +528,21 @@ export async function deleteGroupMessage(groupId: number, senderId: number, id: 
 				eq(group_messages.kind, 'message')
 			)
 		)
-		.returning({ images: group_messages.images });
+		.returning({ files: filesOf('group_messages') });
 	return row ?? null;
 }
+
+/** The files (images, voice notes) of a group's messages, to remove once it is deleted. */
+const groupFiles = (tx: Pick<typeof db, 'select'>, groupId: number) =>
+	tx
+		.select({ files: filesOf('group_messages') })
+		.from(group_messages)
+		.where(
+			and(
+				eq(group_messages.group_id, groupId),
+				sql`(CARDINALITY(${group_messages.images}) > 0 OR ${group_messages.audio} IS NOT NULL)`
+			)
+		);
 
 /**
  * Marks the whole group as read for this member, with the reactions to their messages; returns
@@ -588,6 +601,7 @@ export async function getGroupConversations(userId: number): Promise<GroupConver
 				content: sql<string>`LEFT(${group_messages.content}, ${PREVIEW_LENGTH})`,
 				images: sql<number>`CARDINALITY(${group_messages.images})`,
 				gif: sql<boolean>`(${group_messages.gif} IS NOT NULL)`,
+				audio_ms: sql<number | null>`(${group_messages.audio}->>'duration_ms')::int`,
 				created_at: group_messages.created_at
 			})
 			.from(group_messages)
@@ -632,7 +646,7 @@ export async function getGroupConversations(userId: number): Promise<GroupConver
 						: null;
 				const sender = { username: last.sender_username, name: last.sender_name };
 				preview = groupEventText({ kind: last.kind, sender, target, content: last.content }, me);
-			} else if (last) preview = last.content || mediaPreview(last);
+			} else if (last) preview = messagePreview(last);
 			return {
 				group: {
 					id: g.id,
@@ -692,14 +706,9 @@ export async function deleteGroup(groupId: number) {
 			.select({ id: group_members.user_id })
 			.from(group_members)
 			.where(eq(group_members.group_id, groupId));
-		const withImages = await tx
-			.select({ images: group_messages.images })
-			.from(group_messages)
-			.where(
-				and(eq(group_messages.group_id, groupId), sql`CARDINALITY(${group_messages.images}) > 0`)
-			);
+		const withFiles = await groupFiles(tx, groupId);
 		// members, messages and reactions go with it (on delete cascade)
 		await tx.delete(group_chats).where(eq(group_chats.id, groupId));
-		return { members: members.map((m) => m.id), images: withImages.flatMap((m) => m.images) };
+		return { members: members.map((m) => m.id), images: withFiles.flatMap((m) => m.files) };
 	});
 }

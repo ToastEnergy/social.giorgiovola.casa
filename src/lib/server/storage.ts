@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { AwsClient } from 'aws4fetch';
 import {
 	S3_ACCESS_KEY_ID,
@@ -18,12 +19,16 @@ import {
 
 export type StoredObject = {
 	body: ReadableStream<Uint8Array<ArrayBuffer>> | Uint8Array<ArrayBuffer>;
+	/** bytes in `body`: the whole object, or the range asked for */
 	size: number;
 };
 
+/** Bytes `start` to `end` of an object, both included and within it (HTTP Range). */
+export type ByteRange = { start: number; end: number };
+
 type Driver = {
 	put(key: string, data: Uint8Array, contentType: string): Promise<void>;
-	get(key: string): Promise<StoredObject | null>;
+	get(key: string, range?: ByteRange): Promise<StoredObject | null>;
 	head(key: string): Promise<{ size: number } | null>;
 	remove(keys: string[]): Promise<void>;
 };
@@ -60,15 +65,21 @@ const fsDriver: Driver = {
 		await fs.promises.mkdir(path.dirname(file), { recursive: true });
 		await fs.promises.writeFile(file, data);
 	},
-	async get(key) {
+	async get(key, range) {
+		const file = fsPath(key);
+		let size: number;
 		try {
-			// files are at most a few MB (images are scaled down before they're stored)
-			const body: Uint8Array<ArrayBuffer> = await fs.promises.readFile(fsPath(key));
-			return { body, size: body.byteLength };
+			const stat = await fs.promises.stat(file);
+			if (!stat.isFile()) return null;
+			size = stat.size;
 		} catch (e) {
 			if (isMissing(e)) return null;
 			throw e;
 		}
+		// streamed, so a voice note of an hour isn't read into memory to serve a few KB of it
+		const stream = fs.createReadStream(file, range);
+		const body = Readable.toWeb(stream) as ReadableStream<Uint8Array<ArrayBuffer>>;
+		return { body, size: range ? range.end - range.start + 1 : size };
 	},
 	async head(key) {
 		try {
@@ -128,13 +139,21 @@ export function s3Driver(config: {
 			if (!res.ok) throw await failed(res, 'put', key);
 			await res.body?.cancel();
 		},
-		async get(key) {
-			const res = await send(key, { method: 'GET' });
+		async get(key, range) {
+			const res = await send(key, {
+				method: 'GET',
+				headers: range ? { Range: `bytes=${range.start}-${range.end}` } : undefined
+			});
 			if (res.status === 404) {
 				await res.body?.cancel();
 				return null;
 			}
 			if (!res.ok || !res.body) throw await failed(res, 'get', key);
+			// with a range: 206 and its bytes. A 200 means the whole object came back
+			if (range && res.status !== 206) {
+				await res.body.cancel();
+				throw new Error(`storage get ${key}: range ignored (${res.status})`);
+			}
 			return { body: res.body, size: Number(res.headers.get('Content-Length') ?? 0) };
 		},
 		async head(key) {
@@ -166,8 +185,8 @@ export function s3Driver(config: {
 function withFsFallback(bucket: Driver): Driver {
 	return {
 		put: bucket.put,
-		async get(key) {
-			return (await bucket.get(key)) ?? fsDriver.get(key);
+		async get(key, range) {
+			return (await bucket.get(key, range)) ?? fsDriver.get(key, range);
 		},
 		async head(key) {
 			return (await bucket.head(key)) ?? fsDriver.head(key);
@@ -210,8 +229,8 @@ const driver: Driver = S3_BUCKET
 export const put = (key: string, data: Uint8Array, contentType: string) =>
 	driver.put(key, data, contentType);
 
-/** The object under `key`, null when it doesn't exist. */
-export const get = (key: string) => driver.get(key);
+/** The object under `key` (only `range` of it when given), null when it doesn't exist. */
+export const get = (key: string, range?: ByteRange) => driver.get(key, range);
 
 /** The size of the object under `key`, null when it doesn't exist. */
 export const head = (key: string) => driver.head(key);

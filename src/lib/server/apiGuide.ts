@@ -24,8 +24,9 @@ Read all of Part 1 before making requests.
 ## Basics
 
 - Base URL: ${origin}/api/v1
-- Bodies are JSON (\`Content-Type: application/json\`), except image uploads, which send the
-  raw image bytes with an image Content-Type (see "Uploads").
+- Bodies are JSON (\`Content-Type: application/json\`), except image and voice note uploads,
+  which send the raw bytes with an image or audio Content-Type (see "Uploads" and "Voice
+  notes").
 - IMPORTANT: send a Content-Type header on EVERY POST, PUT, PATCH and DELETE, even when there
   is no body (use \`Content-Type: application/json\`; an empty body counts as \`{}\`). The server
   refuses writes without a Content-Type, and form-encoded or multipart writes from non-browser
@@ -137,6 +138,7 @@ Post:
     "images": ["/uploads/….webp"],      // paths on ${origin}, at most ${LIMITS.postImages}
     "image_sizes": [<ImageSize>] | null,  // same order as images, see ImageSize
     "gif": <Gif> | null,                  // a GIF instead of images, see GIFs
+    "audio": <VoiceNote> | null,          // a voice note; "content" is then its caption
     "created_at": "…", "edited_at": "…" | null,
     "likes": 3, "liked": true,           // liked, regiorged: by you (only when signed in)
     "regiorgs": 1, "regiorged": false,   // a regiorg ("regiorgio") is a repost
@@ -156,7 +158,17 @@ Post:
   A reply "ratios" its parent when it has more likes than the parent (and at least 3).
 
 QuotedPost: { "id", "user": User, "content", "images", "image_sizes": [<ImageSize>] | null,
-              "gif": <Gif> | null, "created_at", "is_quote" }
+              "gif": <Gif> | null, "audio": <VoiceNote> | null, "created_at", "is_quote" }
+VoiceNote: { "url": "/uploads/<uuid>.m4a", "duration_ms": 42000,
+             "waveform": [0-255, … 64 values], "size": 254810 }
+  A recorded voice message, transcoded by the server to AAC (mono, 48 kHz, 48 kbps) in an
+  M4A file (Content-Type audio/mp4), which every browser and phone plays. "url" is a path on
+  ${origin}: /uploads/… for posts (public), /dm-uploads/… for direct and group messages
+  (private, see Message images). Both answer HTTP Range requests, so a player can start and
+  seek without downloading the whole file. "duration_ms" is the real length (trailing
+  silence trimmed), "waveform" 64 peaks from 0 (silent) to 255 (loudest, relative to the
+  note's own loudest part, square-root scaled) to draw the note before loading it, "size"
+  the file size in bytes. Missing "audio" fields (older servers) mean null.
 ImageSize: { "width": 1600, "height": 1200 }
   The size in px of an uploaded image as served (EXIF rotation applied, scaled down to fit
   2048px), so you can reserve its space (aspect ratio) before it loads. "image_sizes" in a
@@ -259,16 +271,20 @@ Message (direct message):
     "content", "images": ["/dm-uploads/….webp"], "created_at",   // private, see Message images
     "image_sizes": [<ImageSize>] | null,          // same order as images, see ImageSize
     "gif": <Gif> | null,                          // a GIF instead of images, see GIFs
+    "audio": <VoiceNote> | null,                  // a voice note; "content" is its caption
+    "audio_played_at": null | when the recipient first played the voice note,
     "edited_at": null | when the sender last changed the text,
     "reply_to": { "id", "sender": { "username", "name" }, "content" (cut to 200),
-                  "images": 2, "gif": false } | null,   // gif: it is a GIF
+                  "images": 2, "gif": false,      // gif: it is a GIF
+                  "audio_ms": 42000 | null } | null,   // its voice note's length, if any
     "reactions": [ { "emoji", "username", "name", "avatar" } ],
     "linked_post": <QuotedPost> | null }
 
 GroupMessage (message or event of a group chat):
   { "id", "group_id", "kind": "message" | "created" | "added" | "removed" | "left" |
     "renamed" | "owner", "sender": User, "target": User | null, "content", "images", "image_sizes",
-    "gif" (like Message), "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
+    "gif", "audio" (like Message; no "audio_played_at": groups have no listened receipts),
+    "created_at", "edited_at", "reply_to", "reactions", "linked_post" }
   Anything but "message" is an event line ("Alice added Bob"): never unread, can't be
   replied or reacted to. "target" is who was added or removed; for "created" and
   "renamed" the content is the group's name.
@@ -310,9 +326,13 @@ GET /instance                                                  public
     "pollOption": ${LIMITS.pollOption}, "pollMinutesMin": ${LIMITS.pollMinutesMin},
     "pollMinutesMax": ${LIMITS.pollMinutesMax}, "pollMinutesDefault": ${LIMITS.pollMinutesDefault},
     "groupName": ${LIMITS.groupName}, "groupMembers": ${LIMITS.groupMembers}, … },
-    "gifs": { "provider": "klipy", "app_key": "…", "content_filter": "medium" } | null }
+    "gifs": { "provider": "klipy", "app_key": "…", "content_filter": "medium" } | null,
+    "voice_notes": { "max_duration_ms": 3600000, "max_upload_bytes": 157286400,
+                     "max_chunk_bytes": 5242880, "max_chunks": 2000 } | null }
   "gifs" is null when GIFs are off on this instance; otherwise what you need to search KLIPY
   yourself (see GIFs).
+  "voice_notes" is null when this server can't process audio (no ffmpeg): hide the
+  microphone, uploads answer 503. Otherwise the limits of Voice notes.
   "invite_required": signing up needs an invite code (see POST /auth/register). Only the very
   first account of an instance signs up without one. "registration_open" is always true:
   anyone with an invite can sign up.
@@ -529,20 +549,31 @@ POST /posts                                                    signed in, not mu
   { "content": "text (max ${LIMITS.postContent})",
     "uploads": ["id from POST /uploads", …]   (optional, at most ${LIMITS.postImages}),
     "gif": <Gif> | null,                        (optional, instead of uploads, see GIFs)
+    "audio": "id from POST /uploads/audio" | null, (optional, a voice note, see Voice notes)
     "reply_to": 120 | null,                     (a reply)
     "quote_of": 118 | null,                     (a quote regiorg; can't also reply)
     "poll": { "options": ["a", "b"] (${LIMITS.pollOptionsMin}-${LIMITS.pollOptionsMax}, distinct, max ${LIMITS.pollOption} chars),
               "duration_minutes": ${LIMITS.pollMinutesMin}-${LIMITS.pollMinutesMax} (default ${LIMITS.pollMinutesDefault}) } | null }
-  Content may be empty when there are images or a GIF; a poll needs text. Line breaks (\\n; \\r\\n is
+  Content may be empty when there are images, a GIF or a voice note; a poll needs text. Line breaks (\\n; \\r\\n is
   turned into \\n) are kept and shown; the ends are trimmed and more than one blank line in a
   row becomes one. 201: <Post>.
-  410 when an upload expired: upload it again. 30 posts a minute.
+  A voice note ("audio") takes a caption ("content") but no uploads, GIF or poll: 400
+  "A voice note can't have images, a GIF or a poll: only a caption". Replies and quotes can
+  be voice notes. When the voice note is still being processed after about 10 seconds (long
+  recordings), the answer is 202 { "status": "processing", "upload": <AudioUpload> } instead:
+  the post is created as soon as processing ends, and then shows up like any new post (the
+  "post" realtime event); your streams also get "audio_sent" { "upload", "type": "post",
+  "id" } (or "audio_failed" { "upload", "error" }), and GET /uploads/audio/:id says
+  "status": "sent" with "sent": { "type", "id" }. Don't send it again meanwhile (409).
+  410 when an upload expired: upload it again. 409 when the voice note is already sent or
+  its chunked upload isn't complete; 400 when it failed to process. 30 posts a minute.
 GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
   Edits the text (images and poll stay), with the same line break rules as POST /posts.
   Sets "edited_at", re-reads hashtags, and notifies profiles it newly @mentions (see
   Notification). 200: <Post>.
-  400 when the text would be empty on a post without images or GIF, or on a poll (its question).
+  400 when the text would be empty on a post without images, GIF or voice note, or on a poll
+  (its question). A voice note's caption can be edited like any text.
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204. When staff delete someone else's post, its open reports
   are resolved and the deletion (with a copy of the text) goes in the moderation log.
@@ -637,18 +668,29 @@ GET /conversations/:username/messages signed in
   marked read by reading.
 POST /conversations/:username/messages   signed in, not muted
   { "content" (max ${LIMITS.messageContent}), "uploads": [ids] (max ${LIMITS.messageImages}), "gif": <Gif> | null,
-    "reply_to": message id | null }
-  Content may be empty when there are images or a GIF; a GIF can't come with images (400).
+    "audio": "id from POST /uploads/audio" | null, "reply_to": message id | null }
+  Content may be empty when there are images, a GIF or a voice note; a GIF can't come with
+  images (400), a voice note can't come with images or a GIF (400: only a caption).
   201: <Message>. 403 when either side blocked the other. 70 messages a minute in all
-  (direct and group), 5 a minute with images.
+  (direct and group), 5 a minute with images. A voice note still being processed after about
+  10 seconds answers 202 like POST /posts: the message is sent when it's ready (both sides
+  get the "message" event, your streams "audio_sent" { "upload", "type": "message", "id" }
+  or "audio_failed"). Bots may send voice notes (not images).
 PATCH /conversations/:username/messages/:id   your own message, not muted
   { "content" (max ${LIMITS.messageContent}) } → <Message> with the new text and "edited_at" set.
-  Only the text changes (images, gif and reply_to stay); "" is accepted only when the message
-  has images or a GIF. Allowed for 60 minutes after sending: later → 403. 404 when it isn't yours or isn't in
+  Only the text changes (images, gif, audio and reply_to stay); "" is accepted only when the
+  message has images, a GIF or a voice note. Allowed for 60 minutes after sending: later → 403. 404 when it isn't yours or isn't in
   the conversation with :username; 403 when either side blocked the other. Sending the same
   text changes nothing. 30 edits a minute (direct and group). Both sides get message_edited.
 DELETE /conversations/:username/messages/:id   your own message → 204 (for both sides); 404 when it
   isn't yours or isn't in the conversation with :username
+POST /conversations/:username/messages/:id/played   signed in (the recipient)
+  Marks the voice note of a message :username sent you as played ("listened"): call it when
+  playback starts. 200 { "id", "audio_played_at" }. Idempotent: only the first time counts,
+  later calls answer the same time. The sender (and your other screens) get the realtime
+  "message_played" { "id", "audio_played_at" } the first time. 403 on a message you sent
+  (only the recipient marks it), 404 when there is no such message with a voice note in
+  this conversation. 120 a minute. Group messages have no listened receipts.
 PUT /conversations/:username/messages/:id/reaction   { "emoji": "👍" } → { "reactions" }
 DELETE /conversations/:username/messages/:id/reaction → { "reactions" }
   One reaction per profile per message; a new one replaces it (choosing the same emoji again
@@ -659,7 +701,9 @@ POST /conversations/:username/read    marks what they sent you, and their reacti
   messages, read → 204
 PUT /conversations/:username/mute / DELETE   → { "muted" }: no push, not in the badge
 POST /conversations/:username/typing  → 204: shows "typing…" to them for a few seconds;
-  send every 3-4 seconds while the user types. 40 a minute.
+  send every 3-4 seconds while the user types. 40 a minute. Body (optional):
+  { "action": "typing" (default) | "recording" }: "recording" shows "recording a voice
+  message…" instead; send it every 3-4 seconds while recording. 400 for another action.
 
 ### Group chats
 
@@ -670,7 +714,8 @@ POST /groups   { "name" (1-${LIMITS.groupName}), "members": ["alice", "bob"] }  
 GET /groups/:id                       member → <Group>; 404 when you aren't a member
 PATCH /groups/:id   { "name" }        member, not muted → <Group>
 GET /groups/:id/messages              member: like a direct conversation, GroupMessages
-POST /groups/:id/messages             member, not muted: same body as direct → 201 <GroupMessage>
+POST /groups/:id/messages             member, not muted: same body as direct (voice notes and
+  their 202 too, "type": "group_message") → 201 <GroupMessage>
 PATCH /groups/:id/messages/:messageId            your own message, not muted: like direct
   messages, { "content" } → <GroupMessage>, 60 minutes after sending at most. Events (kind
   other than "message") can't be edited (404). Members get group_message_edited.
@@ -682,15 +727,17 @@ POST /groups/:id/members   { "usernames": ["carla"] }   member → <Group>
 DELETE /groups/:id/members/:username  the owner removes someone, or anyone removes
   themself (leaves) → 204
 POST /groups/:id/leave                → 204
-POST /groups/:id/typing               → 204
+POST /groups/:id/typing               → 204; { "action": "recording" } like direct ones
   Managing groups (create, rename, add, remove): limited per minute.
 
 ### Message images
 
-Images of direct and group messages are private to their conversation. "images" is still a
-list of paths on ${origin}; new message images are /dm-uploads/<uuid>.webp, messages sent
-before images became private keep /uploads/<uuid>.webp paths (the same files, protected the
-same way). Post images (/uploads/ paths in a Post) stay public.
+Images and voice notes of direct and group messages are private to their conversation.
+"images" is still a list of paths on ${origin}; new message images are
+/dm-uploads/<uuid>.webp, messages sent before images became private keep
+/uploads/<uuid>.webp paths (the same files, protected the same way). Voice notes of messages
+are /dm-uploads/<uuid>.m4a ("audio.url"), served under exactly the same rules as the images
+below. Post images and voice notes (/uploads/ paths in a Post) stay public.
 
 GET /dm-uploads/<uuid>.webp            (not under /api/v1: prefix the path with ${origin})
   Needs the same sign-in as reading the conversation: the website's cookie, or
@@ -710,6 +757,12 @@ GET /uploads/<uuid>.webp               the same rules for a message image sent b
   the Authorization header says (an invalid token is ignored there, never a 401).
   Limitation: anyone who could see an image can keep a copy. Privacy keeps out people who
   were never in the conversation, or no longer are.
+Every /uploads/ and /dm-uploads/ file (images and voice notes) supports HTTP Range requests
+(RFC 9110): \`Accept-Ranges: bytes\` and a strong \`ETag\` on every answer; \`Range: bytes=a-b\`,
+\`bytes=a-\` or \`bytes=-n\` → 206 with \`Content-Range\`; a start past the end → 416 with
+\`Content-Range: bytes */<size>\`; several ranges, or an \`If-Range\` that isn't the ETag → 200
+with the whole file. \`If-None-Match\` with the ETag → 304. Audio players (iOS especially)
+rely on this to play and seek.
 
 ### Uploads
 
@@ -721,6 +774,69 @@ POST /uploads                         signed in, not muted
   together) are refused with a 400.
   (Browsers on the website send multipart with an "image" field instead.)
 DELETE /uploads/:id                   an upload you no longer need → 204
+  Also deletes a staged voice note or an open voice note session (see Voice notes). 404 when
+  it isn't yours or is already gone.
+
+### Voice notes
+
+A voice note is uploaded first, then sent by passing its id as "audio" in POST /posts (posts,
+replies, quotes), POST /conversations/:username/messages or POST /groups/:id/messages. Bots
+may upload and send voice notes too (with their sgc_ token). Upload as soon as recording
+stops (or while recording, with a session), so sending is instant.
+
+The server accepts what browsers and phones record: WebM/Opus (Chrome, Firefox, Android),
+MP4/M4A with AAC (Safari, iOS, expo-audio), Ogg (Opus/Vorbis), WAV and MP3; the file is
+recognised from its content, not its Content-Type or name. It transcodes it to AAC in M4A
+(see VoiceNote), strips all metadata, evens out loudness, trims trailing silence (never the
+start), measures the real duration and computes the waveform. At most 1 hour (a few seconds
+over are cut to the hour, more is refused), 150 MB of input. GET /instance → "voice_notes"
+gives these limits, or null when the server can't process audio (then every endpoint here
+answers 503 "Voice notes aren't available on this server").
+
+AudioUpload (what these endpoints answer):
+  { "id": "uuid", "status": "receiving" | "processing" | "ready" | "failed" | "sent",
+    "duration_ms": 42000 | null, "waveform": [64 values] | null, "size": 254810 | null,
+    "error": "…" | null,
+    "chunks": [0, 1, 2],                  // only while "receiving": the chunks received
+    "sent": { "type": "post" | "message" | "group_message", "id": 123 } }  // only once sent
+  receiving: a session waiting for chunks. processing: being transcoded (long recordings
+  take up to a minute or so; you may already send it, see POST /posts). ready: duration,
+  waveform and size are known. failed: "error" says why (unsupported file, too long, …);
+  upload a fixed file. sent: attached to "sent". Unsent uploads are deleted after a day:
+  sending one then answers 410, upload it again.
+
+POST /uploads/audio                   signed in, not muted (bots too)
+  The whole recording as the raw request body with its Content-Type (audio/webm,
+  audio/mp4, audio/ogg, audio/wav, audio/mpeg, application/octet-stream…); browsers may send
+  multipart with an "audio" field instead. At most the server's request body limit (about
+  52 MB, enough for most notes); use a session for more. Waits up to 3 seconds for
+  processing: 201 <AudioUpload> with "status": "ready" (short notes), or "processing" (poll
+  GET /uploads/audio/:id, or just send it). 400 when the file isn't usable (the reason in
+  "error": "Unsupported or corrupted audio file", "The file has no audio", "Voice notes can
+  be at most 1 hour long", "The recording is empty"…), 413 too big, 429 when 3 of yours are
+  already processing, 503 when voice notes are off.
+POST /uploads/audio/sessions          signed in, not muted (bots too)
+  Opens a chunked upload, for long recordings and recorders that upload while recording.
+  201 <AudioUpload> ("status": "receiving", "chunks": []); its id is the voice note's id.
+  At most 3 open sessions at once (429).
+PUT /uploads/audio/sessions/:id/chunks/:n   the session's owner
+  Chunk n (0, 1, 2, … at most 1999) as the raw request body (Content-Type
+  application/octet-stream), at most 5 MB, all chunks together at most 150 MB. The chunks
+  are the recording's bytes cut in order: chunk 0 is the start of the file. Sending chunk n
+  again replaces it, so retrying is safe; they may arrive in any order. 200 { "id", "chunk":
+  n, "received": how many chunks the server has }. 404 unknown session, 409 when it was
+  already completed, 413 too big. GET /uploads/audio/:id lists the chunks received, to
+  resume after an interruption.
+POST /uploads/audio/sessions/:id/complete   { "chunks": 27 }   the session's owner
+  "chunks": how many were sent (0 to chunks - 1 are joined; others are dropped). 400 "Chunk
+  n is missing", 409 when already complete. Then like POST /uploads/audio: 200
+  <AudioUpload> ("processing" or "ready"), or 400 when the recording isn't usable.
+GET /uploads/audio/:id                signed in, the uploader → <AudioUpload>; 404 otherwise
+DELETE /uploads/:id                   discards a voice note or a session → 204
+
+Rate limits (per account, its identities together; per bot for bots): POST /uploads/audio and
+POST …/sessions count against the 30 uploads a minute shared with images; whole uploads and
+completed sessions also against 20 a minute; chunks against 120 a minute.
 
 ### GIFs
 
@@ -968,7 +1084,14 @@ GET /stream                           public or signed in
     group_message_reactions  { "group_id", "id", "reactions" }
     group_updated   { "id" }   renamed or members changed: GET /groups/:id again (404 =
                                you were removed)
-    typing          { "group_id": id | null, "user": { "username", "name" } }
+    message_played  { "id", "audio_played_at" }   the recipient played the voice note of a
+                    direct message (see POST …/messages/:id/played)
+    typing          { "group_id": id | null, "user": { "username", "name" },
+                      "action": "typing" | "recording" }   recording: a voice note
+    audio_sent      { "upload": "uuid", "type": "post" | "message" | "group_message", "id" }
+                    a post or message that was waiting for its voice note (202) was sent
+    audio_failed    { "upload": "uuid", "error": "…" }   …or couldn't be: send it again
+                    (with a new upload when the voice note itself failed)
   The stream follows the profile in use when it opened: reconnect after POST /auth/switch.
   It is closed by the server when that happens, when the session is revoked, and when an
   identity it acts as stops being shared with the account.
@@ -996,6 +1119,12 @@ ID=$(curl -s -X POST -H "$A" -H 'Content-Type: image/png' --data-binary @photo.p
   $ORIGIN/api/v1/uploads | jq -r .id)
 curl -X POST -H "$A" -H 'Content-Type: application/json' \\
   -d "{\\"content\\":\\"hello #tea\\",\\"uploads\\":[\\"$ID\\"]}" $ORIGIN/api/v1/posts
+
+# a voice note: upload the recording, then post its id (a caption is optional)
+AUDIO=$(curl -s -X POST -H "$A" -H 'Content-Type: audio/webm' --data-binary @note.webm \\
+  $ORIGIN/api/v1/uploads/audio | jq -r .id)
+curl -X POST -H "$A" -H 'Content-Type: application/json' \\
+  -d "{\\"content\\":\\"listen\\",\\"audio\\":\\"$AUDIO\\"}" $ORIGIN/api/v1/posts
 
 curl -X POST -H "$A" -H 'Content-Type: application/json' \\
   -d '{"content":"agreed","reply_to":123}' $ORIGIN/api/v1/posts

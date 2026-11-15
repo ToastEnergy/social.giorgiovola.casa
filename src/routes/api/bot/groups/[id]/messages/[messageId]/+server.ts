@@ -13,7 +13,7 @@ export const DELETE: RequestHandler = botHandler(async ({ user }, { params }) =>
 	if (group instanceof Response) return group;
 	const deleted = await deleteGroupMessage(group.id, user.id, id);
 	if (!deleted) return botError(404, 'Message not found');
-	await removeUploads(deleted.images);
+	await removeUploads(deleted.files);
 	void publishGroupMessageDeleted(
 		group.id,
 		id,

@@ -6,6 +6,7 @@ import { getMotd } from '#lib/server/motd.js';
 import { membersOnly } from '#lib/server/membersOnly.js';
 import { gifConfig } from '#lib/server/gifs.js';
 import { LIMITS } from '#lib/server/validation.js';
+import { voiceNotesConfig } from '#lib/server/stagedAudio.js';
 import { version } from '$app/env';
 
 /** Public facts about this instance: the message of the day, how signing up works, limits. */
@@ -21,5 +22,7 @@ export const GET: RequestHandler = v1(async ({ locals }) => ({
 	members_only: membersOnly(),
 	limits: { ...LIMITS, maxBots: MAX_BOTS, maxProfileUpdates: MAX_PROFILE_UPDATES },
 	// what clients need to search KLIPY for GIFs themselves, null when GIFs are off
-	gifs: gifConfig()
+	gifs: gifConfig(),
+	// voice note uploads and their limits, null when this server can't process them (no ffmpeg)
+	voice_notes: await voiceNotesConfig()
 }));

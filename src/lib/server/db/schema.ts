@@ -16,7 +16,7 @@ import {
 	uniqueIndex,
 	type AnyPgColumn
 } from 'drizzle-orm/pg-core';
-import type { Gif, ImageSize } from '../../types.js';
+import type { Gif, ImageSize, VoiceNote } from '../../types.js';
 
 // Property names match the column names (snake_case) so rows line up with the types in
 // src/lib/types.ts. Notifications (inbox) are created and removed by src/lib/server/notify.ts,
@@ -137,6 +137,8 @@ export const posts = pgTable(
 		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images (src/lib/server/gifs.ts); only its URLs, never a copy
 		gif: jsonb('gif').$type<Gif>(),
+		// a voice note (src/lib/server/audio.ts) instead of images, GIF or poll; the text is its caption
+		audio: jsonb('audio').$type<VoiceNote>(),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		edited_at: timestamptz('edited_at'),
 		reply_to: integer('reply_to').references((): AnyPgColumn => posts.id, { onDelete: 'cascade' }),
@@ -359,6 +361,10 @@ export const messages = pgTable(
 		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images, like posts.gif
 		gif: jsonb('gif').$type<Gif>(),
+		// a voice note, like posts.audio
+		audio: jsonb('audio').$type<VoiceNote>(),
+		// when the recipient first played the voice note
+		audio_played_at: timestamptz('audio_played_at'),
 		// the message this one answers; the reply stays when it is deleted
 		reply_to_id: integer('reply_to_id').references((): AnyPgColumn => messages.id, {
 			onDelete: 'set null'
@@ -380,6 +386,10 @@ export const messages = pgTable(
 			.where(sql`${t.read_at} IS NULL`),
 		// finds the message an image belongs to, to check who may see it (src/routes/dm-uploads)
 		index('messages_images').using('gin', t.images),
+		// the same for voice notes
+		index('messages_audio_url')
+			.on(sql`(${t.audio}->>'url')`)
+			.where(sql`${t.audio} IS NOT NULL`),
 		check('messages_not_self', sql`${t.sender_id} != ${t.recipient_id}`)
 	]
 );
@@ -447,6 +457,8 @@ export const group_messages = pgTable(
 		image_sizes: jsonb('image_sizes').$type<ImageSize[]>(),
 		// a KLIPY GIF instead of images, like posts.gif
 		gif: jsonb('gif').$type<Gif>(),
+		// a voice note, like posts.audio
+		audio: jsonb('audio').$type<VoiceNote>(),
 		// the message this one answers; the reply stays when it is deleted
 		reply_to_id: integer('reply_to_id').references((): AnyPgColumn => group_messages.id, {
 			onDelete: 'set null'
@@ -459,6 +471,9 @@ export const group_messages = pgTable(
 		index('group_messages_group_id').on(t.group_id, t.id),
 		// finds the message an image belongs to, like messages_images
 		index('group_messages_images').using('gin', t.images),
+		index('group_messages_audio_url')
+			.on(sql`(${t.audio}->>'url')`)
+			.where(sql`${t.audio} IS NOT NULL`),
 		index('group_messages_reply_to_id')
 			.on(t.reply_to_id)
 			.where(sql`${t.reply_to_id} IS NOT NULL`),

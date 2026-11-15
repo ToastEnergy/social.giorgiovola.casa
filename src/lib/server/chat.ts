@@ -1,5 +1,6 @@
 import type { ShareRecipient, User } from '#lib/types.js';
-import { fail, rateLimit } from './api.js';
+import { created, fail, rateLimit } from './api.js';
+import { audioPending, sendWithAudio } from './stagedAudio.js';
 import {
 	addMembers,
 	createGroup,
@@ -54,6 +55,7 @@ import {
 	getConversations,
 	getThread,
 	isDmMuted,
+	markAudioPlayed,
 	markThreadRead,
 	mutedPeers,
 	sendMessage,
@@ -68,9 +70,12 @@ import {
 	publishMessage,
 	publishMessageDeleted,
 	publishMessageEdited,
+	publishMessagePlayed,
 	publishMessageReactions,
+	publishToProfile,
 	publishTyping,
-	pushUnreadMessages
+	pushUnreadMessages,
+	type TypingAction
 } from './realtime.js';
 import { LIMITS } from './validation.js';
 import { EDIT_WINDOW_MS } from '#lib/messageEdits.js';
@@ -215,8 +220,8 @@ export async function conversationMessages(me: User, username: string, before: n
 const MAX_BOT_MESSAGES = 70;
 
 /**
- * Reads a message body. Bots send text only, like in the bot API, and count against its
- * message limit (before the body is read).
+ * Reads a message body. Bots send text or voice notes only (no images, like in the bot API),
+ * and count against its message limit (before the body is read).
  */
 async function readMessage(locals: App.Locals, me: User, request: Request) {
 	const bot = locals.auth === 'bot';
@@ -230,7 +235,17 @@ async function readMessage(locals: App.Locals, me: User, request: Request) {
 	return body;
 }
 
-/** Sends a direct message: JSON `{ content, uploads?, reply_to? }` or multipart with `images`. */
+/** Who can't message whom: a 403 when either blocked the other. */
+async function checkCanMessage(me: User, peer: { id: number }) {
+	const block = await getBlock(me.id, peer.id);
+	if (block.me) fail(403, 'Unblock this user to message them');
+	if (block.peer) fail(403, "You can't message this user");
+}
+
+/**
+ * Sends a direct message: JSON `{ content, uploads?, reply_to?, gif?, audio? }` or multipart
+ * with `images`. A 202 response when its voice note is still being processed (sendWithAudio).
+ */
 export async function sendDirect(locals: App.Locals, me: User, username: string, request: Request) {
 	const body = await readMessage(locals, me, request);
 	const withImages = hasImages(body);
@@ -239,13 +254,28 @@ export async function sendDirect(locals: App.Locals, me: User, username: string,
 	const replyTo = thrown(readReplyTo(body.fields));
 
 	const peer = await peerOf(me, username);
-	const block = await getBlock(me.id, peer.id);
-	if (block.me) fail(403, 'Unblock this user to message them');
-	if (block.peer) fail(403, "You can't message this user");
+	await checkCanMessage(me, peer);
 	if (replyTo !== null && !(await isDirectMessageBetween(replyTo, me.id, peer.id)))
 		fail(400, 'The message you are replying to is gone');
 
 	countMessage(me.id, withImages);
+	if (body.audio) {
+		const result = await sendWithAudio(
+			me.id,
+			body.audio,
+			'dm',
+			async (audio, deferred) => {
+				// sent later: they may have blocked each other meanwhile
+				if (deferred) await checkCanMessage(me, peer);
+				const message = await sendMessage(me, peer, body.content, [], replyTo, null, audio);
+				void publishMessage(message, me.id, peer.id, me.name);
+				return message;
+			},
+			(message) => ({ type: 'message', id: message.id }),
+			(event, data) => publishToProfile(me.id, event, data)
+		);
+		return 'sent' in result ? created(result.sent) : audioPending(result.pending);
+	}
 	const images = thrown(await saveMessageImages(body, me.id));
 	let message;
 	try {
@@ -255,7 +285,7 @@ export async function sendDirect(locals: App.Locals, me: User, username: string,
 		throw e;
 	}
 	void publishMessage(message, me.id, peer.id, me.name);
-	return message;
+	return created(message);
 }
 
 // edits, per profile over direct and group messages together
@@ -303,8 +333,21 @@ export async function deleteDirect(me: User, username: string, id: number) {
 	const deleted = await deleteMessage(me.id, id, peer.id);
 	// someone else's message and a missing one look the same: ids of others' messages stay private
 	if (!deleted) fail(404, 'Message not found');
-	await removeUploads(deleted.images);
+	await removeUploads(deleted.files);
 	void publishMessageDeleted(id, me.id, deleted.recipient_id);
+}
+
+/**
+ * Marks the voice note of a message `username` sent you as played (the first time counts), and
+ * tells the sender. Idempotent.
+ */
+export async function playedDirect(me: User, username: string, id: number) {
+	const peer = (await findPeer(username)) ?? fail(404, 'User not found');
+	const result = await markAudioPlayed(me, peer, id);
+	if (result === 'mine') fail(403, 'Only the recipient can mark a voice note as played');
+	if (!result) fail(404, 'Voice note not found');
+	if (result.changed) publishMessagePlayed(id, result.audio_played_at, [me.id, peer.id]);
+	return { id, audio_played_at: result.audio_played_at };
 }
 
 /** Sets (`emoji`) or removes (null) your reaction to a message of the conversation. */
@@ -339,14 +382,30 @@ export async function muteDirect(me: User, username: string, muted: boolean) {
 // the composer sends one every few seconds while someone is writing
 const MAX_TYPING = 40;
 
-/** Tells the other side you are writing. Nothing is stored. Silent for muted accounts. */
-export async function typingDirect(locals: App.Locals, me: User, username: string) {
+/** What a typing request says you are doing: `{ "action": "recording" }`, or typing. */
+export function readTypingAction(body: Record<string, unknown>): TypingAction {
+	const action = body.action ?? 'typing';
+	if (action !== 'typing' && action !== 'recording')
+		fail(400, 'action must be "typing" or "recording"');
+	return action;
+}
+
+/**
+ * Tells the other side you are writing (or recording a voice note). Nothing is stored. Silent
+ * for muted accounts.
+ */
+export async function typingDirect(
+	locals: App.Locals,
+	me: User,
+	username: string,
+	action: TypingAction = 'typing'
+) {
 	if (locals.muted) return;
 	rateLimit(`typing:${me.id}`, MAX_TYPING);
 	const peer = (await findPeer(username)) ?? fail(404, 'User not found');
 	const block = await getBlock(me.id, peer.id);
 	// blocked either way: they can't get your messages, so they don't see you writing either
-	if (!block.me && !block.peer) publishTyping(me, [peer.id], null);
+	if (!block.me && !block.peer) publishTyping(me, [peer.id], null, action);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -409,7 +468,10 @@ export async function groupMessages(me: User, id: number | null, before: number 
 	return threadPage(await getGroupThread(group.id, before));
 }
 
-/** Sends a message to the group: JSON `{ content, uploads?, reply_to? }` or multipart. */
+/**
+ * Sends a message to the group: JSON `{ content, uploads?, reply_to?, gif?, audio? }` or
+ * multipart. A 202 response when its voice note is still being processed (sendWithAudio).
+ */
 export async function sendToGroup(
 	locals: App.Locals,
 	me: User,
@@ -426,6 +488,36 @@ export async function sendToGroup(
 		fail(400, 'The message you are replying to is gone');
 
 	countMessage(me.id, withImages);
+	if (body.audio) {
+		const result = await sendWithAudio(
+			me.id,
+			body.audio,
+			'dm',
+			async (audio, deferred) => {
+				// sent later: the members may have changed meanwhile
+				const current = deferred ? await groupOf(me, group.id) : group;
+				const message = await sendGroupMessage(
+					current.id,
+					me,
+					body.content,
+					[],
+					replyTo,
+					null,
+					audio
+				);
+				void publishGroupMessage(
+					message,
+					me.id,
+					current.members.map((m) => m.id),
+					current.name
+				);
+				return message;
+			},
+			(message) => ({ type: 'group_message', id: message.id }),
+			(event, data) => publishToProfile(me.id, event, data)
+		);
+		return 'sent' in result ? created(result.sent) : audioPending(result.pending);
+	}
 	const images = thrown(await saveMessageImages(body, me.id));
 	let message;
 	try {
@@ -440,7 +532,7 @@ export async function sendToGroup(
 		group.members.map((m) => m.id),
 		group.name
 	);
-	return message;
+	return created(message);
 }
 
 /** Changes the text of one of your own messages in the group, within an hour of sending it. */
@@ -466,7 +558,7 @@ export async function deleteFromGroup(me: User, id: number | null, messageId: nu
 	const group = await groupOf(me, id);
 	const deleted = await deleteGroupMessage(group.id, me.id, messageId);
 	if (!deleted) fail(404, 'Message not found');
-	await removeUploads(deleted.images);
+	await removeUploads(deleted.files);
 	void publishGroupMessageDeleted(
 		group.id,
 		messageId,
@@ -548,13 +640,19 @@ export async function removeFromGroup(me: User, id: number | null, username: str
 		);
 }
 
-export async function typingInGroup(locals: App.Locals, me: User, id: number | null) {
+export async function typingInGroup(
+	locals: App.Locals,
+	me: User,
+	id: number | null,
+	action: TypingAction = 'typing'
+) {
 	if (locals.muted) return;
 	rateLimit(`typing:${me.id}`, MAX_TYPING);
 	const group = await groupOf(me, id);
 	publishTyping(
 		me,
 		group.members.map((m) => m.id),
-		group.id
+		group.id,
+		action
 	);
 }

@@ -102,7 +102,7 @@ The project is on Prettier 2 and `prettier-plugin-svelte` 2, which can't print S
 - `src/routes/` (everything else) — pages. Their `+page.server.ts` / `+layout.server.ts` only call the API; plus asset routes (`avatar/`, `avatars/`, `uploads/`, `@[username]/[post]/image.png`) and `/api.txt`.
 - `src/lib/components/` — Svelte components.
 - `src/lib/api.ts` — calling the API from the browser (`api()`, `ApiError`, `Page`); `src/lib/apiLoad.ts` — `apiGet()` for page loads (401 → login, `error()` otherwise).
-- `src/lib/server/` — server-only code: services (posts, feeds, users, chat, identities, admin, login, passkeyAuth, notifications…), db, sessions, rate limiting, images, push, realtime. Never import it from client code or page loads.
+- `src/lib/server/` — server-only code: services (posts, feeds, users, chat, identities, admin, login, passkeyAuth, notifications…), db, sessions, rate limiting, images, push (and its outbox worker, `pushOutbox.ts`, started from `init` in `hooks.server.ts`), realtime. Never import it from client code or page loads.
 - `src/lib/server/api.ts` — v1 plumbing: `v1()` handler wrapper, `ApiError` / `fail()`, `requireUser` / `requireAccount` / `requireUnmuted` / `requireStaff` / `requireAdmin`, `readJson`, pagination (`offsetParams`, `offsetPage`, `idCursor`), `rateLimit`, CORS headers.
 - `src/lib/server/auth.ts` — `authenticate(event)`: the one place requests are authenticated (cookie, `sgu_` human token or `sgc_` bot token), called from `hooks.server.ts`.
 - `src/lib/server/apiGuide.ts` — Part 1 of `/api.txt` (the v1 reference). `src/lib/botDocs.ts` — the `/developers` reference (bot API and v1).

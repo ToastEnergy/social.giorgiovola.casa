@@ -705,6 +705,8 @@ async function seed(db: postgres.Sql) {
 				THEN type || '-' || post_id || '-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
 			ELSE 'follow-' || to_char(created_at AT TIME ZONE 'UTC', 'YYYYMMDD')
 		END WHERE group_key IS NULL AND type IN ('like', 'regiorg', 'follow');`,
+		// the notifications above are history: the push worker (pushOutbox.ts) mustn't send them
+		`UPDATE inbox SET pushed_at = created_at WHERE pushed_at IS NULL;`,
 
 		'COMMIT;'
 	].join('\n');

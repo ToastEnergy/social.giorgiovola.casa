@@ -17,7 +17,6 @@ import { PUBLIC_URL } from '$app/env/public';
 import type { ChatMessage, GroupMessage, NotificationType } from '#lib/types.js';
 import { mentions } from '#lib/mentions.js';
 import { fcmConfigured, sendFcm } from './fcm.js';
-import type { Notification } from './notify.js';
 
 /**
  * Push notifications: web push to the browsers subscribed by the recipient's account(s), and FCM
@@ -154,23 +153,38 @@ function payloadFor(row: Row) {
 
 type Payload = { title: string; body: string; url: string; tag: string };
 
+/** How a push went: 'retry' when nothing reached any device and trying again may help. */
+type Outcome = 'sent' | 'retry';
+
+/** What sending to a set of devices did: how many got it, and how many failed transiently. */
+type Tally = { sent: number; transient: number };
+
 /**
  * Sends a notification to every browser and phone of an account that can use this profile:
- * the account itself, or the owner of an identity and the accounts it is shared with.
+ * the account itself, or the owner of an identity and the accounts it is shared with. 'retry'
+ * only when no device got it and at least one failed for a reason that may pass: a device that
+ * did get it shouldn't get it twice.
  */
-async function deliver(profileId: number, payload: Payload) {
+async function deliver(profileId: number, payload: Payload): Promise<Outcome> {
 	// bots notify nobody: their owner would get a push for everything the bot receives
 	const sessionsOfProfile = sql`${sessions.user_id} IN (
 		SELECT COALESCE(owner_id, id) FROM users WHERE id = ${profileId} AND NOT bot
 		UNION SELECT account_id FROM identity_members WHERE identity_id = ${profileId}
 	)`;
-	await Promise.all([
+	const tallies = await Promise.all([
 		deliverWeb(sessionsOfProfile, payload),
 		deliverApp(profileId, sessionsOfProfile, payload)
 	]);
+	const sent = tallies.reduce((n, t) => n + t.sent, 0);
+	const transient = tallies.reduce((n, t) => n + t.transient, 0);
+	return sent === 0 && transient > 0 ? 'retry' : 'sent';
 }
 
-async function deliverWeb(sessionsOfProfile: SQL, payload: Payload) {
+// a push service that is overloaded or down, or a network error (no status)
+const transientStatus = (status: number | undefined) =>
+	status === undefined || status === 429 || status >= 500;
+
+async function deliverWeb(sessionsOfProfile: SQL, payload: Payload): Promise<Tally> {
 	const keys = await getVapid();
 	const options = {
 		vapidDetails: { subject: subject(), ...keys },
@@ -187,6 +201,7 @@ async function deliverWeb(sessionsOfProfile: SQL, payload: Payload) {
 		.innerJoin(sessions, eq(sessions.token, push_subscriptions.session_token))
 		.where(sessionsOfProfile);
 	const message = JSON.stringify(payload);
+	const tally: Tally = { sent: 0, transient: 0 };
 	await Promise.all(
 		subs.map(async (sub) => {
 			try {
@@ -195,26 +210,36 @@ async function deliverWeb(sessionsOfProfile: SQL, payload: Payload) {
 					message,
 					options
 				);
+				tally.sent++;
 			} catch (e) {
 				const status = (e as { statusCode?: number }).statusCode;
 				// the browser dropped the subscription
 				if (status === 404 || status === 410)
 					await db.delete(push_subscriptions).where(eq(push_subscriptions.endpoint, sub.endpoint));
-				else console.error('push: send failed', status ?? e);
+				else {
+					console.error('push: send failed', status ?? e);
+					if (transientStatus(status)) tally.transient++;
+				}
 			}
 		})
 	);
+	return tally;
 }
 
-async function deliverApp(profileId: number, sessionsOfProfile: SQL, payload: Payload) {
-	if (!fcmConfigured()) return;
+async function deliverApp(
+	profileId: number,
+	sessionsOfProfile: SQL,
+	payload: Payload
+): Promise<Tally> {
+	const tally: Tally = { sent: 0, transient: 0 };
+	if (!fcmConfigured()) return tally;
 	// one per phone, even when several of its accounts can use the profile
 	const devices = await db
 		.selectDistinct({ token: push_devices.token })
 		.from(push_devices)
 		.innerJoin(sessions, eq(sessions.token, push_devices.session_token))
 		.where(and(eq(push_devices.platform, 'android'), sessionsOfProfile));
-	if (devices.length === 0) return;
+	if (devices.length === 0) return tally;
 	// the app switches to the profile the notification is for before opening it
 	const [profile] = await db
 		.select({ username: users.username })
@@ -227,13 +252,19 @@ async function deliverApp(profileId: number, sessionsOfProfile: SQL, payload: Pa
 	await Promise.all(
 		devices.map(async ({ token }) => {
 			try {
-				if (!(await sendFcm(token, { ...payload, channel, profile: profile?.username })))
+				const result = await sendFcm(token, { ...payload, channel, profile: profile?.username });
+				if (result === 'sent') tally.sent++;
+				else if (result === 'retry') tally.transient++;
+				else if (result === 'gone')
 					await db.delete(push_devices).where(eq(push_devices.token, token));
 			} catch (e) {
+				// a network error, or no access token
 				console.error('push: fcm send failed', e);
+				tally.transient++;
 			}
 		})
 	);
+	return tally;
 }
 
 /** Notifies the recipient of a direct message, unless they muted the conversation. */
@@ -313,39 +344,134 @@ export async function sendGroupMessagePush(
 	}
 }
 
-/** Sends the push of follow `notifications`, once: the rows are claimed like in sendPush. */
-export async function sendFollowPush(notifications: Notification[]) {
-	for (const n of notifications)
-		if (n.type === 'follow' && n.sender_id !== null) await followPush(n.id, n.sender_id, n.user_id);
+/** An inbox row whose push the worker claimed (pushOutbox.ts). */
+export type PendingPush = {
+	id: number;
+	user_id: number;
+	sender_id: number | null;
+	post_id: number | null;
+	type: NotificationType;
+	invites: number | null;
+};
+
+type Payloads = Map<number, { recipientId: number; payload: Payload }>;
+
+/**
+ * The push a row is part of: each push replaces the previous one of its tag on the device, so
+ * the rows of one tag (likes and regiorgs of a post, a profile's follows, its invites) are sent
+ * as one. Any other row is a push of its own.
+ */
+function pushGroupOf(row: PendingPush) {
+	if (GROUPED.includes(row.type)) return `${row.type}:${row.user_id}:${row.post_id}`;
+	if (row.type === 'follow' || row.type === 'invites') return `${row.type}:${row.user_id}`;
+	return `row:${row.id}`;
 }
 
-async function followPush(id: number, followerId: number, followedId: number) {
-	try {
-		const claimed = await db
-			.update(inbox)
-			.set({ pushed_at: sql`NOW()` })
-			.where(and(eq(inbox.id, id), isNull(inbox.pushed_at)))
-			.returning({ id: inbox.id });
-		if (claimed.length === 0) return;
-		const found = await db
-			.select({
-				id: users.id,
-				name: users.name,
-				username: users.username,
-				owner_id: users.owner_id
-			})
-			.from(users)
-			.where(inArray(users.id, [followerId, followedId]));
-		const sender = found.find((u) => u.id === followerId);
-		const recipient = found.find((u) => u.id === followedId);
-		if (!sender || !recipient) return;
-		// one tag for all follows: the push replaces the previous one and counts the unread rest
+/**
+ * Sends the pushes of the rows the worker claimed, one per group (pushGroupOf), named after its
+ * newest row and counting the others. Answers the ids of the rows done (sent, or with nothing to
+ * send) and of those to try again later.
+ */
+export async function sendPending(rows: PendingPush[]) {
+	const groups = new Map<string, PendingPush[]>();
+	for (const row of rows)
+		groups.set(pushGroupOf(row), [...(groups.get(pushGroupOf(row)) ?? []), row]);
+	const newest = [...groups.values()].map((g) => g.reduce((a, b) => (b.id > a.id ? b : a)));
+
+	// the push of each group, from its newest row. a row gone since the claim (an unlike, a
+	// deleted post) isn't found, and its group has nothing to send
+	const payloads: Payloads = new Map();
+	const failed = new Set<number>();
+	for (const [kind, build] of [
+		['post', postPayloads],
+		['follow', followPayloads],
+		['invites', invitesPayloads]
+	] as const) {
+		try {
+			await build(newest, payloads);
+		} catch (e) {
+			console.error(`push: reading the ${kind} pushes failed`, e);
+			for (const n of newest) if (!payloads.has(n.id)) failed.add(n.id);
+		}
+	}
+
+	const done: number[] = [];
+	const retry: number[] = [];
+	for (const n of newest) {
+		let outcome: Outcome = failed.has(n.id) ? 'retry' : 'sent';
+		const push = payloads.get(n.id);
+		if (push) {
+			try {
+				outcome = await deliver(push.recipientId, push.payload);
+			} catch (e) {
+				console.error('push: send failed', e);
+				outcome = 'retry';
+			}
+		}
+		(outcome === 'retry' ? retry : done).push(...groups.get(pushGroupOf(n))!.map((r) => r.id));
+	}
+	return { done, retry };
+}
+
+/** Pushes of the post notifications (likes, replies, mentions…) among `rows`. */
+async function postPayloads(rows: PendingPush[], out: Payloads) {
+	const ids = rows.filter((n) => n.post_id !== null).map((n) => n.id);
+	if (ids.length === 0) return;
+	const sender = alias(users, 'sender');
+	const recipient = alias(users, 'recipient');
+	const found = await db
+		.select({
+			id: inbox.id,
+			type: inbox.type,
+			post_id: sql<number>`${inbox.post_id}`,
+			content: posts.content,
+			sender_name: sender.name,
+			sender_username: sender.username,
+			recipient_username: recipient.username,
+			identity: sql<boolean>`${recipient.owner_id} IS NOT NULL`,
+			recipient_id: recipient.id,
+			// the push replaces the previous one of the same tag, so it speaks for all of them
+			others: sql<number>`CASE WHEN ${inbox.type} IN ('like', 'regiorg') THEN (
+				SELECT count(*)::int FROM inbox o
+				WHERE o.user_id = ${inbox.user_id} AND o.post_id = ${inbox.post_id}
+					AND o.type = ${inbox.type} AND o.sender_id IS DISTINCT FROM ${inbox.sender_id}
+					AND o.read_at IS NULL
+			) ELSE 0 END`
+		})
+		.from(inbox)
+		.innerJoin(recipient, eq(recipient.id, inbox.user_id))
+		.leftJoin(sender, eq(sender.id, inbox.sender_id))
+		.leftJoin(posts, eq(posts.id, inbox.post_id))
+		.where(inArray(inbox.id, ids));
+	for (const row of found)
+		out.set(row.id, { recipientId: row.recipient_id, payload: payloadFor(row) });
+}
+
+/** Pushes of the follow notifications among `rows`: one tag for all of a profile's follows. */
+async function followPayloads(rows: PendingPush[], out: Payloads) {
+	const follows = rows.filter((n) => n.type === 'follow' && n.sender_id !== null);
+	if (follows.length === 0) return;
+	const profileIds = [...new Set(follows.flatMap((n) => [n.user_id, n.sender_id!]))];
+	const found = await db
+		.select({
+			id: users.id,
+			name: users.name,
+			username: users.username,
+			owner_id: users.owner_id
+		})
+		.from(users)
+		.where(inArray(users.id, profileIds));
+	for (const n of follows) {
+		const sender = found.find((u) => u.id === n.sender_id);
+		const recipient = found.find((u) => u.id === n.user_id);
+		if (!sender || !recipient) continue;
+		// the push replaces the previous one and counts the unread rest
 		const others = await db.$count(
 			inbox,
 			and(
 				eq(inbox.type, 'follow'),
-				eq(inbox.user_id, followedId),
-				sql`${inbox.sender_id} IS DISTINCT FROM ${followerId}`,
+				eq(inbox.user_id, n.user_id),
+				sql`${inbox.sender_id} IS DISTINCT FROM ${n.sender_id}`,
 				isNull(inbox.read_at)
 			)
 		);
@@ -353,112 +479,44 @@ async function followPush(id: number, followerId: number, followedId: number) {
 		// identities share the owner's devices: say which profile it is for
 		if (recipient.owner_id !== null) body += ` (@${recipient.username})`;
 		// the profile itself: deliver finds the accounts using it, and skips bots
-		await deliver(recipient.id, {
-			title: groupTitle(sender.name, others),
-			body,
-			url: others === 0 ? `/@${sender.username}` : '/notifications',
-			tag: `follow:${recipient.username}`
+		out.set(n.id, {
+			recipientId: recipient.id,
+			payload: {
+				title: groupTitle(sender.name, others),
+				body,
+				url: others === 0 ? `/@${sender.username}` : '/notifications',
+				tag: `follow:${recipient.username}`
+			}
 		});
-	} catch (e) {
-		console.error('push: sendFollowPush failed', e);
 	}
 }
 
 /**
- * Tells the accounts given invites, once per notification: the rows are claimed like in sendPush.
- * A grant that adds to an unread notification sends it again with the new total.
+ * Pushes of the invites notifications among `rows`. A grant that adds to an unread notification
+ * makes it pending again (invites.ts), so it goes out again with the new total.
  */
-export async function sendInvitesPush(accountIds: number[]) {
-	try {
-		if (accountIds.length === 0) return;
-		const sender = alias(users, 'sender');
-		const claimed = await db
-			.update(inbox)
-			.set({ pushed_at: sql`NOW()` })
-			.where(
-				and(
-					eq(inbox.type, 'invites'),
-					inArray(inbox.user_id, accountIds),
-					isNull(inbox.pushed_at),
-					isNull(inbox.read_at)
-				)
-			)
-			.returning({ user_id: inbox.user_id, sender_id: inbox.sender_id, invites: inbox.invites });
-		if (claimed.length === 0) return;
-		const senderIds = [...new Set(claimed.map((c) => c.sender_id).filter((id) => id !== null))];
-		const senders = senderIds.length
-			? await db
-					.select({ id: sender.id, name: sender.name })
-					.from(sender)
-					.where(inArray(sender.id, senderIds))
-			: [];
-		for (const row of claimed) {
-			const n = row.invites ?? 0;
-			await deliver(row.user_id, {
+async function invitesPayloads(rows: PendingPush[], out: Payloads) {
+	const grants = rows.filter((n) => n.type === 'invites');
+	if (grants.length === 0) return;
+	const senderIds = [...new Set(grants.map((g) => g.sender_id).filter((id) => id !== null))];
+	const senders = senderIds.length
+		? await db
+				.select({ id: users.id, name: users.name })
+				.from(users)
+				.where(inArray(users.id, senderIds))
+		: [];
+	for (const row of grants) {
+		const n = row.invites ?? 0;
+		out.set(row.id, {
+			recipientId: row.user_id,
+			payload: {
 				title: senders.find((s) => s.id === row.sender_id)?.name ?? 'Invites',
 				body: `gave you ${n} ${n === 1 ? 'invite' : 'invites'}: invite someone to join`,
 				url: '/settings/invites',
 				// per account: a browser can be signed in to several
 				tag: `invites:${row.user_id}`
-			});
-		}
-	} catch (e) {
-		console.error('push: sendInvitesPush failed', e);
-	}
-}
-
-/**
- * Sends the push of post `notifications` (from notify.ts). Rows are claimed (pushed_at) before
- * sending, so a row is never pushed twice.
- */
-export async function sendPush(notifications: Notification[]) {
-	// follows and invites have their own pushes
-	const ids = notifications.filter((n) => n.post_id !== null).map((n) => n.id);
-	if (ids.length === 0) return;
-	try {
-		const sender = alias(users, 'sender');
-		const recipient = alias(users, 'recipient');
-		const claimed = db.$with('claimed').as(
-			db
-				.update(inbox)
-				.set({ pushed_at: sql`NOW()` })
-				.where(and(inArray(inbox.id, ids), isNull(inbox.pushed_at)))
-				.returning({
-					user_id: inbox.user_id,
-					sender_id: inbox.sender_id,
-					post_id: inbox.post_id,
-					type: inbox.type
-				})
-		);
-		const rows: Row[] = await db
-			.with(claimed)
-			.select({
-				type: claimed.type,
-				post_id: sql<number>`${claimed.post_id}`,
-				content: posts.content,
-				sender_name: sender.name,
-				sender_username: sender.username,
-				recipient_username: recipient.username,
-				identity: sql<boolean>`${recipient.owner_id} IS NOT NULL`,
-				recipient_id: recipient.id,
-				// the push replaces the previous one of the same tag, so it speaks for all of them
-				others: sql<number>`CASE WHEN ${claimed.type} IN ('like', 'regiorg') THEN (
-					SELECT count(*)::int FROM inbox o
-					WHERE o.user_id = ${claimed.user_id} AND o.post_id = ${claimed.post_id}
-						AND o.type = ${claimed.type} AND o.sender_id IS DISTINCT FROM ${claimed.sender_id}
-						AND o.read_at IS NULL
-				) ELSE 0 END`
-			})
-			.from(claimed)
-			.innerJoin(recipient, eq(recipient.id, claimed.user_id))
-			.leftJoin(sender, eq(sender.id, claimed.sender_id))
-			.leftJoin(posts, eq(posts.id, claimed.post_id))
-			.where(sql`${claimed.user_id} IS DISTINCT FROM ${claimed.sender_id}`);
-		if (rows.length === 0) return;
-
-		for (const row of rows) await deliver(row.recipient_id, payloadFor(row));
-	} catch (e) {
-		console.error('push: sendPush failed', e);
+			}
+		});
 	}
 }
 

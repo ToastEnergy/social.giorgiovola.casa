@@ -1,17 +1,19 @@
-import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { blocks, db, inbox, inbox_removed, likes, posts, users } from './db/index.js';
 import { mentionedUsernames } from '#lib/mentions.js';
 import type { NotificationType } from '#lib/types.js';
 import { newGroupKey } from './notifications.js';
+import { PUSH_CHANNEL } from './pushOutbox.js';
 
 /**
  * Creates and removes the notifications (inbox rows) of each event, inside the transaction that
  * wrote the event. This is the only writer of these rows. Each function returns the rows the
- * event created or removed, for realtime (unread counts) and push.
+ * event created or removed, for realtime (unread counts).
  *
  * - Nobody is notified of their own actions.
  * - No row is created between two profiles when either blocks the other. Rows from before the
  *   block stay.
+ * - Rows are created without pushed_at: the push worker (pushOutbox.ts) sends them after commit.
  * - Undoing a like, regiorg or follow removes its row. Redoing it within REPUSH_AFTER of the
  *   push brings the row back as it was (pushed, and read if it was), so toggling never pushes
  *   twice: see inbox_removed.
@@ -103,7 +105,10 @@ async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notificati
 			read_at: old.read_at === null ? null : sql`${old.read_at}::timestamptz`
 		};
 	});
-	return tx.insert(inbox).values(values).onConflictDoNothing().returning(columns);
+	const created = await tx.insert(inbox).values(values).onConflictDoNothing().returning(columns);
+	// wakes the push workers once this commits (rows brought back as pushed are skipped there)
+	if (created.length) await tx.execute(sql`SELECT pg_notify(${PUSH_CHANNEL}, '')`);
+	return created;
 }
 
 /**
@@ -123,11 +128,20 @@ async function remove(tx: Tx, type: 'like' | 'regiorg' | 'follow', where: SQL) {
 					sender_id: sql<number>`${inbox.sender_id}`.as('sender_id'),
 					post_id: inbox.post_id,
 					type: inbox.type,
-					pushed_at: sql<Date>`${inbox.pushed_at}`.as('pushed_at'),
+					// a push being sent right now counts as pushed
+					pushed_at: sql<Date>`COALESCE(${inbox.pushed_at}, ${inbox.push_claimed_at})`.as(
+						'pushed_at'
+					),
 					read_at: inbox.read_at
 				})
 				.from(inbox)
-				.where(and(match, isNotNull(inbox.sender_id), isNotNull(inbox.pushed_at)))
+				.where(
+					and(
+						match,
+						isNotNull(inbox.sender_id),
+						or(isNotNull(inbox.pushed_at), isNotNull(inbox.push_claimed_at))
+					)
+				)
 		)
 		.onConflictDoUpdate({
 			target: [

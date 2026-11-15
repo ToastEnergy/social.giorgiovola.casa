@@ -276,6 +276,7 @@ Notifications are created by the app (`src/lib/server/notify.ts`), in the same t
 - **Likes, regiorgios, follows and ratios:** a like, regiorgio or follow notifies the post's author or the followed profile. Undoing it (unlike, undo the regiorgio, unfollow) deletes its notification; ratio notifications stay. Redoing it within a day of its push brings the notification back as it was, read if it had been read, without a second push, so toggling a like doesn't ping anyone again (the removed ones are kept in `inbox_removed` for that).
 - **Blocks:** no notification is created between two profiles when either blocked the other. Notifications from before the block stay.
 - Nobody is notified of their own actions.
+- **Pushes:** a notification is also a push to send. Every server process runs a worker that sends the pending ones as soon as the transaction commits (Postgres `LISTEN/NOTIFY`, with a poll every 30 seconds as a fallback), so a push survives a deploy or a crash and is sent by whichever container runs next. A push that reached no device because the push service failed is retried a few times. Likes, regiorgios and follows that arrive together go out as one push ("Alice and 2 others"). A notification read before its push went out, or more than a day old, isn't pushed.
 
 ## regiorgios
 

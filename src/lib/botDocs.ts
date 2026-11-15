@@ -344,7 +344,7 @@ export const endpointGroups = (l: DocLimits): EndpointGroup[] => [
 				method: 'GET',
 				path: '/api/bot/stream',
 				summary:
-					'Server-sent events, kept open. See Realtime below. At most 10 open streams per bot (429 beyond).',
+					'Server-sent events, kept open. See Realtime below. At most 10 open streams per bot (429 beyond). Add `?features=voice-notes` if the bot reads `audio` (see the Post note).',
 				response: 'text/event-stream'
 			}
 		]
@@ -359,7 +359,10 @@ export const postShape = (origin: string) => `{
   "image_sizes": [{ "width": 1600, "height": 1200 }] | null,
                                         // px, same order as images; null when unknown (measure
                                         // the image once loaded), also inside "quote"
-  "audio": {                            // a voice note (M4A), or null; "content" is its caption
+  "audio": {                            // a voice note (M4A), or null; "content" is its caption,
+                                        // plus a "🎤 Voice message (0:42). Update the app to
+                                        // listen: <link>" line unless every request sends
+                                        // X-Client-Features: voice-notes (?features= on streams)
     "url": "/uploads/….m4a", "duration_ms": 42000,
     "waveform": [ … 64 values 0-255 ], "size": 254810
   } | null,
@@ -790,7 +793,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/posts/:id',
 				auth: 'public / author / author or staff',
 				summary:
-					'read / edit the text `{ content }` (newly mentioned profiles are notified) / delete'
+					'read / edit the text `{ content }` (newly mentioned profiles are notified; a voice note fallback line sent back is dropped) / delete'
 			},
 			{
 				method: 'GET',
@@ -1064,7 +1067,8 @@ export const v1Groups: V1Group[] = [
 				method: 'PATCH / DELETE',
 				path: '/api/v1/conversations/:username/messages/:id',
 				auth: 'sender',
-				summary: 'edit your message `{ content }` (within an hour) / delete it'
+				summary:
+					'edit your message `{ content }` (within an hour; a voice note fallback line sent back is dropped) / delete it'
 			},
 			{
 				method: 'PUT / DELETE',
@@ -1112,7 +1116,8 @@ export const v1Groups: V1Group[] = [
 				method: 'PATCH / DELETE',
 				path: '/api/v1/groups/:id/messages/:messageId',
 				auth: 'sender',
-				summary: 'edit your message `{ content }` (within an hour) / delete it'
+				summary:
+					'edit your message `{ content }` (within an hour; a voice note fallback line sent back is dropped) / delete it'
 			},
 			{
 				method: 'PUT / DELETE',
@@ -1281,7 +1286,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/stream',
 				auth: 'public / signed in',
 				summary:
-					'server-sent events: posts, counts, notifications, messages, typing, the server `version` on connect, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show). At most 30 open per account, 10 per bot, 30 per IP when anonymous (429 beyond)'
+					'server-sent events: posts, counts, notifications, messages, typing, the server `version` on connect, and a `ping` every 8 s (none for 20 s: reconnect, then reload what you show). At most 30 open per account, 10 per bot, 30 per IP when anonymous (429 beyond). `?features=voice-notes` (EventSource sends no headers) like the `X-Client-Features` header: without it, posts and messages with a voice note get a text line in `content`'
 			},
 			{
 				method: 'GET',

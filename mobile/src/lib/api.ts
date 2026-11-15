@@ -29,12 +29,21 @@ type Options = {
 	signal?: AbortSignal;
 };
 
+/**
+ * What this build supports, sent with every request: without `voice-notes` the server fills the
+ * text of voice notes with a fallback for builds that can't play them (/api.txt).
+ */
+export const CLIENT_FEATURES = 'voice-notes';
+
 /** Calls /api/v1/<path>. Throws ApiError with the server's message. */
 export async function api<T = unknown>(path: string, options: Options = {}): Promise<T> {
 	const server = options.server ?? auth.server;
 	const token = options.token === undefined ? auth.token : options.token;
 	const method = options.method ?? 'GET';
-	const headers: Record<string, string> = { Accept: 'application/json' };
+	const headers: Record<string, string> = {
+		Accept: 'application/json',
+		'X-Client-Features': CLIENT_FEATURES
+	};
 	if (token) headers.Authorization = `Bearer ${token}`;
 	// every write needs a Content-Type, even without a body
 	if (method !== 'GET') headers['Content-Type'] = options.raw?.type ?? 'application/json';

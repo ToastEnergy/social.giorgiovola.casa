@@ -72,6 +72,33 @@ Every /api/v1 response has \`Access-Control-Allow-Origin: *\`, and preflight (OP
 requests are answered, so a web app on any origin can call the API with a bearer token.
 Cookies are never accepted from other origins.
 
+### Client features (voice notes)
+
+Declare what your client supports with a header on every request, a comma-separated list
+(case-insensitive, unknown names are ignored):
+
+  X-Client-Features: voice-notes
+
+Where headers can't be set (the browser's EventSource), pass the same list as a query
+parameter instead: \`?features=voice-notes\` (GET /stream, /stream/bot and /api/bot/stream
+take it; any endpoint does).
+
+The only feature so far is "voice-notes": your client reads "audio" (see VoiceNote) and plays
+it. Without it, every post, message and replied message that has a voice note comes with a
+line in its "content" saying what it is, so clients that don't know voice notes don't show an
+empty post or message. A caption keeps its text, followed by a blank line and the line:
+
+  posts:     🎤 Voice message (0:42). Update the app to listen: ${origin}/@<username>/<post id>
+  messages:  🎤 Voice message (0:42). Update the app to listen.
+
+(the length as m:ss). This applies everywhere posts and messages appear: lists, single
+objects, quoted and linked posts, the "reply_to" of messages, write responses and realtime
+events (each stream gets the variant matching its own features). Nothing is stored: "audio"
+is still in the object and the real caption is unchanged. An edit (PATCH of a post or
+message) whose content ends with that line has it removed again, so editing what you were
+shown edits only the caption. If you read "audio", send the header: you then get the caption
+alone in "content", which may be empty.
+
 ## Authentication
 
 Send a token in every request:
@@ -168,7 +195,9 @@ VoiceNote: { "url": "/uploads/<uuid>.m4a", "duration_ms": 42000,
   seek without downloading the whole file. "duration_ms" is the real length (trailing
   silence trimmed), "waveform" 64 peaks from 0 (silent) to 255 (loudest, relative to the
   note's own loudest part, square-root scaled) to draw the note before loading it, "size"
-  the file size in bytes. Missing "audio" fields (older servers) mean null.
+  the file size in bytes. Missing "audio" fields (older servers) mean null. Send
+  X-Client-Features: voice-notes, or "content" also carries a text fallback for the note
+  (see "Client features").
 ImageSize: { "width": 1600, "height": 1200 }
   The size in px of an uploaded image as served (EXIF rotation applied, scaled down to fit
   2048px), so you can reserve its space (aspect ratio) before it loads. "image_sizes" in a
@@ -573,7 +602,8 @@ PATCH /posts/:id   { "content" }                                author, not mute
   Sets "edited_at", re-reads hashtags, and notifies profiles it newly @mentions (see
   Notification). 200: <Post>.
   400 when the text would be empty on a post without images, GIF or voice note, or on a poll
-  (its question). A voice note's caption can be edited like any text.
+  (its question). A voice note's caption can be edited like any text; a voice note fallback
+  line at the end (see "Client features") is removed, so only the caption is saved.
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204. When staff delete someone else's post, its open reports
   are resolved and the deletion (with a copy of the text) goes in the moderation log.
@@ -682,6 +712,8 @@ PATCH /conversations/:username/messages/:id   your own message, not muted
   message has images, a GIF or a voice note. Allowed for 60 minutes after sending: later → 403. 404 when it isn't yours or isn't in
   the conversation with :username; 403 when either side blocked the other. Sending the same
   text changes nothing. 30 edits a minute (direct and group). Both sides get message_edited.
+  A voice note fallback line at the end (see "Client features") is removed: only the caption
+  is saved.
 DELETE /conversations/:username/messages/:id   your own message → 204 (for both sides); 404 when it
   isn't yours or isn't in the conversation with :username
 POST /conversations/:username/messages/:id/played   signed in (the recipient)
@@ -1039,7 +1071,8 @@ DELETE /admin/groups/:id   admin
 GET /stream                           public or signed in
   An event stream (text/event-stream). Send the token in the Authorization header (use an
   SSE client that supports headers; the browser's EventSource can't, which is why the
-  website uses its cookie). The stream ends when the token or session it was opened with is
+  website uses its cookie). Add ?features=voice-notes (or the X-Client-Features header) if
+  you read "audio": see "Client features". The stream ends when the token or session it was opened with is
   revoked; reconnecting then answers only public events, or 401 for the revoked bearer token.
   Open streams are capped: 30 at once per account (all its tokens and browser tabs
   together), 10 per bot (with its /api/bot/stream and /stream/bot streams), 30 per IP

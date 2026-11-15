@@ -1,5 +1,5 @@
 import { fetch as streamFetch } from 'expo/fetch';
-import { auth } from './api';
+import { CLIENT_FEATURES, auth } from './api';
 import { emit } from './bus';
 
 // GET /stream (server-sent events), read with expo/fetch because the token goes in a header.
@@ -42,9 +42,10 @@ async function run(gen: number) {
 		let wait = 3000;
 		try {
 			alive();
-			const res = await streamFetch(`${auth.server}/api/v1/stream`, {
+			const res = await streamFetch(`${auth.server}/api/v1/stream?features=${CLIENT_FEATURES}`, {
 				headers: {
 					Accept: 'text/event-stream',
+					'X-Client-Features': CLIENT_FEATURES,
 					...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {})
 				},
 				signal: ctrl.signal

@@ -15,6 +15,7 @@ import { groupEventText } from '#lib/groupEvents.js';
 import { linkedPosts } from './linkedPosts.js';
 import { filesOf, type StoredImage } from './images.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
+import { messageFallback, stripFallback } from './voiceFallback.js';
 import { markGroupReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { hit, isLimited } from './ratelimit.js';
 import { LIMITS, USERNAME_RE } from './validation.js';
@@ -501,6 +502,8 @@ export async function editGroupMessage(
 		.where(theirs);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
+	// what an old client showed for the voice note comes back with the caption it edited
+	if (found.audio) content = stripFallback(content, messageFallback(found.audio.duration_ms));
 	if (!content && found.images.length === 0 && !found.gif && !found.audio) return 'empty';
 	// the same text: nothing to mark as edited
 	if (content !== found.content) {

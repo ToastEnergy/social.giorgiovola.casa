@@ -52,7 +52,7 @@
 		MessageReplyTo
 	} from '#lib/types.js';
 	import MentionInput from './MentionInput.svelte';
-	import { api, errorOf } from '#lib/api.js';
+	import { FEATURES_HEADER, api, errorOf } from '#lib/api.js';
 	import { richText } from '#lib/richText.js';
 	import { profileHover } from '#lib/profileCard.svelte.js';
 	import { openImage } from '#lib/imageViewer.svelte.js';
@@ -488,7 +488,7 @@
 		try {
 			const res = await fetch(`${messagesUrl}/${message.id}`, {
 				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', ...FEATURES_HEADER },
 				body: JSON.stringify({ content: text })
 			});
 			if (res.ok) {
@@ -940,7 +940,7 @@
 	/** Catches up on what the stream can't have delivered: it drops while the app is in the background. */
 	async function sync() {
 		try {
-			const res = await fetch(messagesUrl);
+			const res = await fetch(messagesUrl, { headers: FEATURES_HEADER });
 			if (!res.ok) return;
 			const page: ThreadPage = await res.json();
 			const latest = { messages: page.items, hasMore: page.next_cursor !== null };
@@ -965,7 +965,9 @@
 		if (!hasMore || loadingOlder || messages.length === 0) return;
 		loadingOlder = true;
 		try {
-			const res = await fetch(`${messagesUrl}?cursor=${messages[0].id}`);
+			const res = await fetch(`${messagesUrl}?cursor=${messages[0].id}`, {
+				headers: FEATURES_HEADER
+			});
 			if (res.ok) {
 				const older: ThreadPage = await res.json();
 				const height = list.scrollHeight;
@@ -1248,7 +1250,7 @@
 			}
 			return fetch(messagesUrl, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: { 'Content-Type': 'application/json', ...FEATURES_HEADER },
 				body: JSON.stringify({
 					content: text,
 					reply_to: draft.replyingTo?.id ?? null,

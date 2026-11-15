@@ -65,7 +65,8 @@ function inGroup(t: string, userId: number, key: SQL) {
 	return sql`${r}.user_id = ${userId} AND (
 		${r}.group_key = ${key}
 		OR (${r}.group_key IS NULL AND ${r}.type NOT IN ${sql.raw(GROUPED)}
-			AND ${r}.id = (CASE WHEN ${key} ~ '^n-[0-9]{1,9}$' THEN substr(${key}, 3)::int END))
+			-- the same digits as GROUP_KEY; bigint, so ten of them can't overflow the cast
+			AND ${r}.id = (CASE WHEN ${key} ~ '^n-[0-9]{1,10}$' THEN substr(${key}, 3)::bigint END))
 		OR (${r}.group_key IS NULL AND ${r}.type IN ${sql.raw(GROUPED)}
 			AND ${sql.raw(computedKey(t))} = ${key})
 	)`;

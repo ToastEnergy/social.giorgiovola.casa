@@ -351,6 +351,13 @@
       "when": 1794759271753,
       "tag": "0049_inbox_push_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794759387494,
+      "tag": "0050_inbox_created_at",
+      "breakpoints": true
     }
   ]
 }

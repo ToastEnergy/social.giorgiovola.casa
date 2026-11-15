@@ -1,0 +1,1 @@
+CREATE INDEX "inbox_created_at" ON "inbox" USING btree ("created_at");

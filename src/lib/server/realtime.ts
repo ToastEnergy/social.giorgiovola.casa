@@ -7,6 +7,7 @@ import { getPosts } from './posts';
 import { sendGroupMessagePush, sendMessagePush } from './push';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from '#lib/types.js';
 import type { Notification, NotificationChanges } from './notify.js';
+import { withVoiceFallback } from './voiceFallback.js';
 
 /**
  * In-process hub for server-sent events. One instance per server process, so this assumes a
@@ -20,6 +21,8 @@ type Client = {
 	sessionKey: string | null;
 	/** the bot whose token opened the stream, so revoking the token ends it (closeBotStreams) */
 	botId: number | null;
+	/** the client declared the `voice-notes` feature, else it gets the text fallback */
+	voiceNotes: boolean;
 	send: (chunk: string) => void;
 	close: () => void;
 };
@@ -30,6 +33,31 @@ const HEARTBEAT_MS = 8000;
 
 const frame = (event: string, data: unknown) =>
 	`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+/**
+ * An event in the two variants clients may need: as it is for clients that know voice notes,
+ * with the text fallback (voiceFallback.ts) for the others. Each is serialized once, when a
+ * client first needs it, and the fallback only differs when the data holds a voice note.
+ */
+type Chunk = (voiceNotes: boolean) => string;
+
+function chunk(event: string, data: unknown): Chunk {
+	let modern: string | undefined;
+	let legacy: string | undefined;
+	return (voiceNotes) => {
+		modern ??= frame(event, data);
+		if (voiceNotes) return modern;
+		if (legacy === undefined) {
+			const fallback = withVoiceFallback(data);
+			legacy = fallback === data ? modern : frame(event, fallback);
+		}
+		return legacy;
+	};
+}
+
+/** Sends an event to a client in the variant it understands. */
+const deliver = (client: { voiceNotes: boolean; send: (chunk: string) => void }, c: Chunk) =>
+	client.send(c(client.voiceNotes));
 
 /**
  * An event stream body: `register` adds the client to a hub and returns how to remove it.
@@ -126,14 +154,15 @@ export function openStream(
 	sessionKey: string | null,
 	botId: number | null,
 	owner: StreamOwner,
-	signal: AbortSignal
+	signal: AbortSignal,
+	voiceNotes: boolean
 ) {
 	const release = reserve(owner);
 	if (!release) return null;
 	// a real event, not a comment: clients can't see comments (EventSource drops them), and a
 	// client that hears nothing for a while knows the connection died without telling it
 	return eventStream(signal, frame('ping', {}), (send, close) => {
-		const client: Client = { userId, sessionKey, botId, send, close };
+		const client: Client = { userId, sessionKey, botId, voiceNotes, send, close };
 		clients.add(client);
 		// a page still running an older build learns that a new one is out (#lib/appUpdate.ts):
 		// every deploy restarts the server, so every open page reconnects and hears it
@@ -162,6 +191,7 @@ type BotClient = {
 	botId: number;
 	/** matches a mention of the bot, like MENTION_RE (#lib/mentions.ts), in any case */
 	mention: RegExp;
+	voiceNotes: boolean;
 	send: (chunk: string) => void;
 	close: () => void;
 };
@@ -172,7 +202,11 @@ const botClients = new Set<BotClient>();
  * The bot API stream: `mention`, `post` (by a followed profile), `message` (DM) and
  * `group_message` (in a group the bot is in) events.
  */
-export function openBotStream(bot: { id: number; username: string }, signal: AbortSignal) {
+export function openBotStream(
+	bot: { id: number; username: string },
+	signal: AbortSignal,
+	voiceNotes: boolean
+) {
 	// counted with the bot's /api/v1/stream streams
 	const release = reserve({ key: `bot:${bot.id}`, max: MAX_STREAMS.bot });
 	if (!release) return null;
@@ -182,6 +216,7 @@ export function openBotStream(bot: { id: number; username: string }, signal: Abo
 		const client: BotClient = {
 			botId: bot.id,
 			mention: new RegExp(`(?<![a-zA-Z0-9_@/])@${bot.username}(?![a-zA-Z0-9_])`, 'i'),
+			voiceNotes,
 			send,
 			close
 		};
@@ -232,11 +267,12 @@ async function publishToBots(post: Post) {
 	]);
 	const following = new Set(followers.map((f) => f.id));
 	const parentAuthor = parent[0]?.user_id ?? null;
+	const mention = chunk('mention', post);
+	const followed = chunk('post', post);
 	for (const client of [...botClients]) {
 		if (client.botId === authorId) continue;
-		if (mentionsBot(post, client.mention, parentAuthor, client.botId))
-			client.send(frame('mention', post));
-		if (following.has(client.botId)) client.send(frame('post', post));
+		if (mentionsBot(post, client.mention, parentAuthor, client.botId)) deliver(client, mention);
+		if (following.has(client.botId)) deliver(client, followed);
 	}
 }
 
@@ -257,8 +293,8 @@ async function sendUnreadCount(client: Client) {
 /** Sends an event to everyone connected. Payloads must be safe for anonymous viewers. */
 export function broadcast(event: string, data: unknown) {
 	if (clients.size === 0) return;
-	const chunk = frame(event, data);
-	for (const client of [...clients]) client.send(chunk);
+	const c = chunk(event, data);
+	for (const client of [...clients]) deliver(client, c);
 }
 
 /** Pushes the fresh unread count to the connected streams of these users. */
@@ -267,8 +303,8 @@ export async function pushUnread(userIds: Iterable<number | null>) {
 	for (const id of targets) {
 		const watching = [...clients].filter((c) => c.userId === id);
 		if (watching.length === 0) continue;
-		const chunk = frame('notifications', { count: await unreadCount(id) });
-		for (const client of watching) client.send(chunk);
+		const counts = frame('notifications', { count: await unreadCount(id) });
+		for (const client of watching) client.send(counts);
 	}
 }
 
@@ -285,8 +321,8 @@ async function messagesUnread(userId: number) {
 export async function pushUnreadMessages(userId: number) {
 	const watching = [...clients].filter((c) => c.userId === userId);
 	if (watching.length === 0) return;
-	const chunk = frame('messages_unread', await messagesUnread(userId));
-	for (const client of watching) client.send(chunk);
+	const counts = frame('messages_unread', await messagesUnread(userId));
+	for (const client of watching) client.send(counts);
 }
 
 /** A direct message was sent: only its two participants may ever receive it. */
@@ -297,13 +333,13 @@ export async function publishMessage(
 	senderName: string
 ) {
 	try {
-		const chunk = frame('message', message);
+		const c = chunk('message', message);
 		for (const client of [...clients]) {
-			if (client.userId === senderId || client.userId === recipientId) client.send(chunk);
+			if (client.userId === senderId || client.userId === recipientId) deliver(client, c);
 		}
 		// a bot hears about what it receives, not about what it sent itself
 		for (const client of [...botClients]) {
-			if (client.botId === recipientId) client.send(chunk);
+			if (client.botId === recipientId) deliver(client, c);
 		}
 		await pushUnreadMessages(recipientId);
 		await sendMessagePush(recipientId, senderId, message, senderName);
@@ -315,9 +351,9 @@ export async function publishMessage(
 /** A direct message was deleted: drop it from both participants' screens. */
 export async function publishMessageDeleted(id: number, senderId: number, recipientId: number) {
 	try {
-		const chunk = frame('message_deleted', { id });
+		const deleted = frame('message_deleted', { id });
 		for (const client of [...clients]) {
-			if (client.userId === senderId || client.userId === recipientId) client.send(chunk);
+			if (client.userId === senderId || client.userId === recipientId) client.send(deleted);
 		}
 		// it may have been unread
 		await pushUnreadMessages(recipientId);
@@ -358,17 +394,18 @@ export function publishGroupMessageReactions(
 /** Sends an event to the connected streams of these profiles only. */
 function sendTo(userIds: number[], event: string, data: unknown) {
 	const targets = new Set(userIds);
-	const chunk = frame(event, data);
+	const c = chunk(event, data);
 	for (const client of [...clients]) {
-		if (client.userId !== null && targets.has(client.userId)) client.send(chunk);
+		if (client.userId !== null && targets.has(client.userId)) deliver(client, c);
 	}
 }
 
-/** Sends a chunk to the open streams of these bots, if any of them is one. */
-function sendToBots(userIds: number[], chunk: string) {
+/** Sends an event to the open streams of these bots, if any of them is one. */
+function sendToBots(userIds: number[], event: string, data: unknown) {
 	if (botClients.size === 0) return;
 	const targets = new Set(userIds);
-	for (const client of [...botClients]) if (targets.has(client.botId)) client.send(chunk);
+	const c = chunk(event, data);
+	for (const client of [...botClients]) if (targets.has(client.botId)) deliver(client, c);
 }
 
 /**
@@ -419,7 +456,7 @@ export async function publishGroupMessage(
 		sendTo(members, 'group_message', message);
 		const others = members.filter((id) => id !== senderId);
 		// like for direct messages, a bot doesn't hear back what it sent
-		sendToBots(others, frame('group_message', message));
+		sendToBots(others, 'group_message', message);
 		for (const id of others) await pushUnreadMessages(id);
 		await sendGroupMessagePush(others, message, groupName);
 	} catch (e) {
@@ -452,7 +489,7 @@ export async function publishGroupUpdated(
 		for (const event of events) {
 			sendTo(members, 'group_message', event);
 			// bots learn this way that they were added to (or removed from) a group
-			sendToBots(members, frame('group_message', event));
+			sendToBots(members, 'group_message', event);
 		}
 		sendTo(members, 'group_updated', { id: groupId });
 		for (const id of members) await pushUnreadMessages(id);

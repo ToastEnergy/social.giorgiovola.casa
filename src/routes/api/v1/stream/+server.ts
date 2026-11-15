@@ -1,3 +1,4 @@
+import { VOICE_NOTES } from '#lib/server/voiceFallback.js';
 import type { RequestHandler } from './$types';
 import { clientIp } from '#lib/server/ratelimit.js';
 import { openStream, streamOwner, tooManyStreams } from '#lib/server/realtime.js';
@@ -18,6 +19,13 @@ export const GET: RequestHandler = ({ locals, request, getClientAddress }) => {
 	const userId = locals.user?.id ?? null;
 	const botId = locals.auth === 'bot' ? userId : null;
 	const owner = streamOwner(locals, clientIp(getClientAddress));
-	const body = openStream(userId, locals.sessionKey, botId, owner, request.signal);
+	const body = openStream(
+		userId,
+		locals.sessionKey,
+		botId,
+		owner,
+		request.signal,
+		locals.clientFeatures.has(VOICE_NOTES)
+	);
 	return body ? new Response(body, { headers: SSE_HEADERS }) : tooManyStreams();
 };

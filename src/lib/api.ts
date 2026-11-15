@@ -5,6 +5,13 @@
 
 export const API = '/api/v1';
 
+/**
+ * What this client supports, sent with every API call: without `voice-notes` the server fills
+ * the text of voice notes with a fallback for clients that can't play them (/api.txt).
+ */
+export const CLIENT_FEATURES = 'voice-notes';
+export const FEATURES_HEADER = { 'X-Client-Features': CLIENT_FEATURES };
+
 export class ApiError extends Error {
 	constructor(
 		public status: number,
@@ -56,6 +63,7 @@ export async function api<T = unknown>(
 	{ json, body, ...init }: Options = {}
 ): Promise<T> {
 	const headers = new Headers(init.headers);
+	headers.set('X-Client-Features', CLIENT_FEATURES);
 	// writes always say they are JSON, even without a body: SvelteKit's CSRF check refuses
 	// cross-site writes that have no content type, and the API documents it for every client
 	if (json !== undefined || (body === undefined && init.method && init.method !== 'GET'))

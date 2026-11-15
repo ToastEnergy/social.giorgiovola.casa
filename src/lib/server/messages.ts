@@ -8,6 +8,7 @@ import { linkedPosts } from './linkedPosts.js';
 import { unreadGroupCount } from './groups.js';
 import { markDirectReactionsRead, withRepliesAndReactions } from './messageReactions.js';
 import { EDIT_INTERVAL, editable } from '#lib/messageEdits.js';
+import { messageFallback, stripFallback } from './voiceFallback.js';
 
 const THREAD_PAGE = 30;
 const PREVIEW_LENGTH = 200;
@@ -318,6 +319,8 @@ export async function editMessage(
 		.where(mineTo);
 	if (!found) return 'gone';
 	if (!editable(found.created_at)) return 'expired';
+	// what an old client showed for the voice note comes back with the caption it edited
+	if (found.audio) content = stripFallback(content, messageFallback(found.audio.duration_ms));
 	if (!content && found.images.length === 0 && !found.gif && !found.audio) return 'empty';
 	// the same text: nothing to mark as edited
 	const [row] =

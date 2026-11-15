@@ -262,6 +262,6 @@ export const CORS_HEADERS: Record<string, string> = {
 export const PREFLIGHT_HEADERS: Record<string, string> = {
 	...CORS_HEADERS,
 	'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-	'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+	'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Client-Features',
 	'Access-Control-Max-Age': '86400'
 };

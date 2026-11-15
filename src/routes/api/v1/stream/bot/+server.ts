@@ -1,3 +1,4 @@
+import { VOICE_NOTES } from '#lib/server/voiceFallback.js';
 import type { RequestHandler } from './$types';
 import { apiError } from '#lib/server/api.js';
 import { openBotStream, tooManyStreams } from '#lib/server/realtime.js';
@@ -9,7 +10,7 @@ import { openBotStream, tooManyStreams } from '#lib/server/realtime.js';
 export const GET: RequestHandler = ({ locals, request }) => {
 	if (locals.auth !== 'bot' || !locals.user)
 		return apiError(403, 'This stream is for bot tokens, use /api/v1/stream');
-	const body = openBotStream(locals.user, request.signal);
+	const body = openBotStream(locals.user, request.signal, locals.clientFeatures.has(VOICE_NOTES));
 	if (!body) return tooManyStreams();
 	return new Response(body, {
 		headers: {

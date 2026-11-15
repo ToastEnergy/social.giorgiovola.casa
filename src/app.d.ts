@@ -27,6 +27,11 @@ declare global {
 			sessionKey: string | null;
 			/** an invalid bearer token was sent to an upload, which then goes on anonymous */
 			invalidToken: boolean;
+			/**
+			 * what the client declared it supports (`X-Client-Features` or `?features=`, lowercased),
+			 * such as `voice-notes` (src/lib/server/voiceFallback.ts)
+			 */
+			clientFeatures: ReadonlySet<string>;
 		}
 		// interface PageData {}
 		interface PageState {

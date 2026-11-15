@@ -22,6 +22,7 @@ import { audioPending, parseAudioId, sendWithAudio } from './stagedAudio.js';
 import { onPostEdited } from './notify.js';
 import { warmLinkPreview } from './linkPreviews.js';
 import { parseGif } from './gifs.js';
+import { postFallback, stripFallback } from './voiceFallback.js';
 
 /** Writing posts: the input of a new post, editing and deleting. */
 
@@ -176,14 +177,20 @@ export async function editPost(user: Pick<User, 'id'>, postId: number, rawConten
 			images: posts.images,
 			gif: posts.gif,
 			audio: posts.audio,
-			poll: polls.post_id
+			poll: polls.post_id,
+			username: users.username
 		})
 		.from(posts)
+		.innerJoin(users, eq(users.id, posts.user_id))
 		.leftJoin(polls, eq(polls.post_id, posts.id))
 		.where(eq(posts.id, postId));
 	if (!post) fail(404, 'Post not found');
 	if (post.user_id !== user.id) fail(403, 'You can only edit your own posts');
-	const content = normalizePostContent(rawContent);
+	const normalized = normalizePostContent(rawContent);
+	// what an old client showed for the voice note comes back with the caption it edited
+	const content = post.audio
+		? stripFallback(normalized, postFallback(post.audio.duration_ms, post.username, postId))
+		: normalized;
 	// the same rules as a new post: the text of a poll is its question
 	if (!content && post.poll !== null) fail(400, 'A poll needs a question');
 	if (!content && post.images.length === 0 && !post.gif && !post.audio)

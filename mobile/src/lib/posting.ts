@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError, errorMessage, uploadImage } from './api';
-import { emit } from './bus';
+import { emit, on } from './bus';
 import { clearDraft, returnDraft, type ComposerDraft, type DraftOwner } from './drafts';
-import type { Post } from './types';
+import type { AudioUpload, Post } from './types';
+import { deleteRecording, forgetUpload, markSending, startVoiceUpload } from './voiceUpload';
 
 /**
  * Posts on their way to the server. The composer closes as soon as Post is tapped, like the web;
@@ -20,6 +21,8 @@ export type Outgoing = {
 	progress: number[];
 	/** set once it failed: why */
 	error?: string;
+	/** a long voice note: sent, the server is processing it (the post comes after) */
+	processing?: boolean;
 };
 
 let outgoing: Outgoing[] = [];
@@ -102,14 +105,23 @@ export function startPost(options: {
 		}
 		return ids;
 	};
+	const voice = draft.voice ?? null;
+	const who = { server: owner.server, token };
+	/** the voice note's staged upload, uploaded now if the composer hadn't yet */
+	const audio = async () => {
+		if (!voice) return null;
+		voice.upload ??= await startVoiceUpload(voice.uri, who);
+		return voice.upload;
+	};
 	const send = async () =>
-		api<Post>('posts', {
+		api<Post | { status: 'processing'; upload: AudioUpload }>('posts', {
 			method: 'POST',
 			server: owner.server,
 			token,
 			body: {
 				content: draft.content,
 				uploads: await upload(),
+				audio: await audio(),
 				gif: draft.gif,
 				reply_to: kind === 'reply' ? Number(id) : null,
 				quote_of: kind === 'quote' ? Number(id) : null,
@@ -121,24 +133,86 @@ export function startPost(options: {
 					: null
 			}
 		});
+	const sent = async (post: Post | null) => {
+		drop(key);
+		if (voice) {
+			markSending(voice.uri, false);
+			deleteRecording(voice.uri);
+		}
+		options.onSent?.();
+		await clearDraft(owner, composer, savedAt);
+		if (post) emit('post_created', post);
+	};
 	(async () => {
+		if (voice) markSending(voice.uri, true);
 		try {
-			let post: Post;
+			let res: Post | { status: 'processing'; upload: AudioUpload };
 			try {
-				post = await send();
+				res = await send();
 			} catch (e) {
-				// the server let the images expire (kept for a day, or lost on a restart): upload again
-				if (!(e instanceof ApiError && e.status === 410 && draft.images.length)) throw e;
+				// the server let the uploads expire (kept for a day, or lost on a restart): upload again
+				const lost = e instanceof ApiError && (e.status === 410 || (e.status === 404 && !!voice));
+				if (!(lost && (draft.images.length || voice))) throw e;
 				update(key, { progress: draft.images.map(() => 0) });
-				post = await send();
+				if (voice) {
+					voice.upload = null;
+					forgetUpload(voice.uri);
+				}
+				res = await send();
 			}
-			drop(key);
-			options.onSent?.();
-			await clearDraft(owner, composer, savedAt);
-			emit('post_created', post);
+			if ('status' in res && res.status === 'processing') {
+				// a long voice note: the post is created once it's processed
+				update(key, { processing: true });
+				const id = res.upload.id;
+				await new Promise<void>((resolve, reject) => {
+					const finish = (error: string | null | false) => {
+						offSent();
+						offFailed();
+						clearInterval(poll);
+						if (error === false) resolve();
+						else reject(new ApiError(400, error || 'The voice note couldn’t be processed.'));
+					};
+					const offSent = on('audio_sent', (e: { upload: string }) => {
+						if (e.upload === id) finish(false);
+					});
+					const offFailed = on('audio_failed', (e: { upload: string; error: string | null }) => {
+						if (e.upload === id) finish(e.error);
+					});
+					// the stream may miss the event (offline meanwhile): ask now and then too
+					const poll = setInterval(() => {
+						api<AudioUpload>(`uploads/audio/${id}`, { server: owner.server, token })
+							.then((u) => {
+								if (u.status === 'sent') finish(false);
+								else if (u.status === 'failed') finish(u.error);
+							})
+							.catch(() => {});
+					}, 15_000);
+				});
+				// the post itself arrives from the stream like any new post
+				await sent(null);
+				return;
+			}
+			await sent(res as Post);
 		} catch (e) {
+			// already sent, before the app was closed
+			if (e instanceof ApiError && e.status === 409 && voice?.upload) {
+				await sent(null);
+				return;
+			}
+			if (voice) {
+				markSending(voice.uri, false);
+				// a failed processing: that upload is no good, the next try sends the file again
+				if (e instanceof ApiError && e.status === 400) {
+					voice.upload = null;
+					forgetUpload(voice.uri);
+				}
+			}
 			const error =
-				e instanceof ApiError && e.status === 413 ? 'Images are too big.' : errorMessage(e);
+				e instanceof ApiError && e.status === 413
+					? voice
+						? 'The voice note is too big.'
+						: 'Images are too big.'
+					: errorMessage(e);
 			update(key, { error });
 			const back = await returnDraft(owner, composer, { ...draft, error }, savedAt);
 			// an open composer that is still empty takes it back at once

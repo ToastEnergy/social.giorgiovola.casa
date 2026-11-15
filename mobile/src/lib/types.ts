@@ -184,6 +184,28 @@ export type Instance = {
 	invite_required?: boolean;
 	limits: Record<string, number>;
 	gifs: GifConfig | null;
+	/** null (or missing, older servers) when the server can't take voice notes: no microphone */
+	voice_notes?: VoiceNoteLimits | null;
+};
+
+export type VoiceNoteLimits = {
+	max_duration_ms: number;
+	max_upload_bytes: number;
+	max_chunk_bytes: number;
+	max_chunks: number;
+};
+
+/** A staged voice note (POST /uploads/audio and its sessions). */
+export type AudioUpload = {
+	id: string;
+	status: 'receiving' | 'processing' | 'ready' | 'failed' | 'sent';
+	duration_ms: number | null;
+	waveform: number[] | null;
+	size: number | null;
+	error: string | null;
+	/** while receiving: the chunks the server has */
+	chunks?: number[];
+	sent?: { type: 'post' | 'message' | 'group_message'; id: number };
 };
 
 export type MessageReplyTo = {

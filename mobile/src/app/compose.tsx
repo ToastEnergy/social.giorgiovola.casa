@@ -1,6 +1,6 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { ChartNoAxesColumn, ImagePlus, X } from 'lucide-react-native';
+import { ChartNoAxesColumn, ImagePlus, Mic, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { AppState, KeyboardAvoidingView, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { GifPicker } from '@/components/GifPicker';
 import { MentionSuggestions, useMentionSuggestions } from '@/components/mentions';
 import { QuoteCard } from '@/components/media';
 import { Avatar, Button, ErrorBanner, IconButton, Input, Loading, Txt } from '@/components/ui';
+import { ComposerRecorder } from '@/components/VoiceRecorder';
 import { api, auth, errorMessage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
 import { voicePreview } from '@/lib/format';
@@ -26,9 +27,11 @@ import {
 	type DraftOwner
 } from '@/lib/drafts';
 import { isSending, startPost } from '@/lib/posting';
+import { useVoiceRecorder } from '@/lib/recorder';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import type { Gif, Post } from '@/lib/types';
+import { startVoiceUpload } from '@/lib/voiceUpload';
 
 const DURATIONS = [
 	{ label: '1 hour', minutes: 60 },
@@ -39,6 +42,7 @@ const DURATIONS = [
 
 /** how long typing pauses before the draft is saved */
 const SAVE_DELAY_MS = 800;
+const VOICE_ONLY = 'A voice note can’t have images, a GIF or a poll: only a caption.';
 
 /** Writing a post, a reply (?reply=id), a quote (?quote=id) or editing one (?edit=id). */
 export default function Compose() {
@@ -90,7 +94,29 @@ export default function Compose() {
 	const userId = me?.user.id;
 	const owner = useRef<DraftOwner | null>(null);
 	owner.current = userId === undefined ? null : { server, id: userId };
-	const current: ComposerDraft = { content: text, images, gif: gif?.gif ?? null, poll };
+
+	// a voice note, recorded here hands-free; the text is its caption
+	const rec = useVoiceRecorder({
+		maxMs: instance?.voice_notes?.max_duration_ms,
+		onReview: (voice) => {
+			startVoiceUpload(voice.uri);
+			// also when the screen goes away while recording: kept with the draft
+			if (composer && owner.current && loaded.current && !submitted.current)
+				saveDraft(owner.current, composer, { ...latest.current, voice });
+		}
+	});
+	const recPhase = rec.state.phase;
+	const reviewVoice = recPhase === 'review' ? rec.state.voice : null;
+	const recording = recPhase === 'recording' || recPhase === 'paused';
+	const { restore: restoreVoice } = rec;
+
+	const current: ComposerDraft = {
+		content: text,
+		images,
+		gif: gif?.gif ?? null,
+		poll,
+		voice: reviewVoice
+	};
 	const latest = useRef(current);
 	latest.current = current;
 	/** false until the saved draft was looked at: saving before would overwrite it */
@@ -125,7 +151,11 @@ export default function Compose() {
 		setGif(draft.gif ? { gif: draft.gif, sent: () => {} } : null);
 		setPoll(draft.poll);
 		setError(draft.error ?? null);
-	}, [composer]);
+		if (draft.voice) {
+			restoreVoice(draft.voice);
+			startVoiceUpload(draft.voice.uri);
+		}
+	}, [composer, restoreVoice]);
 
 	useEffect(() => {
 		restore();
@@ -142,7 +172,15 @@ export default function Compose() {
 		if (!loaded.current) return;
 		const timer = setTimeout(persist, SAVE_DELAY_MS);
 		return () => clearTimeout(timer);
-	}, [text, images, gif, poll, persist]);
+	}, [text, images, gif, poll, reviewVoice, persist]);
+
+	// closing while recording: stop into review first, so the recording is whole in the draft
+	const allowLeave = usePreventRemove(recording, ({ repeat }) => {
+		rec.stop().then(() => {
+			allowLeave();
+			repeat();
+		});
+	});
 
 	// a post from this composer failed while it's open: it comes back here if nothing new is written
 	useBus('draft_returned', (e: { owner: DraftOwner; composer: string }) => {
@@ -159,10 +197,15 @@ export default function Compose() {
 		? 'Quote'
 		: 'New post';
 	const hasMedia = images.length > 0 || !!gif;
+	const hasVoice = !!reviewVoice || (recording && rec.state.started);
 	const canSend =
 		!busy &&
+		recPhase !== 'requesting' &&
 		text.length <= maxLength &&
-		(text.trim().length > 0 || (hasMedia && !poll) || (editing && !!target)) &&
+		(text.trim().length > 0 ||
+			(hasMedia && !poll) ||
+			(hasVoice && !hasMedia && !poll) ||
+			(editing && !!target)) &&
 		(!poll || poll.options.filter((o) => o.trim()).length >= (limits.pollOptionsMin ?? 2));
 
 	async function submit() {
@@ -184,11 +227,16 @@ export default function Compose() {
 			return;
 		}
 		if (!composer || !owner.current) return;
+		// still recording: what's recorded so far is the note
+		const voice = recording ? await rec.take() : reviewVoice;
+		if (voice && (hasMedia || poll)) return setError(VOICE_ONLY);
 		// the saved draft is exactly what's sent, and stays until the post lands
-		const draft: ComposerDraft = { ...current, error: null };
+		const draft: ComposerDraft = { ...current, voice, error: null };
 		submitted.current = true;
 		const savedAt = await saveDraft(owner.current, composer, draft);
 		// sent in the background (src/lib/posting.ts): the composer closes at once
+		// the composer closes: the recording now belongs to the post on its way
+		rec.reset();
 		startPost({
 			composer,
 			owner: owner.current,
@@ -281,6 +329,7 @@ export default function Compose() {
 						setImages((now) => now.map((image) => (image === old ? edited : image)))
 					}
 				/>
+				<ComposerRecorder rec={rec} />
 				{poll ? (
 					<View
 						style={{
@@ -356,6 +405,7 @@ export default function Compose() {
 						label="Attach images"
 						onPress={async () => {
 							if (gif) return setError('A post can have a GIF or images, not both.');
+							if (recPhase !== 'idle') return setError(VOICE_ONLY);
 							const picked = await pickImages(maxImages - images.length);
 							setImages((now) => [...now, ...picked].slice(0, maxImages));
 						}}
@@ -367,6 +417,7 @@ export default function Compose() {
 							label="Add a GIF"
 							onPress={() => {
 								if (images.length) return setError('A post can have a GIF or images, not both.');
+								if (recPhase !== 'idle') return setError(VOICE_ONLY);
 								setPicking(true);
 							}}
 						>
@@ -377,10 +428,26 @@ export default function Compose() {
 					) : null}
 					<IconButton
 						label="Add a poll"
-						onPress={() => setPoll(poll ?? { options: ['', ''], minutes: 1440 })}
+						onPress={() => {
+							if (recPhase !== 'idle') return setError(VOICE_ONLY);
+							setPoll(poll ?? { options: ['', ''], minutes: 1440 });
+						}}
 					>
 						<ChartNoAxesColumn size={22} color={iconColor} />
 					</IconButton>
+					{instance?.voice_notes ? (
+						<IconButton
+							label="Record a voice note"
+							onPress={() => {
+								if (recPhase !== 'idle') return;
+								if (hasMedia || poll) return setError(VOICE_ONLY);
+								setError(null);
+								rec.startLocked();
+							}}
+						>
+							<Mic size={22} color={recPhase === 'idle' ? iconColor : colors.muted} />
+						</IconButton>
+					) : null}
 					{clipboard.available ? (
 						<PasteImageButton
 							onPress={async () => {

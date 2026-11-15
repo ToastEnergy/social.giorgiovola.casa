@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, usePreventRemove } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router/stack';
 import {
@@ -26,12 +26,15 @@ import {
 	View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api, ApiError, errorMessage, getPage, uploadImage } from '@/lib/api';
+import { api, ApiError, auth, errorMessage, getPage, uploadImage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
+import { clearDraft, listDrafts, loadDraft, saveDraft, type DraftOwner } from '@/lib/drafts';
 import { clock, dayLabel, groupEventText, sameDay, voicePreview } from '@/lib/format';
+import { useVoiceRecorder } from '@/lib/recorder';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import type {
+	AudioUpload,
 	Gif,
 	Group,
 	GroupMessage,
@@ -41,6 +44,16 @@ import type {
 	User
 } from '@/lib/types';
 import { play, wasHeard, type Track } from '@/lib/voicePlayer';
+import {
+	deleteRecording,
+	discardVoice,
+	forgetUpload,
+	markSending,
+	startVoiceUpload,
+	useVoiceUpload,
+	type LocalVoice,
+	type Uploader
+} from '@/lib/voiceUpload';
 import {
 	AttachmentStrip,
 	PasteImageButton,
@@ -57,6 +70,7 @@ import { RichText } from './RichText';
 import { UploadProgress } from './UploadProgress';
 import { Avatar, ErrorBanner, IconButton, Loading, Notice, Txt } from './ui';
 import { NowPlayingBar, VoiceNotePlayer } from './voice';
+import { ChatVoiceInput, PendingVoice } from './VoiceRecorder';
 
 const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 /** how long after sending a message can still be edited */
@@ -100,11 +114,23 @@ type Pending = {
 	replyTo: Msg | null;
 	/** share of each image uploaded, 0 to 1; 2 once done */
 	progress: number[];
+	/** a voice note: the recording on this device */
+	voice?: LocalVoice | null;
+	/** who sends it (the profile when it was recorded) */
+	who?: Uploader;
+	/** sent (202): the server is processing this upload, the message comes after */
+	processing?: string | null;
+	/** a voice note that didn't go out: why (tap to retry) */
+	failed?: string | null;
 };
+
+/** a voice note on its way is kept as a draft of its own, so a killed app doesn't lose it */
+const outKey = (chat: string, voice: LocalVoice) =>
+	`chat:${chat}:out:${voice.uri.slice(voice.uri.lastIndexOf('/') + 1)}`;
 
 /** A conversation: with one profile (`direct`) or a group chat. */
 export function ChatView(props: Props) {
-	const { me, instance, profileKey } = useSession();
+	const { me, instance, profileKey, server } = useSession();
 	const insets = useSafeAreaInsets();
 	const headerHeight = useHeaderHeight();
 	const direct = props.kind === 'direct';
@@ -164,7 +190,7 @@ export function ChatView(props: Props) {
 	const clipboard = useClipboardImage();
 	const gifRef = useRef(gif);
 	gifRef.current = gif;
-	const [typing, setTyping] = useState<string | null>(null);
+	const [typing, setTyping] = useState<{ name: string; recording: boolean } | null>(null);
 	const typingTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const lastTyping = useRef(0);
 
@@ -290,10 +316,13 @@ export function ChatView(props: Props) {
 		// our own message echoed by the stream before the send's answer: it replaces its pending
 		// bubble (the oldest one with that text, they go out in order) right away
 		if (message.sender.username === myName && message.kind === 'message') {
-			const draft = pendingRef.current.find((p) => p.text === message.content.trim());
+			const draft = pendingRef.current.find(
+				(p) => !p.failed && !!p.voice === !!message.audio && p.text === message.content.trim()
+			);
 			if (draft) {
 				pendingRef.current = pendingRef.current.filter((p) => p !== draft);
 				setPending((now) => now.filter((p) => p.key !== draft.key));
+				if (draft.voice) voiceSent(draft.voice);
 			}
 		}
 		setMessages((now) => (now.some((m) => m.id === message.id) ? now : [...now, message]));
@@ -351,15 +380,22 @@ export function ChatView(props: Props) {
 			.then(setGroup)
 			.catch(() => router.canGoBack() && router.back());
 	});
-	useBus('typing', (e: { group_id: number | null; user: { username: string; name: string } }) => {
-		const mine = direct
-			? e.group_id === null && e.user.username === props.username
-			: e.group_id === props.id && e.user.username !== myName;
-		if (!mine) return;
-		setTyping(e.user.name);
-		clearTimeout(typingTimer.current);
-		typingTimer.current = setTimeout(() => setTyping(null), 5000);
-	});
+	useBus(
+		'typing',
+		(e: {
+			group_id: number | null;
+			user: { username: string; name: string };
+			action?: 'typing' | 'recording';
+		}) => {
+			const mine = direct
+				? e.group_id === null && e.user.username === props.username
+				: e.group_id === props.id && e.user.username !== myName;
+			if (!mine) return;
+			setTyping({ name: e.user.name, recording: e.action === 'recording' });
+			clearTimeout(typingTimer.current);
+			typingTimer.current = setTimeout(() => setTyping(null), 5000);
+		}
+	);
 	useEffect(() => () => clearTimeout(typingTimer.current), []);
 
 	function onChangeText(value: string) {
@@ -469,6 +505,251 @@ export function ChatView(props: Props) {
 		if (draft.gif && !imagesRef.current.length) setGif((now) => now ?? draft.gif);
 		if (draft.replyTo) setReplyTo((now) => now ?? draft.replyTo);
 	}
+
+	// voice notes (docs/voice-notes-plan.md): uploaded as soon as the recording stops, sent from
+	// the outbox like the rest; the recording is a draft until the message exists
+	const owner: DraftOwner | null = me ? { server, id: me.user.id } : null;
+	const ownerRef = useRef(owner);
+	ownerRef.current = owner;
+	const reviewKey = `chat:${base}`;
+	const rec = useVoiceRecorder({
+		maxMs: instance?.voice_notes?.max_duration_ms,
+		onPing: () =>
+			api(`${base}/typing`, { method: 'POST', body: { action: 'recording' } }).catch(() => {}),
+		onReview: (voice) => {
+			startVoiceUpload(voice.uri);
+			const who = ownerRef.current;
+			if (who) saveDraft(who, reviewKey, { content: '', images: [], gif: null, poll: null, voice });
+		}
+	});
+	const { restore: restoreVoice, cancel: cancelVoice } = rec;
+
+	// out of review: sent (a draft of its own now) or deleted
+	const lastPhase = useRef(rec.state.phase);
+	useEffect(() => {
+		const was = lastPhase.current;
+		lastPhase.current = rec.state.phase;
+		if (was === 'review' && rec.state.phase !== 'review' && ownerRef.current)
+			clearDraft(ownerRef.current, reviewKey);
+	}, [rec.state.phase, reviewKey]);
+
+	// back on the chat: the note left in review, and those that didn't go out
+	const userId = me?.user.id;
+	useEffect(() => {
+		const who = ownerRef.current;
+		if (!who) return;
+		let live = true;
+		(async () => {
+			const draft = await loadDraft(who, reviewKey);
+			if (!live) return;
+			if (draft?.voice) {
+				restoreVoice(draft.voice);
+				startVoiceUpload(draft.voice.uri);
+			}
+			const out = await listDrafts(who, `${reviewKey}:out:`);
+			if (!live) return;
+			const restored: Pending[] = [];
+			for (const { composer, draft: d } of out) {
+				const voice = d.voice;
+				// its recording is gone: nothing left to send
+				if (!voice) clearDraft(who, composer);
+				else if (!pendingRef.current.some((p) => p.voice?.uri === voice.uri))
+					restored.push({
+						key: pendingKey.current++,
+						content: '',
+						text: d.content,
+						images: [],
+						gif: null,
+						replyTo: null,
+						progress: [],
+						voice,
+						who: { server: who.server, token: auth.token },
+						failed: d.error || 'Not sent.'
+					});
+			}
+			if (restored.length) {
+				pendingRef.current = [...pendingRef.current, ...restored];
+				setPending(pendingRef.current);
+			}
+		})();
+		return () => {
+			live = false;
+		};
+	}, [reviewKey, userId, restoreVoice]);
+
+	// leaving with a note being recorded or reviewed (Android back, the header's back): ask first
+	const voiceOpen = rec.state.phase !== 'idle' && rec.state.phase !== 'requesting';
+	const allowLeave = usePreventRemove(voiceOpen, ({ repeat }) => {
+		confirm('Discard voice note?', 'The recording will be deleted.', 'Discard', true).then(
+			async (ok) => {
+				if (!ok) return;
+				await cancelVoice();
+				allowLeave();
+				repeat();
+			}
+		);
+	});
+
+	const updatePending = (key: number, next: Partial<Pending>) => {
+		pendingRef.current = pendingRef.current.map((p) => (p.key === key ? { ...p, ...next } : p));
+		setPending(pendingRef.current);
+	};
+	const dropPending = (key: number) => {
+		pendingRef.current = pendingRef.current.filter((p) => p.key !== key);
+		setPending(pendingRef.current);
+	};
+	/** the message exists: the recording and its draft go */
+	function voiceSent(voice: LocalVoice) {
+		markSending(voice.uri, false);
+		deleteRecording(voice.uri);
+		if (ownerRef.current) clearDraft(ownerRef.current, outKey(base, voice));
+	}
+	const saveOut = (voice: LocalVoice, error: string | null = null) => {
+		if (ownerRef.current)
+			saveDraft(ownerRef.current, outKey(base, voice), {
+				content: '',
+				images: [],
+				gif: null,
+				poll: null,
+				voice,
+				error
+			});
+	};
+
+	function sendVoice(voice: LocalVoice) {
+		const who: Uploader = { server: auth.server, token: auth.token };
+		markSending(voice.uri, true);
+		startVoiceUpload(voice.uri, who);
+		saveOut(voice);
+		const draft: Pending = {
+			key: pendingKey.current++,
+			content: '',
+			text: '',
+			images: [],
+			gif: null,
+			replyTo,
+			progress: [],
+			voice,
+			who
+		};
+		setReplyTo(null);
+		setError(null);
+		setFirstUnread(null);
+		pendingRef.current = [...pendingRef.current, draft];
+		setPending(pendingRef.current);
+		outbox.current = outbox.current.then(() => postVoice(draft));
+		list.current?.scrollToOffset({ offset: 0, animated: true });
+	}
+
+	async function postVoice(draft: Pending) {
+		const voice = draft.voice;
+		if (!voice) return;
+		const who = draft.who ?? { server: auth.server, token: auth.token };
+		markSending(voice.uri, true);
+		const sendOnce = async () => {
+			if (!voice.upload) {
+				// kept on the recording (and its draft): after a restart the same upload is sent, so
+				// it's never sent twice (409)
+				voice.upload = await startVoiceUpload(voice.uri, who);
+				saveOut(voice);
+			}
+			return api<Message | GroupMessage | { status: 'processing'; upload: AudioUpload }>(
+				`${base}/messages`,
+				{
+					method: 'POST',
+					server: who.server,
+					token: who.token,
+					body: { content: draft.text, audio: voice.upload, reply_to: draft.replyTo?.id ?? null }
+				}
+			);
+		};
+		try {
+			let res;
+			try {
+				res = await sendOnce();
+			} catch (e) {
+				if (!(e instanceof ApiError && (e.status === 404 || e.status === 410))) throw e;
+				// the server lost the staged upload (a restart, a day old): upload the recording again
+				voice.upload = null;
+				forgetUpload(voice.uri);
+				res = await sendOnce();
+			}
+			if ('status' in res && res.status === 'processing') {
+				// a long note: the message comes once it's processed (audio_sent / audio_failed)
+				updatePending(draft.key, { processing: res.upload.id, failed: null });
+				return;
+			}
+			dropPending(draft.key);
+			voiceSent(voice);
+			add(normalize(res as Message | GroupMessage));
+			emit('chats_changed');
+		} catch (e) {
+			// already sent, before the app was closed: it's in the chat
+			if (e instanceof ApiError && e.status === 409 && voice.upload) {
+				dropPending(draft.key);
+				voiceSent(voice);
+				load();
+				return;
+			}
+			markSending(voice.uri, false);
+			const failed =
+				e instanceof ApiError && e.status === 413 ? 'The voice note is too big.' : errorMessage(e);
+			updatePending(draft.key, { failed, processing: null });
+			saveOut(voice, failed);
+		}
+	}
+
+	function retryVoice(p: Pending) {
+		if (!p.voice || !p.failed) return;
+		updatePending(p.key, { failed: null });
+		markSending(p.voice.uri, true);
+		outbox.current = outbox.current.then(() => postVoice({ ...p, failed: null }));
+	}
+
+	async function deleteVoice(p: Pending) {
+		if (!p.voice || !p.failed) return;
+		if (!(await confirm('Delete voice note?', 'It wasn’t sent.', 'Delete', true))) return;
+		discardVoice(p.voice);
+		if (ownerRef.current) clearDraft(ownerRef.current, outKey(base, p.voice));
+		dropPending(p.key);
+	}
+
+	// long notes: sent once processed, or not
+	useBus('audio_sent', (e: { upload: string }) => {
+		const p = pendingRef.current.find((x) => x.processing === e.upload);
+		if (!p) return;
+		dropPending(p.key);
+		if (p.voice) voiceSent(p.voice);
+	});
+	const processingFailed = (upload: string, error: string | null) => {
+		const p = pendingRef.current.find((x) => x.processing === upload);
+		if (!p?.voice) return;
+		// that upload is no good: retrying sends the recording again
+		p.voice.upload = null;
+		forgetUpload(p.voice.uri);
+		markSending(p.voice.uri, false);
+		const failed = error || 'The voice note couldn’t be processed.';
+		updatePending(p.key, { processing: null, failed });
+		saveOut(p.voice, failed);
+	};
+	useBus('audio_failed', (e: { upload: string; error: string | null }) =>
+		processingFailed(e.upload, e.error)
+	);
+	// events missed while disconnected: ask how the processing ones went
+	useBus('stream_open', () => {
+		for (const p of pendingRef.current)
+			if (p.processing) {
+				const upload = p.processing;
+				api<AudioUpload>(`uploads/audio/${upload}`)
+					.then((u) => {
+						if (u.status === 'sent') {
+							dropPending(p.key);
+							if (p.voice) voiceSent(p.voice);
+						} else if (u.status === 'failed') processingFailed(upload, u.error);
+					})
+					.catch(() => {});
+			}
+	});
 
 	async function react(message: Msg, emoji: string) {
 		const mine = message.reactions.find((r) => r.username === myName);
@@ -849,6 +1130,8 @@ export function ChatView(props: Props) {
 		>
 			<Stack.Screen
 				options={{
+					// no swipe back while recording or reviewing a voice note (back asks first)
+					gestureEnabled: rec.state.phase === 'idle',
 					headerTitle: () => (
 						<Pressable
 							onPress={() =>
@@ -879,6 +1162,8 @@ export function ChatView(props: Props) {
 				<FlatList
 					ref={list}
 					inverted
+					// a finger holding the mic mustn't scroll the messages
+					scrollEnabled={!(rec.state.phase === 'recording' && rec.state.mode === 'hold')}
 					data={data}
 					keyExtractor={(message) => String(message.id)}
 					renderItem={renderItem}
@@ -900,7 +1185,12 @@ export function ChatView(props: Props) {
 						pending.length ? (
 							<View style={{ gap: 3, marginTop: 3 }}>
 								{pending.map((p) => (
-									<PendingBubble key={p.key} pending={p} />
+									<PendingBubble
+										key={p.key}
+										pending={p}
+										onRetry={() => retryVoice(p)}
+										onDelete={() => deleteVoice(p)}
+									/>
 								))}
 							</View>
 						) : undefined
@@ -929,8 +1219,12 @@ export function ChatView(props: Props) {
 				}}
 			>
 				{typing ? (
-					<Txt size={13} muted>
-						{direct ? 'typing…' : `${typing} is typing…`}
+					<Txt size={13} muted accessibilityLiveRegion="polite">
+						{direct
+							? typing.recording
+								? 'recording…'
+								: 'typing…'
+							: `${typing.name} is ${typing.recording ? 'recording' : 'typing'}…`}
 					</Txt>
 				) : null}
 				<ErrorBanner message={error} />
@@ -1003,7 +1297,20 @@ export function ChatView(props: Props) {
 								}}
 							/>
 						) : null}
-						<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 12 }}>
+						<ChatVoiceInput
+							rec={rec}
+							mic={!!instance?.voice_notes && !editing && !text.trim() && !images.length && !gif}
+							onSend={sendVoice}
+							sendButton={
+								<IconButton
+									label={editing ? 'Save' : 'Send'}
+									style={{ paddingBottom: 8, opacity: saving ? 0.5 : 1 }}
+									onPress={send}
+								>
+									<SendHorizontal size={24} color={colors.accent} />
+								</IconButton>
+							}
+						>
 							{editing ? null : (
 								<>
 									<IconButton
@@ -1056,14 +1363,7 @@ export function ChatView(props: Props) {
 									paddingHorizontal: 0
 								}}
 							/>
-							<IconButton
-								label={editing ? 'Save' : 'Send'}
-								style={{ paddingBottom: 8, opacity: saving ? 0.5 : 1 }}
-								onPress={send}
-							>
-								<SendHorizontal size={24} color={colors.accent} />
-							</IconButton>
-						</View>
+						</ChatVoiceInput>
 					</>
 				)}
 			</View>
@@ -1091,18 +1391,53 @@ export function ChatView(props: Props) {
 	);
 }
 
-/** A message on its way: dimmed, with each image's upload, until the real one replaces it. */
-function PendingBubble({ pending: p }: { pending: Pending }) {
+/** A voice note on its way: its upload's progress follows the recording's file. */
+function PendingVoiceContent({ pending: p, onRetry }: { pending: Pending; onRetry: () => void }) {
+	const upload = useVoiceUpload(p.voice?.uri);
+	if (!p.voice) return null;
 	return (
-		<View
-			accessibilityLabel="Sending"
-			style={{ alignSelf: 'flex-end', maxWidth: '80%', alignItems: 'flex-end', opacity: 0.6 }}
+		<PendingVoice
+			voice={p.voice}
+			upload={upload}
+			processing={!!p.processing}
+			failed={p.failed}
+			onRetry={onRetry}
+		/>
+	);
+}
+
+/**
+ * A message on its way: dimmed, with each image's upload, until the real one replaces it. A
+ * voice note that failed stays, to retry (tap) or delete (long press).
+ */
+function PendingBubble({
+	pending: p,
+	onRetry,
+	onDelete
+}: {
+	pending: Pending;
+	onRetry: () => void;
+	onDelete: () => void;
+}) {
+	return (
+		<Pressable
+			accessibilityLabel={p.failed ? undefined : 'Sending'}
+			accessibilityHint={p.failed ? 'Long press to delete' : undefined}
+			disabled={!p.failed}
+			onLongPress={onDelete}
+			delayLongPress={450}
+			style={{
+				alignSelf: 'flex-end',
+				maxWidth: '80%',
+				alignItems: 'flex-end',
+				opacity: p.failed ? 1 : 0.6
+			}}
 		>
 			<View
 				style={{
 					borderRadius: 10,
 					borderWidth: 1,
-					borderColor: colors.accent,
+					borderColor: p.failed ? colors.danger : colors.accent,
 					backgroundColor: 'rgba(121,154,116,0.15)',
 					paddingVertical: 7,
 					paddingHorizontal: 10,
@@ -1159,12 +1494,15 @@ function PendingBubble({ pending: p }: { pending: Pending }) {
 						}}
 					/>
 				) : null}
+				{p.voice ? <PendingVoiceContent pending={p} onRetry={onRetry} /> : null}
 				{p.text ? <Txt>{p.text}</Txt> : null}
-				<Txt size={11} muted style={{ alignSelf: 'flex-end' }}>
-					Sending…
-				</Txt>
+				{p.voice ? null : (
+					<Txt size={11} muted style={{ alignSelf: 'flex-end' }}>
+						Sending…
+					</Txt>
+				)}
 			</View>
-		</View>
+		</Pressable>
 	);
 }
 

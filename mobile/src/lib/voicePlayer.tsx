@@ -1,7 +1,8 @@
-import { setAudioModeAsync, useAudioPlayer, type AudioPlayer, type AudioStatus } from 'expo-audio';
+import { useAudioPlayer, type AudioPlayer, type AudioStatus } from 'expo-audio';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect, useSyncExternalStore } from 'react';
 import { avatarUrl, instanceImage } from './api';
+import { isRecordingSession, playbackMode } from './audioSession';
 import { useSession } from './session';
 import type { User, VoiceNote } from './types';
 
@@ -94,21 +95,8 @@ SecureStore.getItemAsync(RATE_KEY)
 	})
 	.catch(() => {});
 
-/**
- * Voice notes play with the ringer off (like WhatsApp), in the background, and take the audio
- * focus: other apps pause and may resume after. expo-audio needs doNotMix for the lock screen
- * controls, so this is it rather than ducking. Set again before every play: other media (the
- * GIFs' muted videos) may have changed the session since.
- */
-const audioMode = () =>
-	setAudioModeAsync({
-		playsInSilentMode: true,
-		shouldPlayInBackground: true,
-		interruptionMode: 'doNotMix',
-		// recording (a later PR) turns this on only while it records: left on, iOS plays through
-		// the earpiece
-		allowsRecording: false
-	}).catch(() => {});
+/** set again before every play: other media (the GIFs' muted videos) may have changed it since */
+const audioMode = playbackMode;
 
 function remember(url: string, seconds: number | null) {
 	const positions = new Map(state.positions);
@@ -133,7 +121,8 @@ export function toggle(track: Track) {
 
 /** Starts a note (stopping the one before), at its remembered position. */
 export function play(track: Track, from?: number) {
-	if (!player) return;
+	// a recording holds the microphone and the session
+	if (!player || isRecordingSession()) return;
 	const before = state.track;
 	const positions = before ? remember(before.note.url, state.position) : state.positions;
 	const seek = from ?? positions.get(track.note.url) ?? 0;
@@ -178,7 +167,7 @@ function onLoaded() {
 
 export function resume() {
 	const track = state.track;
-	if (!player || !track) return;
+	if (!player || !track || isRecordingSession()) return;
 	const gen = generation;
 	set({ loading: true, error: null });
 	audioMode().then(() => {

@@ -312,6 +312,8 @@ Posts (replies and quotes too) and direct and group messages can be voice notes:
 
 ffmpeg and ffprobe are in the Docker image (static builds, about 270MB). Running the app outside Docker without them turns voice notes off (`/api/v1/instance` says `"voice_notes": null` and uploads answer 503); set `FFMPEG_PATH` when ffmpeg isn't on `PATH`.
 
+The mobile app records voice notes too: hold the mic in a chat (slide left to cancel, up to lock), or tap the mic in the composer. It asks for the microphone the first time. A locked recording goes on with the screen off or the app in the background, which on Android shows a "Recording audio" notification while it records. Unsent recordings stay on the phone as drafts of their chat or composer until they're sent or deleted.
+
 ## link previews
 
 The first link to another site in a post shows a card with the page's title, description and image (its Open Graph tags). Readers' browsers never contact the linked site: the page and its image are downloaded once on the server side and cached for 7 days (1 day when it had no preview). The image (https only, up to 5MB) is re-encoded by the app to a small WebP (at most 1200px, first frame of an animation) and served from `/previews/<hash>.webp`, named after the image's URL so pages sharing one image store it once. A card nobody looked at for 30 days is dropped along with its image. Cards fetched before images were stored show no image until they're refreshed. `LINK_PREVIEWS` picks who downloads them:

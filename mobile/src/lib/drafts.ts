@@ -1,6 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 import type { Picked } from '@/components/attachments';
 import type { Gif } from './types';
+import { deleteRecording, isUploading, type LocalVoice } from './voiceUpload';
 
 /**
  * Keeps what's in the post composer, so that leaving it (closing the screen, the app being
@@ -8,7 +9,9 @@ import type { Gif } from './types';
  * app's documents; images are kept as their local URIs and uploaded again when the post is sent.
  *
  * A draft belongs to a profile on an instance and to a composer (`post`, `reply:<id>`,
- * `quote:<id>`), and only comes back to that same profile and composer.
+ * `quote:<id>`, a chat's unsent voice note `chat:<conversation>`, a chat's voice notes on their
+ * way `chat:<conversation>:out:<file>`), and only comes back to that same profile and composer.
+ * A voice note's recording is a file in the app's documents, deleted with its draft.
  */
 
 export type ComposerDraft = {
@@ -16,6 +19,8 @@ export type ComposerDraft = {
 	images: Picked[];
 	gif: Gif | null;
 	poll: { options: string[]; minutes: number } | null;
+	/** a recorded voice note (its text is the caption) */
+	voice?: LocalVoice | null;
 	/** why the post this draft was sent as didn't go out */
 	error?: string | null;
 };
@@ -47,8 +52,10 @@ function read() {
 			// unreadable: start over rather than never saving again
 		}
 		for (const [key, draft] of Object.entries(all))
-			if (typeof draft?.savedAt !== 'number' || Date.now() - draft.savedAt > MAX_AGE_MS)
+			if (typeof draft?.savedAt !== 'number' || Date.now() - draft.savedAt > MAX_AGE_MS) {
+				if (draft?.voice?.uri) deleteRecording(draft.voice.uri);
 				delete all[key];
+			}
 		drafts = all;
 		return all;
 	})();
@@ -67,7 +74,16 @@ function write() {
 }
 
 export const isEmptyDraft = (d: ComposerDraft) =>
-	!d.content.trim() && d.images.length === 0 && !d.gif && !d.poll;
+	!d.content.trim() && d.images.length === 0 && !d.gif && !d.poll && !d.voice;
+
+const voiceThere = (voice: LocalVoice | null | undefined) => {
+	if (!voice) return null;
+	try {
+		return new File(voice.uri).exists ? voice : null;
+	} catch {
+		return null;
+	}
+};
 
 const stillThere = (image: Picked) => {
 	try {
@@ -82,7 +98,11 @@ const stillThere = (image: Picked) => {
 export async function loadDraft(owner: DraftOwner, composer: string) {
 	const draft = (await read())[keyOf(owner, composer)];
 	if (!draft) return null;
-	return { ...draft, images: draft.images.filter(stillThere) } as Stored;
+	return {
+		...draft,
+		images: draft.images.filter(stillThere),
+		voice: voiceThere(draft.voice)
+	} as Stored;
 }
 
 /** Saves a composer's draft (or drops it once emptied). Answers when it was saved. */
@@ -97,6 +117,14 @@ export async function saveDraft(owner: DraftOwner, composer: string, draft: Comp
 			images: draft.images.map((i) => ({ uri: i.uri, mimeType: i.mimeType ?? null })),
 			gif: draft.gif,
 			poll: draft.poll && { options: [...draft.poll.options], minutes: draft.poll.minutes },
+			voice: draft.voice
+				? {
+						uri: draft.voice.uri,
+						duration_ms: draft.voice.duration_ms,
+						peaks: draft.voice.peaks,
+						upload: draft.voice.upload ?? null
+				  }
+				: null,
 			error: draft.error ?? null,
 			savedAt
 		};
@@ -133,4 +161,19 @@ export async function clearDraft(owner: DraftOwner, composer: string, savedBefor
 	delete all[key];
 	write();
 	return true;
+}
+
+/**
+ * The drafts of a profile whose composer starts with `prefix` (a chat's voice notes on their way),
+ * leaving out those being sent right now.
+ */
+export async function listDrafts(owner: DraftOwner, prefix: string) {
+	const all = await read();
+	const start = keyOf(owner, prefix);
+	return Object.entries(all)
+		.filter(([key, d]) => key.startsWith(start) && !(d.voice && isUploading(d.voice.uri)))
+		.map(([key, d]) => ({
+			composer: key.slice(key.indexOf('|', key.indexOf('|') + 1) + 1),
+			draft: { ...d, voice: voiceThere(d.voice) } as Stored
+		}));
 }

@@ -267,6 +267,16 @@ In _Settings → Environments_ create `staging` and `production`, each with a `P
 
 The first production deploy starts the registry's image on green (port `GREEN_PORT`, 7779 by default) while the container you run today (`web`, which counts as blue) keeps serving, then switches over. The data stays: both colours use the same database and volumes, which belong to the compose project. To build on the server again, set `SOCIAL_COLOR=blue`, remove `SOCIAL_IMAGE` from `.env`, run `docker compose up -d --build web` and point the upstream file back at `PORT`.
 
+## notifications
+
+Notifications are created by the app (`src/lib/server/notify.ts`), in the same transaction as what causes them:
+
+- **Replies, quotes and mentions:** a reply notifies the author of the post it answers, a quote the author of the quoted post, and everyone else the post @mentions gets a mention, in replies and quotes too. Someone mentioned in a reply to their own post (or a quote of it) gets only the reply (or quote). Editing a post notifies the people it now mentions that the previous text didn't.
+- **Mentions are case-insensitive:** usernames are lowercase, and `@Alice` mentions and links to alice. A mention can sit next to punctuation (`(@alice)`, `@alice,`), but not right after a letter, digit, `_`, `@` or `/`, so emails and post links aren't mentions.
+- **Likes, regiorgios, follows and ratios:** a like, regiorgio or follow notifies the post's author or the followed profile. Undoing it (unlike, undo the regiorgio, unfollow) deletes its notification; ratio notifications stay. Redoing it within a day of its push brings the notification back as it was, read if it had been read, without a second push, so toggling a like doesn't ping anyone again (the removed ones are kept in `inbox_removed` for that).
+- **Blocks:** no notification is created between two profiles when either blocked the other. Notifications from before the block stay.
+- Nobody is notified of their own actions.
+
 ## regiorgios
 
 The arrows button under a post opens a menu with two ways to reshare it:
@@ -494,7 +504,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`                      | `/api/v1/timeline?feed=all\|following` | public / signed in                | the home timeline (following brings in regiorgs; all says who regiorged) |
 | `GET`                      | `/api/v1/timeline/pinned`              | public                            | posts staff pinned above the timeline                                    |
 | `POST`                     | `/api/v1/posts`                        | not muted                         | `{ content, uploads?, gif?, reply_to?, quote_of?, poll? }`               |
-| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` / delete                              |
+| `GET` / `PATCH` / `DELETE` | `/api/v1/posts/:id`                    | public / author / author or staff | read / edit the text `{ content }` (new mentions notify) / delete        |
 | `GET`                      | `/api/v1/posts/:id/replies`            | public                            | replies, ratioing ones first                                             |
 | `GET`                      | `/api/v1/posts/:id/ancestors`          | public                            | the thread above a reply, root first (`?limit=` up to 50)                |
 | `GET`                      | `/api/v1/posts/:id/likes`              | public                            | who liked it                                                             |
@@ -520,8 +530,8 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `GET`            | `/api/v1/users/:username/followers`                          | public    | followers                                                |
 | `GET`            | `/api/v1/users/:username/following`                          | public    | who it follows                                           |
 | `GET`            | `/api/v1/users/:username/followers/known`                    | signed in | its followers you follow too                             |
-| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow                                        |
-| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock                                          |
+| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow (removes the follow notification)      |
+| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock (no messages or new notifications)       |
 | `GET`            | `/api/v1/search?q=`                                          | signed in | users and hashtags                                       |
 | `GET`            | `/api/v1/search/users?q=`                                    | signed in | username / name prefix, for mention pickers              |
 | `GET`            | `/api/v1/hashtags/:tag`                                      | public    | a hashtag and its post count                             |

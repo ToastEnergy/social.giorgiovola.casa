@@ -323,6 +323,20 @@
       "when": 1794758933504,
       "tag": "0045_inbox_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794759072875,
+      "tag": "0046_drop_notification_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794759077007,
+      "tag": "0047_inbox_removed",
+      "breakpoints": true
     }
   ]
 }

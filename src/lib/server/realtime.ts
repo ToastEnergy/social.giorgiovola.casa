@@ -6,7 +6,7 @@ import { unreadReactionCount } from './messageReactions.js';
 import { getPosts } from './posts';
 import { sendFollowPush, sendGroupMessagePush, sendMessagePush, sendPush } from './push';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from '#lib/types.js';
-import type { Notification } from './notify.js';
+import type { Notification, NotificationChanges } from './notify.js';
 
 /**
  * In-process hub for server-sent events. One instance per server process, so this assumes a
@@ -160,7 +160,7 @@ export function closeSessionStreams(keys: Iterable<string>) {
 
 type BotClient = {
 	botId: number;
-	/** matches a mention of the bot, like the mention trigger does */
+	/** matches a mention of the bot, like MENTION_RE (#lib/mentions.ts), in any case */
 	mention: RegExp;
 	send: (chunk: string) => void;
 	close: () => void;
@@ -181,7 +181,7 @@ export function openBotStream(bot: { id: number; username: string }, signal: Abo
 		// usernames are [a-z0-9_], nothing to escape. same rule as MENTION_RE (#lib/mentions.ts)
 		const client: BotClient = {
 			botId: bot.id,
-			mention: new RegExp(`(?<![a-zA-Z0-9_@/])@${bot.username}(?![a-zA-Z0-9_])`),
+			mention: new RegExp(`(?<![a-zA-Z0-9_@/])@${bot.username}(?![a-zA-Z0-9_])`, 'i'),
 			send,
 			close
 		};
@@ -455,11 +455,20 @@ export async function publishPost(postId: number, notifications: Notification[])
 			broadcast('counts', { id: post.reply_to.id, replies_count });
 		}
 		if (post.quote && !('deleted' in post.quote)) await publishQuotes(post.quote.id);
-		await pushUnread(notifications.map((n) => n.user_id));
-		await sendPush(notifications);
+		await publishNotifications({ created: notifications, removed: [] });
 	} catch (e) {
 		console.error('realtime: publishPost failed', e);
 	}
+}
+
+/**
+ * Notifications were created or removed (see notify.ts): the recipients' unread counts, and the
+ * pushes of the new rows.
+ */
+export async function publishNotifications({ created, removed }: NotificationChanges) {
+	await pushUnread([...created, ...removed].map((n) => n.user_id));
+	await sendPush(created);
+	await sendFollowPush(created);
 }
 
 /** The quote count of a post changed. */
@@ -479,29 +488,33 @@ export function publishDeleted(postId: number, replyTo: number | null, quoteOf: 
 		publishQuotes(quoteOf).catch((e) => console.error('realtime: publishDeleted failed', e));
 }
 
-/** A post's likes changed: its count, and the like (and ratio) `notifications` a like created. */
-export async function publishLikes(postId: number, total: number, notifications: Notification[]) {
+/**
+ * A post's likes changed: its count, and the like (and ratio) notifications a like created or the
+ * one an unlike removed.
+ */
+export async function publishLikes(postId: number, total: number, changes: NotificationChanges) {
 	try {
 		broadcast('counts', { id: postId, likes: total });
-		await pushUnread(notifications.map((n) => n.user_id));
-		await sendPush(notifications);
+		await publishNotifications(changes);
 	} catch (e) {
 		console.error('realtime: publishLikes failed', e);
 	}
 }
 
 /**
- * A post's regiorgs changed: update its count everywhere. When `regiorgerId` regiorged it just
- * now, the post goes out with who regiorged it (for followers' feeds) and its author is notified.
+ * A post's regiorgs changed: update its count everywhere, and the notifications (`changes`). When
+ * `regiorgerId` regiorged it just now, the post goes out with who regiorged it (for followers'
+ * feeds).
  */
 export async function publishRegiorg(
 	postId: number,
 	total: number,
 	regiorgerId: number | null,
-	notifications: Notification[]
+	changes: NotificationChanges
 ) {
 	try {
 		broadcast('counts', { id: postId, regiorgs: total });
+		await publishNotifications(changes);
 		if (regiorgerId === null) return;
 		const [[post], [regiorger]] = await Promise.all([
 			getPosts({ postId }),
@@ -511,8 +524,6 @@ export async function publishRegiorg(
 				.where(eq(users.id, regiorgerId))
 		]);
 		if (post && regiorger) broadcast('regiorg', { ...post, regiorged_by: regiorger });
-		await pushUnread(notifications.map((n) => n.user_id));
-		await sendPush(notifications);
 	} catch (e) {
 		console.error('realtime: publishRegiorg failed', e);
 	}
@@ -523,12 +534,10 @@ export function publishPollVotes(postId: number, votes: number[]) {
 	broadcast('poll', { id: postId, votes });
 }
 
-/** A profile got a new follower (`notifications` of setFollowing): its badge and the push. */
-export async function publishFollow(notifications: Notification[]) {
+/** A profile was followed or unfollowed (`changes` of setFollowing): its badge and the push. */
+export async function publishFollow(changes: NotificationChanges) {
 	try {
-		if (notifications.length === 0) return;
-		await pushUnread(notifications.map((n) => n.user_id));
-		await sendFollowPush(notifications);
+		await publishNotifications(changes);
 	} catch (e) {
 		console.error('realtime: publishFollow failed', e);
 	}

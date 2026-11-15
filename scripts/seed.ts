@@ -376,16 +376,48 @@ async function seed(db: postgres.Sql) {
 		['mallory', 'mallory_hidden', 'Mallory Hidden', 2600, ['dev']]
 	];
 
+	// the app creates notifications itself (src/lib/server/notify.ts), and this script writes SQL:
+	// these helpers add the inbox rows the app would have. `notifyAuthor` notifies the author of a
+	// post, unless they are the sender
+	const notifyAuthor = (content: string, from: string, type: string, postId: string, at: string) =>
+		`INSERT INTO inbox (user_id, sender_id, post_id, type, created_at)
+			SELECT p.user_id, ${uid(from)}, ${postId}, ${q(type)}, ${at} FROM posts p
+			WHERE p.id = ${pid(content)} AND p.user_id <> ${uid(from)};`;
 	const post = (user: string, content: string, mins: number, replyTo?: string) =>
-		`INSERT INTO posts (user_id, content, created_at, reply_to) VALUES (${uid(user)}, ${q(
-			content
-		)}, ${ago(mins)}, ${replyTo ? pid(replyTo) : 'NULL'});`;
+		[
+			`INSERT INTO posts (user_id, content, created_at, reply_to) VALUES (${uid(user)}, ${q(
+				content
+			)}, ${ago(mins)}, ${replyTo ? pid(replyTo) : 'NULL'});`,
+			replyTo ? notifyAuthor(replyTo, user, 'reply', pid(content), ago(mins)) : ''
+		].join(' ');
+	// the mentions of a post (other than the parent's author of a reply, who gets the reply)
+	const mention = (content: string, from: string, to: string[], mins: number) =>
+		to
+			.map(
+				(u) =>
+					`INSERT INTO inbox (user_id, sender_id, post_id, type, created_at) VALUES (${uid(
+						u
+					)}, ${uid(from)}, ${pid(content)}, 'mention', ${ago(mins)});`
+			)
+			.join(' ');
 	const tag = (content: string, t: string) =>
 		`INSERT INTO post_hashtags (post_id, tag) VALUES (${pid(content)}, ${q(t)});`;
-	const like = (user: string, content: string) =>
-		`INSERT INTO likes (user_id, post_id) VALUES (${uid(user)}, ${pid(content)});`;
-	const follow = (a: string, b: string) =>
-		`INSERT INTO follows (follower_id, followed_id) VALUES (${uid(a)}, ${uid(b)});`;
+	const like = (user: string, content: string, mins = 0) =>
+		[
+			`INSERT INTO likes (user_id, post_id, created_at) VALUES (${uid(user)}, ${pid(
+				content
+			)}, ${ago(mins)});`,
+			notifyAuthor(content, user, 'like', pid(content), ago(mins))
+		].join(' ');
+	const follow = (a: string, b: string, mins = 0) =>
+		[
+			`INSERT INTO follows (follower_id, followed_id, created_at) VALUES (${uid(a)}, ${uid(
+				b
+			)}, ${ago(mins)});`,
+			`INSERT INTO inbox (user_id, sender_id, type, created_at) VALUES (${uid(b)}, ${uid(
+				a
+			)}, 'follow', ${ago(mins)});`
+		].join(' ');
 
 	const p1 = 'hello from the dev seed, this is the first post';
 	const p2 = 'trying out #svelte 5 runes, so far so good';
@@ -395,6 +427,9 @@ async function seed(db: postgres.Sql) {
 	const r1 = 'welcome @dev!';
 	const r2 = 'runes are great, $state everywhere';
 	const r3 = 'nested reply to the reply';
+	// mentions in any case notify; dev's own mention of the parent's author is just the reply
+	const p5 = 'has anyone seen @Dev today? @bob says the poll is up';
+	const r4 = 'thanks @alice, and @carol you should vote too';
 
 	// grace: media, replies, reactions and an edit on both sides of the divider
 	const g1 = 'look at this view';
@@ -481,12 +516,12 @@ async function seed(db: postgres.Sql) {
 		dmRun('alice_art', 'grace', { from: 1, to: 4, who: 'b', read: false, every: 10, endAgo: 25 }),
 		dm('carol', 'carol_desk', 'reminder: check the report queue', 45),
 
-		follow('dev', 'alice'),
-		follow('dev', 'bob'),
-		follow('alice', 'dev'),
-		follow('bob', 'dev'),
-		follow('carol', 'dev'),
-		follow('alice', 'bob'),
+		follow('dev', 'alice', 300),
+		follow('dev', 'bob', 300),
+		follow('alice', 'dev', 290),
+		follow('bob', 'dev', 280),
+		follow('carol', 'dev', 270),
+		follow('alice', 'bob', 260),
 		post('dev', p1, 180),
 		post('alice', p2, 150),
 		tag(p2, 'svelte'),
@@ -495,13 +530,17 @@ async function seed(db: postgres.Sql) {
 		post('alice', r1, 170, p1),
 		post('bob', r2, 140, p2),
 		post('dev', r3, 130, r2),
-		like('alice', p1),
-		like('bob', p1),
-		like('carol', p1),
-		like('dev', p2),
-		like('bob', p2),
-		like('dev', p3),
-		like('dev', r1),
+		post('erin', p5, 70),
+		mention(p5, 'erin', ['dev', 'bob'], 70),
+		post('dev', r4, 65, p2),
+		mention(r4, 'dev', ['carol'], 65),
+		like('alice', p1, 175),
+		like('bob', p1, 160),
+		like('carol', p1, 100),
+		like('dev', p2, 145),
+		like('bob', p2, 140),
+		like('dev', p3, 110),
+		like('dev', r1, 165),
 		// a poll with a few votes
 		`INSERT INTO polls (post_id, options, ends_at) VALUES (${pid(
 			p4

@@ -1649,7 +1649,7 @@
 													: ''} {piece.username.toLowerCase() === $user?.username
 													? 'rounded-[5px] bg-accent/25 px-[2px]'
 													: ''}"
-												href={`/@${piece.username}`}
+												href={`/@${piece.username.toLowerCase()}`}
 												use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
 											>{:else if piece.type === 'text'}{piece.text}{/if}{/each}{#if inlineMeta}<span
 											aria-hidden="true"

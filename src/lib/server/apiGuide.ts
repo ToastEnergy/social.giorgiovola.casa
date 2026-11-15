@@ -214,6 +214,22 @@ Notification:
   notification is still unread add to it (its sender becomes the latest admin, its
   created_at moves to now) instead of making a new one. More types may be added: skip
   ones you don't know.
+  When they are created:
+  - A reply notifies the parent post's author ("reply"), a quote the quoted post's author
+    ("quote"). Everyone else a post @mentions gets a "mention", replies and quotes included;
+    the parent's or quoted author mentioned in it gets only the reply or quote.
+  - Mentions are case-insensitive: usernames are lowercase, and "@Alice" mentions alice. A
+    mention is "@" + username anywhere, also next to punctuation ("(@alice)", "@alice,"), but
+    not right after a letter, digit, "_", "@" or "/" (emails and post links aren't mentions).
+  - Editing a post (PATCH /posts/:id) notifies the profiles it now mentions that the previous
+    text didn't. Removing a mention by editing doesn't remove its notification.
+  - Nobody is notified of their own actions, and no notification is created between two
+    profiles when either has blocked the other. Notifications from before the block stay.
+  - Unliking, undoing a regiorg and unfollowing delete the "like", "regiorg" or "follow"
+    notification they created (ratio notifications stay). Doing it again within a day
+    brings it back as it was (read if it had been read) and sends no second push.
+  Every change to your notifications sends a realtime "notifications" event with the new
+  unread count.
 
 NotificationGroup (GET /notifications/grouped):
   { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
@@ -524,7 +540,8 @@ POST /posts                                                    signed in, not mu
 GET /posts/:id                                                 public
 PATCH /posts/:id   { "content" }                                author, not muted
   Edits the text (images and poll stay), with the same line break rules as POST /posts.
-  Sets "edited_at", re-reads hashtags. 200: <Post>.
+  Sets "edited_at", re-reads hashtags, and notifies profiles it newly @mentions (see
+  Notification). 200: <Post>.
   400 when the text would be empty on a post without images or GIF, or on a poll (its question).
 DELETE /posts/:id                                              author (or staff)
   Deletes it with its replies. 204. When staff delete someone else's post, its open reports
@@ -543,6 +560,8 @@ GET /posts/:id/regiorgs         Users who regiorged, latest first; same limits
 GET /posts/:id/quotes           { "id", "content", "username", "name", "avatar" } quotes; same limits
 PUT /posts/:id/like / DELETE    signed in → { "liked", "likes" }   60 a minute, idempotent
 PUT /posts/:id/regiorg / DELETE signed in (PUT not muted) → { "regiorged", "regiorgs" }  30 a minute
+  Unliking and un-regiorging remove the "like" / "regiorg" notification it sent (see
+  Notification).
 PUT /posts/:id/vote   { "option": index }  → { "voted", "votes": [..] }  30 a minute;
   changeable until the poll ends; 400 when it ended.
 PUT /posts/:id/pin / DELETE     your own top-level post on your profile → { "pinned" }
@@ -564,9 +583,10 @@ GET /users/:username/followers        paginated FollowEntry, newest follow first
 GET /users/:username/following        paginated FollowEntry
 GET /users/:username/followers/known  signed in: its followers that you follow too
 PUT /users/:username/follow / DELETE  signed in → { "followers", "following", "followed" }
-  30 a minute, idempotent.
+  30 a minute, idempotent. Unfollowing removes the "follow" notification.
 PUT /users/:username/block / DELETE   signed in → { "blocked", "blocks_you" }
-  Blocking stops direct messages both ways. 30 a minute.
+  Blocking stops direct messages both ways, and new notifications between the two
+  profiles (existing ones stay). 30 a minute.
 
 ### Search and hashtags
 

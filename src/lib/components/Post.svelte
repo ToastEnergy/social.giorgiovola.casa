@@ -766,7 +766,7 @@
 										href={hashtagHref(piece.tag)}>#{piece.tag}</a
 									>{:else if piece.type === 'mention'}<a
 										onclick={stop}
-										href={`/@${piece.username}`}
+										href={`/@${piece.username.toLowerCase()}`}
 										use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
 									>{:else}{piece.text}{/if}{/each}
 						</p>

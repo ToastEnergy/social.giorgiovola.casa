@@ -1,16 +1,19 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db, inbox, likes, posts, users } from './db/index.js';
-import { MENTION_RE } from '#lib/mentions.js';
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
+import { blocks, db, inbox, inbox_removed, likes, posts, users } from './db/index.js';
+import { mentionedUsernames } from '#lib/mentions.js';
 import type { NotificationType } from '#lib/types.js';
 
 /**
- * Creates the notifications (inbox rows) of each event, inside the transaction that wrote the
- * event. Each function returns the rows the event created, for realtime and push.
+ * Creates and removes the notifications (inbox rows) of each event, inside the transaction that
+ * wrote the event. This is the only writer of these rows. Each function returns the rows the
+ * event created or removed, for realtime (unread counts) and push.
  *
- * The notify_* triggers still create the same rows until the next release drops them (deploys
- * are blue-green). They run first, inside the event's insert, so the inserts here usually do
- * nothing: the rows returned are those of this transaction, found by `created_at = NOW()` (the
- * transaction start, the default of created_at), whoever inserted them.
+ * - Nobody is notified of their own actions.
+ * - No row is created between two profiles when either blocks the other. Rows from before the
+ *   block stay.
+ * - Undoing a like, regiorg or follow removes its row. Redoing it within REPUSH_AFTER of the
+ *   push brings the row back as it was (pushed, and read if it was), so toggling never pushes
+ *   twice: see inbox_removed.
  */
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -23,7 +26,13 @@ export type Notification = {
 	type: NotificationType;
 };
 
-type NewNotification = Omit<Notification, 'id'>;
+/** What an event did to the notifications, for realtime and push (see publishNotifications). */
+export type NotificationChanges = { created: Notification[]; removed: Notification[] };
+
+type NewNotification = Omit<Notification, 'id' | 'sender_id'> & { sender_id: number };
+
+// a like, regiorg or follow undone and redone sooner than this after its push isn't pushed again
+const REPUSH_AFTER = sql`interval '1 day'`;
 
 const columns = {
 	id: inbox.id,
@@ -33,77 +42,183 @@ const columns = {
 	type: inbox.type
 };
 
-/** Inserts the rows, skipping the ones that exist, and returns those this transaction created. */
-async function insert(tx: Tx, rows: NewNotification[]): Promise<Notification[]> {
+const removedKey = (r: NewNotification) =>
+	sql`(${inbox_removed.user_id} = ${r.user_id} AND ${inbox_removed.sender_id} = ${r.sender_id}
+		AND ${inbox_removed.post_id} IS NOT DISTINCT FROM ${r.post_id} AND ${inbox_removed.type} = ${r.type})`;
+
+/**
+ * Inserts the rows, skipping self-notifications, blocked pairs and rows that exist, and returns
+ * those it created.
+ */
+async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notification[]> {
+	let rows = candidates.filter((r) => r.user_id !== r.sender_id);
 	if (rows.length === 0) return [];
-	const inserted = await tx.insert(inbox).values(rows).onConflictDoNothing().returning(columns);
-	// rows a trigger inserted earlier in this transaction. a row from an earlier event (a like
-	// toggled off and on) is older and isn't returned, so it isn't pushed again. goes with them
-	const keys = rows.map(
-		(r) =>
-			sql`(${inbox.user_id} = ${r.user_id} AND ${inbox.sender_id} IS NOT DISTINCT FROM ${r.sender_id}
-				AND ${inbox.post_id} IS NOT DISTINCT FROM ${r.post_id} AND ${inbox.type} = ${r.type})`
-	);
-	const existing = await tx
-		.select(columns)
-		.from(inbox)
-		.where(and(sql`${inbox.created_at} = NOW()`, sql`(${sql.join(keys, sql` OR `)})`));
-	const byId = new Map([...inserted, ...existing].map((r) => [r.id, r]));
-	return [...byId.values()];
+
+	const pairs = rows.flatMap((r) => [
+		sql`(${r.user_id}::int, ${r.sender_id}::int)`,
+		sql`(${r.sender_id}::int, ${r.user_id}::int)`
+	]);
+	const blocked = await tx
+		.select({ blocker_id: blocks.blocker_id, blocked_id: blocks.blocked_id })
+		.from(blocks)
+		.where(sql`(${blocks.blocker_id}, ${blocks.blocked_id}) IN (${sql.join(pairs, sql`, `)})`);
+	const isBlocked = (a: number, b: number) =>
+		blocked.some(
+			(x) =>
+				(x.blocker_id === a && x.blocked_id === b) || (x.blocker_id === b && x.blocked_id === a)
+		);
+	rows = rows.filter((r) => !isBlocked(r.user_id, r.sender_id));
+	if (rows.length === 0) return [];
+
+	// the same notification, removed by an undo not long after its push, comes back as it was. the
+	// timestamps stay text: a JS Date would drop their microseconds
+	const removed = await tx
+		.delete(inbox_removed)
+		.where(sql`(${sql.join(rows.map(removedKey), sql` OR `)})`)
+		.returning({
+			user_id: inbox_removed.user_id,
+			sender_id: inbox_removed.sender_id,
+			post_id: inbox_removed.post_id,
+			type: inbox_removed.type,
+			pushed_at: sql<string>`${inbox_removed.pushed_at}::text`,
+			read_at: sql<string | null>`${inbox_removed.read_at}::text`,
+			recent: sql<boolean>`${inbox_removed.pushed_at} > NOW() - ${REPUSH_AFTER}`
+		});
+	const values = rows.map((r) => {
+		const old = removed.find(
+			(o) =>
+				o.recent &&
+				o.user_id === r.user_id &&
+				o.sender_id === r.sender_id &&
+				o.post_id === r.post_id &&
+				o.type === r.type
+		);
+		if (!old) return r;
+		return {
+			...r,
+			pushed_at: sql`${old.pushed_at}::timestamptz`,
+			read_at: old.read_at === null ? null : sql`${old.read_at}::timestamptz`
+		};
+	});
+	return tx.insert(inbox).values(values).onConflictDoNothing().returning(columns);
 }
 
 /**
- * A post was created: a reply notifies the parent's author, any other post the profiles it
- * @mentions, and a quote the quoted author (instead of a mention). Never the author itself.
+ * Removes the like, regiorg or follow notifications matching `where` (an undo), remembering the
+ * pushed ones in inbox_removed so redoing it doesn't push again. Returns the rows removed.
  */
-export async function onPostCreated(
-	tx: Tx,
-	post: {
-		id: number;
-		user_id: number;
-		content: string;
-		reply_to: number | null;
-		quote_of: number | null;
-	}
-) {
-	const rows: NewNotification[] = [];
-	const notify = (userId: number | null, type: NotificationType) => {
-		if (userId !== null && userId !== post.user_id)
-			rows.push({ user_id: userId, sender_id: post.user_id, post_id: post.id, type });
-	};
+async function remove(tx: Tx, type: 'like' | 'regiorg' | 'follow', where: SQL) {
+	const match = and(eq(inbox.type, type), where);
+	// forget what is too old to matter; few rows, and this keeps the table small
+	await tx.delete(inbox_removed).where(sql`${inbox_removed.pushed_at} <= NOW() - ${REPUSH_AFTER}`);
+	await tx
+		.insert(inbox_removed)
+		.select(
+			tx
+				.select({
+					user_id: inbox.user_id,
+					sender_id: sql<number>`${inbox.sender_id}`.as('sender_id'),
+					post_id: inbox.post_id,
+					type: inbox.type,
+					pushed_at: sql<Date>`${inbox.pushed_at}`.as('pushed_at'),
+					read_at: inbox.read_at
+				})
+				.from(inbox)
+				.where(and(match, isNotNull(inbox.sender_id), isNotNull(inbox.pushed_at)))
+		)
+		.onConflictDoUpdate({
+			target: [
+				inbox_removed.user_id,
+				inbox_removed.sender_id,
+				inbox_removed.post_id,
+				inbox_removed.type
+			],
+			set: { pushed_at: sql`excluded.pushed_at`, read_at: sql`excluded.read_at` }
+		});
+	return tx.delete(inbox).where(match).returning(columns);
+}
 
+/** The author of a post, null when it is gone (or has no author). */
+async function authorOf(tx: Tx, postId: number | null) {
+	if (postId === null) return null;
+	const [row] = await tx.select({ user_id: posts.user_id }).from(posts).where(eq(posts.id, postId));
+	return row?.user_id ?? null;
+}
+
+type PostFields = {
+	id: number;
+	user_id: number;
+	content: string;
+	reply_to: number | null;
+	quote_of: number | null;
+};
+
+/**
+ * Who a post notifies by replying or quoting: the author of its parent (`reply`) or of the post
+ * it quotes (`quote`). A post can't both reply and quote.
+ */
+async function targetOf(tx: Tx, post: PostFields) {
 	if (post.reply_to !== null) {
-		const [parent] = await tx
-			.select({ user_id: posts.user_id })
-			.from(posts)
-			.where(eq(posts.id, post.reply_to));
-		notify(parent?.user_id ?? null, 'reply');
-		// replies don't notify their mentions (yet)
-		return insert(tx, rows);
+		const userId = await authorOf(tx, post.reply_to);
+		return userId === null ? null : { userId, type: 'reply' as const };
 	}
+	const userId = await authorOf(tx, post.quote_of);
+	return userId === null ? null : { userId, type: 'quote' as const };
+}
 
-	let quotedAuthor: number | null = null;
-	if (post.quote_of !== null) {
-		const [quoted] = await tx
-			.select({ user_id: posts.user_id })
-			.from(posts)
-			.where(eq(posts.id, post.quote_of));
-		quotedAuthor = quoted?.user_id ?? null;
-	}
+/** `mention` rows for the profiles named, but not `except` (who gets a reply or quote instead). */
+async function mentionRows(
+	tx: Tx,
+	post: PostFields,
+	usernames: string[],
+	except: number | null
+): Promise<NewNotification[]> {
+	if (usernames.length === 0) return [];
+	const mentioned = await tx
+		.select({ id: users.id })
+		.from(users)
+		.where(inArray(users.username, usernames));
+	return mentioned
+		.filter(({ id }) => id !== except)
+		.map(({ id }) => ({ user_id: id, sender_id: post.user_id, post_id: post.id, type: 'mention' }));
+}
 
-	// usernames as written: the triggers compare them case-sensitively
-	const names = [...new Set([...post.content.matchAll(MENTION_RE)].map((m) => m[1]))];
-	if (names.length) {
-		const mentioned = await tx
-			.select({ id: users.id })
-			.from(users)
-			.where(inArray(users.username, names));
-		// the quoted author gets the quote instead
-		for (const { id } of mentioned) if (id !== quotedAuthor) notify(id, 'mention');
-	}
-	notify(quotedAuthor, 'quote');
+/**
+ * A post was created: a reply notifies the parent's author (`reply`), a quote the quoted author
+ * (`quote`), and the profiles it @mentions get a `mention`, except that author: one notification
+ * each.
+ */
+export async function onPostCreated(tx: Tx, post: PostFields) {
+	const target = await targetOf(tx, post);
+	const rows = await mentionRows(
+		tx,
+		post,
+		mentionedUsernames(post.content),
+		target?.userId ?? null
+	);
+	if (target)
+		rows.push({
+			user_id: target.userId,
+			sender_id: post.user_id,
+			post_id: post.id,
+			type: target.type
+		});
 	return insert(tx, rows);
 }
+
+/**
+ * A post was edited (`post` has the new text): profiles it @mentions now and didn't before get
+ * a `mention`, with the same exception as onPostCreated. Removed mentions keep theirs.
+ */
+export async function onPostEdited(tx: Tx, post: PostFields, previousContent: string) {
+	const before = new Set(mentionedUsernames(previousContent));
+	const added = mentionedUsernames(post.content).filter((u) => !before.has(u));
+	if (added.length === 0) return [];
+	const target = await targetOf(tx, post);
+	return insert(tx, await mentionRows(tx, post, added, target?.userId ?? null));
+}
+
+const likeCount = sql<number>`(SELECT count(*)::int FROM ${likes} WHERE ${likes.post_id} = ${posts.id})`;
 
 /**
  * `userId` liked a post: its author is notified, and when the post is a reply with at least 3
@@ -112,32 +227,19 @@ export async function onPostCreated(
 export async function onLike(tx: Tx, userId: number, postId: number) {
 	const rows: NewNotification[] = [];
 	const [post] = await tx
-		.select({
-			user_id: posts.user_id,
-			reply_to: posts.reply_to,
-			likes: sql<number>`(SELECT count(*)::int FROM ${likes} WHERE ${likes.post_id} = ${posts.id})`
-		})
+		.select({ user_id: posts.user_id, reply_to: posts.reply_to, likes: likeCount })
 		.from(posts)
 		.where(eq(posts.id, postId));
 	if (!post) return [];
-	if (post.user_id !== null && post.user_id !== userId)
+	if (post.user_id !== null)
 		rows.push({ user_id: post.user_id, sender_id: userId, post_id: postId, type: 'like' });
 
 	if (post.reply_to !== null && post.user_id !== null) {
 		const [parent] = await tx
-			.select({
-				user_id: posts.user_id,
-				likes: sql<number>`(SELECT count(*)::int FROM ${likes} WHERE ${likes.post_id} = ${posts.id})`
-			})
+			.select({ user_id: posts.user_id, likes: likeCount })
 			.from(posts)
 			.where(eq(posts.id, post.reply_to));
-		if (
-			parent &&
-			parent.user_id !== null &&
-			parent.user_id !== post.user_id &&
-			post.likes >= 3 &&
-			post.likes > parent.likes
-		)
+		if (parent && parent.user_id !== null && post.likes >= 3 && post.likes > parent.likes)
 			rows.push(
 				{ user_id: parent.user_id, sender_id: post.user_id, post_id: postId, type: 'ratio' },
 				{
@@ -151,21 +253,35 @@ export async function onLike(tx: Tx, userId: number, postId: number) {
 	return insert(tx, rows);
 }
 
-/** `userId` regiorged a post: its author is notified, unless it is their own. */
-export async function onRegiorg(tx: Tx, userId: number, postId: number) {
-	const [post] = await tx
-		.select({ user_id: posts.user_id })
-		.from(posts)
-		.where(eq(posts.id, postId));
-	if (!post || post.user_id === null || post.user_id === userId) return [];
-	return insert(tx, [
-		{ user_id: post.user_id, sender_id: userId, post_id: postId, type: 'regiorg' }
-	]);
+/** `userId` unliked a post: its `like` notification goes. Ratio rows stay. */
+export function onUnlike(tx: Tx, userId: number, postId: number) {
+	return remove(tx, 'like', and(eq(inbox.sender_id, userId), eq(inbox.post_id, postId))!);
 }
 
-/** `followerId` followed `followedId`. Once per follower: following again doesn't notify. */
+/** `userId` regiorged a post: its author is notified. */
+export async function onRegiorg(tx: Tx, userId: number, postId: number) {
+	const author = await authorOf(tx, postId);
+	if (author === null) return [];
+	return insert(tx, [{ user_id: author, sender_id: userId, post_id: postId, type: 'regiorg' }]);
+}
+
+/** `userId` un-regiorged a post: its `regiorg` notification goes. */
+export function onUnregiorg(tx: Tx, userId: number, postId: number) {
+	return remove(tx, 'regiorg', and(eq(inbox.sender_id, userId), eq(inbox.post_id, postId))!);
+}
+
+/** `followerId` followed `followedId`. */
 export async function onFollow(tx: Tx, followerId: number, followedId: number) {
 	return insert(tx, [
 		{ user_id: followedId, sender_id: followerId, post_id: null, type: 'follow' }
 	]);
+}
+
+/** `followerId` unfollowed `followedId`: the `follow` notification goes. */
+export function onUnfollow(tx: Tx, followerId: number, followedId: number) {
+	return remove(
+		tx,
+		'follow',
+		and(eq(inbox.sender_id, followerId), eq(inbox.user_id, followedId), isNull(inbox.post_id))!
+	);
 }

@@ -24,7 +24,7 @@ export const LIMITS = {
 	pollMinutesDefault: 24 * 60
 } as const;
 
-// same character set the mention trigger (see drizzle/0001_notification_triggers.sql) recognises
+// lowercase only: a mention matches it in any case (MENTION_RE in src/lib/mentions.ts)
 export const USERNAME_RE = /^[a-z0-9_]{1,32}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

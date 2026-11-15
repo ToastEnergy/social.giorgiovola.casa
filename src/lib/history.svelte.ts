@@ -162,6 +162,12 @@ export function leaveOverlays(nav: {
 
 let leaving = false;
 
+/**
+ * Whether the overlays are being stepped over to leave the page (leaveOverlays): an overlay's
+ * close then isn't the back button, and shouldn't ask anything.
+ */
+export const leavingPage = () => leaving;
+
 // ---- sections of the bottom bar
 
 // the history entry (Navigation API key) each section was last seen at, to step back or forward to

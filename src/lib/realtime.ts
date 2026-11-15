@@ -33,7 +33,16 @@ export type RealtimeEvents = {
 	/** a group was renamed or its members changed (you may have been removed) */
 	group_updated: { id: number };
 	/** someone is writing to you: in a group, or in your direct conversation (group_id null) */
-	typing: { group_id: number | null; user: { username: string; name: string } };
+	typing: {
+		group_id: number | null;
+		user: { username: string; name: string };
+		/** recording: a voice note (missing from older servers: typing) */
+		action?: 'typing' | 'recording';
+	};
+	/** a voice note sent while it was still being processed (202) went out */
+	audio_sent: { upload: string; type: 'post' | 'message' | 'group_message'; id: number };
+	/** …or couldn't be sent: send it again */
+	audio_failed: { upload: string; error: string };
 	/** the server's heartbeat, every 8 seconds: the stream is alive */
 	ping: Record<string, never>;
 	/** the build the server runs, sent on connect */
@@ -113,6 +122,8 @@ const events: (keyof RealtimeEvents)[] = [
 	'group_message_reactions',
 	'group_updated',
 	'typing',
+	'audio_sent',
+	'audio_failed',
 	'ping',
 	'version'
 ];

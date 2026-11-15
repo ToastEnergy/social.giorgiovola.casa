@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
+	import { voiceCapture } from '#lib/voiceRecorder.svelte.js';
 
 	// the installed app has no browser around it to pull down and reload: the lists that change
 	// by themselves (feeds, notifications, the conversation list) reload when pulled from the top.
@@ -34,8 +35,10 @@
 		let pulling: boolean | null = false;
 
 		const blocked = (target: EventTarget | null) =>
-			// an overlay is up (it locks the page's scroll), or the finger is in a field
+			// an overlay is up (it locks the page's scroll), a voice note is being recorded, or the
+			// finger is in a field
 			document.body.style.overflow === 'hidden' ||
+			voiceCapture.active ||
 			(target instanceof Element && !!target.closest('dialog, input, textarea, [contenteditable]'));
 
 		const onstart = (e: TouchEvent) => {

@@ -202,7 +202,11 @@
 					<!-- the entry keys are the typing keys (dm:<username>, group:<id>) -->
 					{#if typingIn(entry.key).length > 0}
 						<p class="truncate text-[0.9em] text-accent">
-							{entry.kind === 'dm' ? 'typing…' : typingText(typingIn(entry.key))}
+							{entry.kind === 'dm'
+								? typingIn(entry.key)[0].action === 'recording'
+									? 'recording…'
+									: 'typing…'
+								: typingText(typingIn(entry.key))}
 						</p>
 					{:else}
 						<p class="truncate text-[0.9em] text-muted">

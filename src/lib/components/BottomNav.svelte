@@ -10,6 +10,7 @@
 	import { messagesCount, notisCount, user } from '#lib/store.js';
 	import { bottomBar, keyboard } from '#lib/keyboard.svelte.js';
 	import AccountSwitcher from './AccountSwitcher.svelte';
+	import { voiceCapture } from '#lib/voiceRecorder.svelte.js';
 
 	// in a chat the bar continues the message input above it: in the flow, full width, no border
 	let { joined = false }: { joined?: boolean } = $props();
@@ -69,11 +70,15 @@
 <!-- touch devices: home, chat, new post, notifications and the profile in a bar along the bottom
 	edge. positioned in a chat too, so the profile menu opens above the bar. one level over the
 	reply bar (ReplyDock, z-998, later in the page), which the profile menu opens across -->
+<!-- inert while a voice note records: a slip of the finger mustn't leave the chat -->
 <nav
 	bind:offsetHeight={height}
+	inert={voiceCapture.active}
 	data-bottom-cover={joined ? undefined : ''}
 	aria-label="Main"
-	class="{hidden ? 'hidden' : 'flex'} [view-transition-name:bottom-bar] bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
+	class="{hidden ? 'hidden' : 'flex'} {voiceCapture.active
+		? 'opacity-40'
+		: ''} [view-transition-name:bottom-bar] bg-background px-5 pb-[env(safe-area-inset-bottom)] not-pointer-coarse:hidden {joined
 		? 'relative z-10 -mx-5 -mb-5 shrink-0'
 		: `fixed right-0 bottom-0 left-0 z-999 pt-1 ${docked ? '' : 'border-t border-line'}`}"
 >

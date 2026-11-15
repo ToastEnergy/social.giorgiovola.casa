@@ -17,7 +17,12 @@ export const load = (async ({ fetch, cookies, request, route, url, depends }) =>
 		fetch('/api/v1/auth/accounts').then(async (res) =>
 			res.ok ? ((await res.json()) as { items: SwitcherAccount[] }).items : []
 		),
-		apiGet<{ motd: string; gifs: GifConfig | null; members_only?: boolean }>(fetch, '/instance')
+		apiGet<{
+			motd: string;
+			gifs: GifConfig | null;
+			members_only?: boolean;
+			voice_notes?: { max_duration_ms: number } | null;
+		}>(fetch, '/instance')
 	]);
 	// a members-only instance: signed-out visitors only see the login pages. The request hook
 	// already redirects full page loads, this covers client-side navigation
@@ -40,6 +45,8 @@ export const load = (async ({ fetch, cookies, request, route, url, depends }) =>
 		membersOnly: instance.members_only ?? false,
 		// KLIPY's settings for the GIF pickers, null when GIFs are off
 		gifs: instance.gifs ?? null,
+		// null when the server can't process audio (no ffmpeg): no mic
+		voiceNotes: instance.voice_notes ?? null,
 		// the reader's zone and locale (UI preference cookies), so dates render as in the browser
 		time: readTimeCookies(cookies, request.headers.get('accept-language')),
 		// the home feed to open on (UI preference cookie, which the universal home load can't read)

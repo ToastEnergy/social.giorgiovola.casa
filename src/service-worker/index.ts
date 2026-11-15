@@ -74,16 +74,19 @@ self.addEventListener('push', (event) => {
 
 	event.waitUntil(
 		(async () => {
-			// the open page already shows the new notification (realtime stream and badge)
+			// always show it: Safari revokes the subscription after a few pushes that show nothing, and
+			// the focused page may be signed in as another profile than the one it is for. When the
+			// app is in front it only shows up quietly, the page already has its badge
 			const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-			if (windows.some((w) => w.visibilityState === 'visible' && w.focused)) return;
+			const inFront = windows.some((w) => w.visibilityState === 'visible' && w.focused);
 
 			await self.registration.showNotification(data.title, {
 				body: data.body,
 				icon: '/icons/icon-192.png',
 				tag: data.tag,
+				silent: inFront,
 				// `image` and `renotify` are missing from the bundled lib types
-				...({ renotify: !!data.tag, image: data.image } as object),
+				...({ renotify: !!data.tag && !inFront, image: data.image } as object),
 				data: { url: data.url }
 			});
 		})()

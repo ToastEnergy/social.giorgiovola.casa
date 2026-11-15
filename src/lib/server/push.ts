@@ -354,7 +354,8 @@ export async function sendFollowPush(followerId: number, followedId: number) {
 		let body = 'followed you';
 		// identities share the owner's devices: say which profile it is for
 		if (recipient.owner_id !== null) body += ` (@${recipient.username})`;
-		await deliver(recipient.owner_id ?? recipient.id, {
+		// the profile itself: deliver finds the accounts using it, and skips bots
+		await deliver(recipient.id, {
 			title: groupTitle(sender.name, others),
 			body,
 			url: others === 0 ? `/@${sender.username}` : '/notifications',

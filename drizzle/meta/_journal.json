@@ -316,6 +316,13 @@
       "when": 1794664838557,
       "tag": "0044_image_sizes",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794758933504,
+      "tag": "0045_inbox_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -271,6 +271,12 @@ export const inbox = pgTable(
 		uniqueIndex('inbox_follow_unique')
 			.on(t.user_id, t.sender_id)
 			.where(sql`${t.type} = 'follow'`),
+		// new posts and likes look up the rows they created, and deleting a post cascades here
+		index('inbox_post_id').on(t.post_id),
+		// unread counts, read on every page load and realtime update
+		index('inbox_unread')
+			.on(t.user_id)
+			.where(sql`${t.read_at} IS NULL`),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`

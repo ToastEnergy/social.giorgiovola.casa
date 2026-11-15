@@ -3,7 +3,16 @@ import path from 'node:path';
 import { GlobalFonts, Path2D, createCanvas, loadImage } from '@napi-rs/canvas';
 import type { Canvas, SKRSContext2D as CanvasRenderingContext2D, Image } from '@napi-rs/canvas';
 import { PUBLIC_URL } from '$app/env/public';
-import type { Gif, LinkPreview, Poll, Post, ProfileCard, QuotedPost } from '#lib/types.js';
+import type {
+	Gif,
+	LinkPreview,
+	Poll,
+	Post,
+	ProfileCard,
+	QuotedPost,
+	VoiceNote
+} from '#lib/types.js';
+import { formatDuration } from '#lib/mediaPreview.js';
 import { richText } from '#lib/richText.js';
 import { unwrapMarkdownImages, websiteLabel } from '#lib/utils.js';
 import { generateAvatar } from './avatar.js';
@@ -92,7 +101,14 @@ const ICONS = {
 	like: [
 		'M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5'
 	],
-	share: ['m15 17 5-5-5-5', 'M4 18v-2a4 4 0 0 1 4-4h12']
+	share: ['m15 17 5-5-5-5', 'M4 18v-2a4 4 0 0 1 4-4h12'],
+	mic: [
+		'M12 19v3',
+		'M19 10v2a7 7 0 0 1-14 0v-2',
+		'M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z'
+	],
+	// filled, like the player's
+	play: ['M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z']
 };
 
 function drawIcon(
@@ -101,17 +117,23 @@ function drawIcon(
 	x: number,
 	y: number,
 	size: number,
-	alpha = 1
+	alpha = 1,
+	fill = false
 ) {
 	ctx.save();
 	ctx.translate(x, y);
 	ctx.scale(size / 24, size / 24);
 	ctx.globalAlpha = alpha;
 	ctx.strokeStyle = FOREGROUND;
+	ctx.fillStyle = FOREGROUND;
 	ctx.lineWidth = 2;
 	ctx.lineCap = 'round';
 	ctx.lineJoin = 'round';
-	for (const d of ICONS[icon]) ctx.stroke(new Path2D(d));
+	for (const d of ICONS[icon]) {
+		const path = new Path2D(d);
+		if (fill) ctx.fill(path);
+		ctx.stroke(path);
+	}
 	ctx.restore();
 }
 
@@ -400,6 +422,7 @@ function layout(
 		});
 
 	if (post.poll) blocks.push(pollBlock(ctx, post.poll, colX, colW, s));
+	if (post.audio) blocks.push(voiceBlock(ctx, post.audio, colX, colW, s));
 
 	// photos: one at its ratio (up to 500px high), more in a grid of squares
 	const photos = post.images
@@ -612,6 +635,68 @@ function gifBlock(ctx: CanvasRenderingContext2D, gif: Gif, x: number, w: number,
 	};
 }
 
+/**
+ * A voice note, as VoiceNotePlayer.svelte shows it before it's played: the play button, its 64
+ * bars and its length under them.
+ */
+function voiceBlock(
+	ctx: CanvasRenderingContext2D,
+	note: VoiceNote,
+	x: number,
+	w: number,
+	s: number
+): Block {
+	const button = 36 * s;
+	const barsH = 32 * s;
+	const timeF = font(500, 12.8 * s);
+	const timeH = 0.8 * 24 * s;
+	const gap = 5 * s;
+	// as wide as the player's max-w-100
+	const width = Math.min(w, 400 * s);
+	return {
+		height: button + gap + timeH,
+		draw: (y) => {
+			const cy = y + button / 2;
+			const icon = 22 * s;
+			drawIcon(ctx, 'play', x + (button - icon) / 2, cy - icon / 2, icon, 1, true);
+			waveformBars(ctx, note.waveform, x + button + 10 * s, cy, width - button - 10 * s, barsH, s);
+			ctx.save();
+			ctx.globalAlpha = 0.8;
+			text(
+				ctx,
+				formatDuration(note.duration_ms),
+				x + 46 * s,
+				y + button + gap + timeH / 2,
+				timeF,
+				FOREGROUND
+			);
+			ctx.restore();
+		}
+	};
+}
+
+/** Waveform.svelte's bars: rounded, up to 2px wide, at least 8% of the height, spread out. */
+function waveformBars(
+	ctx: CanvasRenderingContext2D,
+	bars: number[],
+	x: number,
+	cy: number,
+	w: number,
+	h: number,
+	s: number
+) {
+	if (!bars.length) return;
+	const barW = Math.min(2 * s, w / (bars.length * 2));
+	const step = bars.length > 1 ? (w - barW) / (bars.length - 1) : 0;
+	ctx.fillStyle = MUTED;
+	bars.forEach((bar, i) => {
+		const bh = Math.max(2 * s, h * Math.max(0.08, bar / 255));
+		ctx.beginPath();
+		ctx.roundRect(x + i * step, cy - bh / 2, barW, bh, barW / 2);
+		ctx.fill();
+	});
+}
+
 function botBadge(ctx: CanvasRenderingContext2D, s: number) {
 	const f = font(500, 12 * s);
 	ctx.font = f;
@@ -735,6 +820,7 @@ function quoteBlock(
 		lines.length ? lines.length * tlh : 0,
 		quote.is_quote ? 0.85 * 24 * s : 0,
 		quoteGif ? 18 * s : 0,
+		quote.audio ? 0.85 * 24 * s : 0,
 		mediaH
 	].filter(Boolean);
 	const natural = pad * 2 + parts.reduce((a, b) => a + b, 0) + (parts.length - 1) * 5 * s;
@@ -793,6 +879,21 @@ function quoteBlock(
 			if (quote.is_quote) {
 				text(ctx, 'Quoting another post', x + pad, cy + 0.85 * 12 * s, font(500, 13.6 * s), MUTED);
 				cy += 0.85 * 24 * s + 5 * s;
+			}
+			if (quote.audio) {
+				// the mic and the length, like the previews of a voice note elsewhere
+				const lineH = 0.85 * 24 * s;
+				const icon = 15 * s;
+				drawIcon(ctx, 'mic', x + pad, cy + lineH / 2 - icon / 2, icon, 0.6);
+				text(
+					ctx,
+					`Voice message · ${formatDuration(quote.audio.duration_ms)}`,
+					x + pad + icon + 5 * s,
+					cy + lineH / 2,
+					font(500, 13.6 * s),
+					MUTED
+				);
+				cy += lineH + 5 * s;
 			}
 			if (thumbs.length > 1) {
 				thumbs.forEach((thumb, i) =>

@@ -26,6 +26,8 @@
 	// side effect import: starts listening for the browser's install prompt for the /install page
 	import '#lib/install.svelte.js';
 	import { PUBLIC_URL } from '$app/env/public';
+	import type { VoiceNote } from '#lib/types.js';
+	import { audioPreview } from '#lib/mediaPreview.js';
 	import { connectRealtime, disconnectRealtime, onRealtime, onResume } from '#lib/realtime.js';
 	import { invalidateAll } from '$app/navigation';
 	import { syncPush } from '#lib/push.js';
@@ -54,9 +56,10 @@
 
 	// a post or a profile drawn as on the site (#lib/server/socialCard.ts)
 	const socialCard = () => `${PUBLIC_URL || page.url.origin}${page.url.pathname}/image.png`;
-	// image-only posts have no text to quote
-	const postText = (post: { content: string; images?: string[] }) =>
-		post.content || (post.images?.length ? '[image]' : '');
+	// image-only posts have no text to quote, voice notes without a caption say so
+	const postText = (post: { content: string; images?: string[]; audio?: VoiceNote | null }) =>
+		post.content ||
+		(post.audio ? audioPreview(post.audio.duration_ms) : post.images?.length ? '[image]' : '');
 
 	// adapter-node no longer rewrites the request URL to the public origin (SvelteKit 3 dropped
 	// ORIGIN), so build absolute share URLs from PUBLIC_URL like the canonical link does
@@ -225,6 +228,14 @@
 		<meta property="og:image:type" content="image/png" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
+		{#if page.data.post.audio}
+			<!-- a voice post's file is public (/uploads), like its images -->
+			<meta
+				property="og:audio"
+				content={`${PUBLIC_URL || page.url.origin}${page.data.post.audio.url}`}
+			/>
+			<meta property="og:audio:type" content="audio/mp4" />
+		{/if}
 		<meta property="og:profile:username" content={page.data.post.user.username} />
 		<meta
 			property="og:article:published_time"

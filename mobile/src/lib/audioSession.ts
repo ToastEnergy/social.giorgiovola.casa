@@ -28,18 +28,20 @@ export function playbackMode() {
 }
 
 /**
- * Recording: the microphone on, and kept on in the background (a locked recording goes on with
- * the screen off; iOS `audio` background mode, an Android foreground service with its
- * notification, see app.json). Set before preparing the recorder: Android binds its service then.
+ * Recording: the microphone on, and kept on in the background when `background` (a locked
+ * recording goes on with the screen off; iOS `audio` background mode, an Android foreground
+ * service with its "Recording audio" notification, see app.json). Set before preparing the
+ * recorder: Android binds its service then, and it can't be added to a recording under way.
+ * Without it Android pauses the recording while the app is away.
  */
-export async function recordingMode() {
+export async function recordingMode(background: boolean) {
 	recording = true;
 	await setAudioModeAsync({
 		playsInSilentMode: true,
 		shouldPlayInBackground: true,
 		interruptionMode: 'doNotMix',
 		allowsRecording: true,
-		allowsBackgroundRecording: true
+		allowsBackgroundRecording: background
 	});
 }
 

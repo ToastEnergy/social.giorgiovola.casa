@@ -4,7 +4,7 @@ import { db, follows, inbox, posts, users } from './db/index.js';
 import { unreadMessageCount } from './messages';
 import { unreadReactionCount } from './messageReactions.js';
 import { getPosts } from './posts';
-import { sendFollowPush, sendGroupMessagePush, sendMessagePush, sendPush } from './push';
+import { sendGroupMessagePush, sendMessagePush } from './push';
 import type { ChatMessage, GroupMessage, MessageReaction, Post } from '#lib/types.js';
 import type { Notification, NotificationChanges } from './notify.js';
 
@@ -442,7 +442,7 @@ export async function publishGroupUpdated(
 
 /**
  * A post was created: tell everyone, and update the parent's reply count and the unread counts
- * and pushes of the `notifications` it created (see notify.ts).
+ * of the `notifications` it created (see notify.ts).
  */
 export async function publishPost(postId: number, notifications: Notification[]) {
 	try {
@@ -462,13 +462,11 @@ export async function publishPost(postId: number, notifications: Notification[])
 }
 
 /**
- * Notifications were created or removed (see notify.ts): the recipients' unread counts, and the
- * pushes of the new rows.
+ * Notifications were created or removed (see notify.ts): the recipients' unread counts. Their
+ * pushes are sent by the push worker (pushOutbox.ts).
  */
 export async function publishNotifications({ created, removed }: NotificationChanges) {
 	await pushUnread([...created, ...removed].map((n) => n.user_id));
-	await sendPush(created);
-	await sendFollowPush(created);
 }
 
 /** The quote count of a post changed. */
@@ -534,7 +532,7 @@ export function publishPollVotes(postId: number, votes: number[]) {
 	broadcast('poll', { id: postId, votes });
 }
 
-/** A profile was followed or unfollowed (`changes` of setFollowing): its badge and the push. */
+/** A profile was followed or unfollowed (`changes` of setFollowing): its badge. */
 export async function publishFollow(changes: NotificationChanges) {
 	try {
 		await publishNotifications(changes);

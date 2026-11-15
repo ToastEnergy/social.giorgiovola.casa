@@ -9,6 +9,7 @@ import {
 	pgTable,
 	primaryKey,
 	serial,
+	smallint,
 	text,
 	timestamp,
 	unique,
@@ -261,8 +262,13 @@ export const inbox = pgTable(
 		invites: integer('invites'),
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		read_at: timestamptz('read_at'),
-		// set once a push for this row has been sent, so it never goes out twice
+		// set once the push of this row has been sent (or skipped). null: a push still to send, the
+		// outbox the push worker reads (src/lib/server/pushOutbox.ts)
 		pushed_at: timestamptz('pushed_at'),
+		// when a push worker claimed the row: its lease, so another one retries it if it never
+		// finishes. and how many times it was claimed, to give up after a few
+		push_claimed_at: timestamptz('push_claimed_at'),
+		push_attempts: smallint('push_attempts').notNull().default(0),
 		// the group of a like, regiorg or follow (see src/lib/server/notifications.ts); null for
 		// the others, which are groups of one ('n-<id>')
 		group_key: text('group_key')
@@ -291,6 +297,10 @@ export const inbox = pgTable(
 		index('inbox_group_key_missing')
 			.on(t.user_id)
 			.where(sql`${t.group_key} IS NULL AND ${t.type} IN ('like', 'regiorg', 'follow')`),
+		// the pushes still to send (pushOutbox.ts): almost every row is pushed, so this stays small
+		index('inbox_unpushed')
+			.on(t.id)
+			.where(sql`${t.pushed_at} IS NULL`),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`

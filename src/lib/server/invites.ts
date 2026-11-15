@@ -5,7 +5,7 @@ import { db, inbox, invites, users } from './db/index.js';
 import { fail } from './api.js';
 import { actionsLimited, findTarget, logAction } from './moderation.js';
 import { INVITE_CODE_LENGTH, isInviteCode, normalizeInviteCode } from '../invites.js';
-import { sendInvitesPush } from './push.js';
+import { PUSH_CHANNEL } from './pushOutbox.js';
 import { pushUnread } from './realtime.js';
 
 /**
@@ -361,8 +361,9 @@ export function daysField(body: Record<string, unknown>) {
 
 /**
  * Tells accounts an admin (`actorId`) gave them invites: an `invites` notification with how many,
- * a web push and the new unread count. A grant adds to the account's unread invites notification
- * when it has one, so a few grants in a row read as one. The admin's own grants don't notify.
+ * a push (sent by the push worker) and the new unread count. A grant adds to the account's unread
+ * invites notification when it has one, so a few grants in a row read as one, and makes its push
+ * pending again with the new total. The admin's own grants don't notify.
  */
 async function notifyInvites(actorId: number, grants: { id: number; amount: number }[]) {
 	const given = grants.filter((g) => g.amount > 0 && g.id !== actorId);
@@ -382,7 +383,9 @@ async function notifyInvites(actorId: number, grants: { id: number; amount: numb
 				invites = COALESCE(${inbox.invites}, 0) + grants.amount,
 				sender_id = ${actorId},
 				created_at = NOW(),
-				pushed_at = NULL
+				pushed_at = NULL,
+				push_claimed_at = NULL,
+				push_attempts = 0
 			FROM grants
 			WHERE ${inbox.user_id} = grants.id AND ${inbox.type} = 'invites' AND ${inbox.read_at} IS NULL
 			RETURNING ${inbox.user_id}
@@ -391,8 +394,8 @@ async function notifyInvites(actorId: number, grants: { id: number; amount: numb
 		SELECT grants.id, ${actorId}, NULL, 'invites', grants.amount FROM grants
 		WHERE grants.id NOT IN (SELECT user_id FROM merged)
 	`);
-	// many accounts at once for a grant to everyone: the response doesn't wait for the pushes
-	void sendInvitesPush(ids);
+	// the push worker sends the pushes (pushOutbox.ts)
+	await db.execute(sql`SELECT pg_notify(${PUSH_CHANNEL}, '')`);
 	void pushUnread(ids);
 }
 

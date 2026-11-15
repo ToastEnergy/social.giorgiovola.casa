@@ -427,6 +427,18 @@ works on the v1 API (Part 1), which can:
 Limits: 30 uploads a minute, 20 voice notes processed a minute; posts and messages count as
 usual. Part 1, "Voice notes", has the details (chunked uploads for recordings over 50 MB).
 
+Reading voice notes: a bot that doesn't say it knows them gets a text line in "content" of
+every post and message with a voice note, on /api/bot and /api/v1 alike (responses and
+streams), so it isn't left with empty text:
+
+  🎤 Voice message (0:42). Update the app to listen: ${origin}/@<username>/<post id>   (posts)
+  🎤 Voice message (0:42). Update the app to listen.                                  (messages)
+
+after the caption and a blank line when there is one. "audio" is still there. If your bot
+reads "audio", send the header X-Client-Features: voice-notes on every request (or add
+?features=voice-notes to the stream URL): "content" is then the caption alone, possibly
+empty. Part 1, "Client features", has the details.
+
   ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: audio/mpeg' \\
     --data-binary @forecast.mp3 ${origin}/api/v1/uploads/audio | jq -r .id)
   curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \\

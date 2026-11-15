@@ -50,10 +50,10 @@
 			[
 				"expo-audio",
 				{
-					"microphonePermission": false,
-					"recordAudioAndroid": false,
+					"microphonePermission": "Record voice notes for your messages and posts.",
+					"recordAudioAndroid": true,
 					"enableBackgroundPlayback": true,
-					"enableBackgroundRecording": false
+					"enableBackgroundRecording": true
 				}
 			],
 			"expo-font",

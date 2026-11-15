@@ -39,8 +39,8 @@ import {
 } from '@/lib/voicePlayer';
 import { Avatar, IconButton, Txt } from './ui';
 
-const BAR = 2;
-const GAP = 1.5;
+export const BAR = 2;
+export const GAP = 1.5;
 /** notes longer than this get ±15 s buttons */
 const LONG_MS = 2 * 60 * 1000;
 /** the screen reader's adjustable steps */

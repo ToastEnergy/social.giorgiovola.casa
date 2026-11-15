@@ -4,8 +4,10 @@ import { X } from 'lucide-react-native';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { voicePreview } from '@/lib/format';
 import { composerHref, dismissOutgoing, useOutgoing, type Outgoing } from '@/lib/posting';
 import { colors } from '@/lib/theme';
+import { useVoiceUpload } from '@/lib/voiceUpload';
 import { Button, IconButton, Txt } from './ui';
 import { UploadProgress } from './UploadProgress';
 
@@ -41,6 +43,8 @@ function Card({ outgoing: o }: { outgoing: Outgoing }) {
 		return () => clearTimeout(timer);
 	}, [failed, o.key]);
 	const what = o.composer.startsWith('reply:') ? 'reply' : 'post';
+	const voice = o.draft.voice;
+	const upload = useVoiceUpload(voice?.uri);
 	return (
 		<View
 			accessibilityLiveRegion="polite"
@@ -63,8 +67,23 @@ function Card({ outgoing: o }: { outgoing: Outgoing }) {
 				<Txt size={13} muted numberOfLines={failed ? 2 : 1}>
 					{failed
 						? `${o.error} It’s back in the composer.`
-						: o.draft.content.trim() || (o.draft.gif ? 'GIF' : 'Images')}
+						: o.draft.content.trim() ||
+						  (voice ? voicePreview(voice.duration_ms) : o.draft.gif ? 'GIF' : 'Images')}
 				</Txt>
+				{!failed && voice ? (
+					<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+						<UploadProgress progress={o.processing ? 1 : upload?.progress ?? 0} size={22} />
+						<Txt size={13} muted>
+							{o.processing
+								? 'Processing the voice note…'
+								: upload?.status === 'waiting'
+								? 'Waiting for the connection…'
+								: upload?.status === 'done'
+								? 'Uploaded'
+								: 'Uploading the voice note…'}
+						</Txt>
+					</View>
+				) : null}
 				{!failed && o.draft.images.length ? (
 					<View style={{ flexDirection: 'row', gap: 5 }}>
 						{o.draft.images.map((image, i) => (

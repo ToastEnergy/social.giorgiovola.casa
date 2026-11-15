@@ -196,6 +196,30 @@ export function offsetPage<T>(rows: T[], limit: number, offset: number): Page<T>
 	};
 }
 
+/**
+ * `?cursor=` of a list paged by position (grouped notifications): `<µs since epoch>-<id>` of
+ * the last item, or a plain offset, which pages loaded before the list changed its cursors may
+ * still hold: a few pages deep, so `maxOffset` keeps them cheap.
+ */
+export function keysetCursor(url: URL, maxOffset = 1000) {
+	const raw = url.searchParams.get('cursor');
+	if (raw === null || raw === '') return { after: null, offset: 0 };
+	const m = /^(\d{1,17})-(\d{1,10})$/.exec(raw);
+	if (m && Number(m[2]) <= 2147483647) return { after: { at: m[1], id: Number(m[2]) }, offset: 0 };
+	if (/^\d{1,6}$/.test(raw) && Number(raw) <= maxOffset)
+		return { after: null, offset: Number(raw) };
+	fail(400, 'Invalid cursor');
+}
+
+/** A page from `limit + 1` items with their position (see keysetCursor). */
+export function keysetPage<T>(rows: { item: T; cursor: string }[], limit: number): Page<T> {
+	const items = rows.slice(0, limit);
+	return {
+		items: items.map((r) => r.item),
+		next_cursor: rows.length > limit ? items[items.length - 1].cursor : null
+	};
+}
+
 /** `?cursor=` of a list paged by id (chat threads): the id to continue before. */
 export function idCursor(url: URL): number | null {
 	const raw = url.searchParams.get('cursor');

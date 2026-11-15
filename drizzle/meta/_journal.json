@@ -337,6 +337,13 @@
       "when": 1794759077007,
       "tag": "0047_inbox_removed",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794759163788,
+      "tag": "0048_inbox_group_key",
+      "breakpoints": true
     }
   ]
 }

@@ -262,7 +262,10 @@ export const inbox = pgTable(
 		created_at: timestamptz('created_at').notNull().defaultNow(),
 		read_at: timestamptz('read_at'),
 		// set once a push for this row has been sent, so it never goes out twice
-		pushed_at: timestamptz('pushed_at')
+		pushed_at: timestamptz('pushed_at'),
+		// the group of a like, regiorg or follow (see src/lib/server/notifications.ts); null for
+		// the others, which are groups of one ('n-<id>')
+		group_key: text('group_key')
 	},
 	(t) => [
 		unique().on(t.user_id, t.sender_id, t.post_id, t.type),
@@ -277,6 +280,17 @@ export const inbox = pgTable(
 		index('inbox_unread')
 			.on(t.user_id)
 			.where(sql`${t.read_at} IS NULL`),
+		// the notifications page, newest first (scanned backwards)
+		index('inbox_user_created').on(t.user_id, t.created_at, t.id),
+		// the members of a group
+		index('inbox_user_group_key')
+			.on(t.user_id, t.group_key)
+			.where(sql`${t.group_key} IS NOT NULL`),
+		// likes, regiorgs and follows inserted without a key by the previous release while a
+		// deploy switches over: found by their computed key. stays (nearly) empty
+		index('inbox_group_key_missing')
+			.on(t.user_id)
+			.where(sql`${t.group_key} IS NULL AND ${t.type} IN ('like', 'regiorg', 'follow')`),
 		check(
 			'inbox_type_check',
 			sql`${t.type} IN ('mention', 'reply', 'like', 'ratio', 'ratioed_by_you', 'follow', 'regiorg', 'quote', 'invites')`

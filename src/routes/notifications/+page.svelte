@@ -22,7 +22,7 @@
 		loadingMore = true;
 		try {
 			const page = await api<Page<NotificationGroup>>(withCursor(data.source, next));
-			// a group that grew since the first page moved up: keep the copy already shown
+			// later pages leave out the groups that moved up, but refreshTop may have shown one
 			const seen = new Set(groups.map((g) => g.key));
 			groups = [...groups, ...page.items.filter((g) => !seen.has(g.key))];
 			next = page.next_cursor;

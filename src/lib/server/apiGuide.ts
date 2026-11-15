@@ -606,8 +606,9 @@ GET /notifications                    signed in, paginated (default 50, at most 
   Every notification on its own (Notification objects).
 GET /notifications/grouped            signed in, paginated (default 50, at most 200)
   NotificationGroups, newest first: what the website shows. A group that gets a new
-  notification moves back to the top, so a later page can repeat a group already seen:
-  keep the first copy (match by "key").
+  notification moves back to the top. Later pages (?cursor) leave out every group that is
+  now above where the previous page ended, so they never repeat or skip a group: fetch the
+  first page again to see the ones that moved up, and replace your copy of each by "key".
 POST /notifications/groups/:key/read  marks every notification of the group read → 204;
   404 when you have no such group.
 GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,

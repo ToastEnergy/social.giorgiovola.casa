@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm'
 import { blocks, db, inbox, inbox_removed, likes, posts, users } from './db/index.js';
 import { mentionedUsernames } from '#lib/mentions.js';
 import type { NotificationType } from '#lib/types.js';
+import { newGroupKey } from './notifications.js';
 
 /**
  * Creates and removes the notifications (inbox rows) of each event, inside the transaction that
@@ -85,6 +86,8 @@ async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notificati
 			recent: sql<boolean>`${inbox_removed.pushed_at} > NOW() - ${REPUSH_AFTER}`
 		});
 	const values = rows.map((r) => {
+		// the group the row is shown in (see notifications.ts), computed like its created_at
+		const row = { ...r, group_key: newGroupKey(r.type, r.post_id) };
 		const old = removed.find(
 			(o) =>
 				o.recent &&
@@ -93,9 +96,9 @@ async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notificati
 				o.post_id === r.post_id &&
 				o.type === r.type
 		);
-		if (!old) return r;
+		if (!old) return row;
 		return {
-			...r,
+			...row,
 			pushed_at: sql`${old.pushed_at}::timestamptz`,
 			read_at: old.read_at === null ? null : sql`${old.read_at}::timestamptz`
 		};

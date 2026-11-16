@@ -53,7 +53,7 @@
 				onclick={() => session.discard(true)}><Trash size={20} /></button
 			>
 			<div class="min-w-0 flex-1 py-[5px]">
-				<VoiceNotePlayer {track} compact />
+				<VoiceNotePlayer {track} compact fill />
 			</div>
 			{#if note.status === 'failed'}
 				<button

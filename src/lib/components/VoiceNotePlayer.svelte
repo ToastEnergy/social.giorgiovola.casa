@@ -31,9 +31,18 @@
 		unplayed?: boolean;
 		/** the sender's view of a direct message: whether the recipient played it (a mic icon) */
 		played?: boolean;
+		/** as wide as its box, without the cap: a composer's review of a recording */
+		fill?: boolean;
 	};
 
-	let { track, tone = 'default', compact = false, unplayed = false, played }: Props = $props();
+	let {
+		track,
+		tone = 'default',
+		compact = false,
+		unplayed = false,
+		played,
+		fill = false
+	}: Props = $props();
 
 	const SKIP_S = 15;
 	const ARROW_S = 5;
@@ -136,7 +145,7 @@
 	bind:this={root}
 	role="group"
 	aria-label="Voice note, {total}"
-	class="flex w-full flex-col gap-[5px] {compact ? 'max-w-70' : 'max-w-100'}"
+	class="flex w-full flex-col gap-[5px] {fill ? '' : compact ? 'max-w-70' : 'max-w-100'}"
 	onclick={(e) => e.stopPropagation()}
 	onkeydown={(e) => e.stopPropagation()}
 	onkeypress={(e) => e.stopPropagation()}

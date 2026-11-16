@@ -12,7 +12,7 @@ import { fullDate, shortDate } from '@/lib/format';
 import { actionHref, moderate, relative, type ModerationAction } from '@/lib/moderation';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
-import type { AdminAccount, LogEntry, Page, Report } from '@/lib/types';
+import type { AdminAccount, IdentityLimit, LogEntry, Page, Report } from '@/lib/types';
 
 type Tab = 'history' | 'reports' | 'identities';
 const PAGE = 20;
@@ -35,6 +35,8 @@ export default function AccountCase() {
 	const { me } = useSession();
 	// the invites field, reset to the account's count whenever it loads
 	const [invitesValue, setInvitesValue] = useState('');
+	// the identity limit field, empty when the account follows the instance limit
+	const [limitValue, setLimitValue] = useState('');
 
 	const load = useCallback(async () => {
 		try {
@@ -47,6 +49,7 @@ export default function AccountCase() {
 			]);
 			setAccount(a);
 			setInvitesValue(a.invites ? String(a.invites.invites) : '');
+			setLimitValue(a.identity_limit?.custom != null ? String(a.identity_limit.custom) : '');
 			setLog(l);
 			setReports(r);
 			setError(null);
@@ -112,6 +115,33 @@ export default function AccountCase() {
 		} finally {
 			setBusy(false);
 		}
+	}
+
+	async function saveIdentityLimit(limit: number | null) {
+		if (!account || busy) return;
+		setBusy(true);
+		try {
+			const res = await api<{ message: string }>(
+				`admin/users/${encodeURIComponent(account.username)}/identity-limit`,
+				{ method: 'PUT', body: { max_identities: limit } }
+			);
+			changed(res.message);
+		} catch (e) {
+			changed(errorMessage(e), true);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	function submitIdentityLimit() {
+		const value = limitValue.trim();
+		// empty follows the instance limit again
+		if (!value) return saveIdentityLimit(null);
+		if (!/^\d+$/.test(value) || Number(value) > 100) {
+			changed('The identity limit is a number from 0 to 100.', true);
+			return;
+		}
+		return saveIdentityLimit(Number(value));
 	}
 
 	async function addNote() {
@@ -438,6 +468,17 @@ export default function AccountCase() {
 						</View>
 					</View>
 				) : null}
+
+				{a.identity_limit ? (
+					<IdentityLimitSection
+						limit={a.identity_limit}
+						value={limitValue}
+						onChangeValue={setLimitValue}
+						busy={busy}
+						onSave={submitIdentityLimit}
+						onReset={() => saveIdentityLimit(null)}
+					/>
+				) : null}
 			</View>
 
 			<TabRow tabs={tabs} value={tab} onChange={setTab} />
@@ -518,6 +559,77 @@ export default function AccountCase() {
 				</View>
 			)}
 		</ScrollView>
+	);
+}
+
+/** How many identities the account may own, and the field to change it when staff can. */
+function IdentityLimitSection({
+	limit,
+	value,
+	onChangeValue,
+	busy,
+	onSave,
+	onReset
+}: {
+	limit: IdentityLimit;
+	value: string;
+	onChangeValue: (value: string) => void;
+	busy: boolean;
+	onSave: () => void;
+	onReset: () => void;
+}) {
+	const current = limit.custom === null ? '' : String(limit.custom);
+	return (
+		<View style={{ gap: 10 }}>
+			<Txt bold size={13} muted style={sectionTitle}>
+				Identity limit
+			</Txt>
+			<Txt size={14}>
+				Owns{' '}
+				<Txt bold size={14}>
+					{limit.owned}
+				</Txt>{' '}
+				of {limit.limit} {limit.limit === 1 ? 'identity' : 'identities'}{' '}
+				<Txt size={14} muted>
+					(
+					{limit.custom === null
+						? 'the instance limit'
+						: `its own limit; the instance allows ${limit.global}`}
+					)
+				</Txt>
+				.
+			</Txt>
+			{limit.can_edit ? (
+				<>
+					<View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: 10 }}>
+						<View style={{ width: 110 }}>
+							<Field
+								label="Own limit"
+								value={value}
+								onChangeText={onChangeValue}
+								placeholder={String(limit.global)}
+								keyboardType="number-pad"
+								maxLength={3}
+								onSubmitEditing={onSave}
+							/>
+						</View>
+						<Button
+							size="sm"
+							label="Save"
+							disabled={busy || value.trim() === current}
+							onPress={onSave}
+						/>
+						{limit.custom !== null ? (
+							<Button size="sm" label="Use instance limit" disabled={busy} onPress={onReset} />
+						) : null}
+					</View>
+					<Txt size={13} muted>
+						Leave it empty to follow the instance limit. Going below what it owns keeps its
+						identities; it just can’t create more.
+					</Txt>
+				</>
+			) : null}
+		</View>
 	);
 }
 

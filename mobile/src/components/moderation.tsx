@@ -9,7 +9,8 @@ import {
 	RotateCcw,
 	Shield,
 	Trash2,
-	UserRound
+	UserRound,
+	Users
 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -360,7 +361,9 @@ const logIcons: Record<string, typeof Shield> = {
 	note: NotebookPen,
 	report_resolved: Flag,
 	report_dismissed: Flag,
-	report_reopened: Flag
+	report_reopened: Flag,
+	identity_limit: Users,
+	identity_limit_global: Users
 };
 
 /** One line of the moderation log. */
@@ -380,6 +383,10 @@ export function LogEntryRow({ entry, compact }: { entry: LogEntry; compact?: boo
 			? 'permanent'
 			: '',
 		entry.action === 'role' ? `${d.from} → ${d.to}` : '',
+		// null is the instance limit
+		entry.action === 'identity_limit' || entry.action === 'identity_limit_global'
+			? `${d.from ?? 'instance limit'} → ${d.to ?? 'instance limit'}`
+			: '',
 		entry.action === 'delete_group' && typeof d.name === 'string' ? `“${d.name}”` : '',
 		reports > 1 ? `${reports} reports` : ''
 	].filter(Boolean);

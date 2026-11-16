@@ -1238,6 +1238,13 @@ export const v1Groups: V1Group[] = [
 				summary: 'message of the day / set `{ motd }`'
 			},
 			{
+				method: 'GET / PUT',
+				path: '/api/v1/admin/identity-limit',
+				auth: 'staff / admin',
+				summary:
+					'how many identities an account may own / set it `{ max_identities }` (admin; null for the default)'
+			},
+			{
 				method: 'GET / POST',
 				path: '/api/v1/admin/invites?status=&username=',
 				auth: 'admin',
@@ -1268,6 +1275,13 @@ export const v1Groups: V1Group[] = [
 				auth: 'admin',
 				summary:
 					'set how many invites an account holds `{ invites }` (raising it sends an `invites` notification)'
+			},
+			{
+				method: 'PUT',
+				path: '/api/v1/admin/users/:username/identity-limit',
+				auth: 'staff',
+				summary:
+					'give an account its own identity limit `{ max_identities }` (0–100), null to follow the instance'
 			},
 			{
 				method: 'GET / DELETE',

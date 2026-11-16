@@ -372,6 +372,13 @@
       "when": 1794767693401,
       "tag": "0052_voice_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794785002116,
+      "tag": "0053_account_identity_limit",
+      "breakpoints": true
     }
   ]
 }

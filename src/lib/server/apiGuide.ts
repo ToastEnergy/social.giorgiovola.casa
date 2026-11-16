@@ -109,7 +109,8 @@ with it is closed at the same moment.
 
 A token belongs to an ACCOUNT (a person with an email and a password). An account can own
 identities: extra profiles with their own name, posts, follows, messages and notifications,
-but no email or password (at most ${MAX_IDENTITIES} per account). An identity can be shared
+but no email or password (${MAX_IDENTITIES} per account by default; staff can change the
+limit for the instance or one account, GET /me/identities says yours). An identity can be shared
 with up to ${MAX_MEMBERS} other accounts, which can then act as it too. A token acts as ONE
 profile at a time: the account, or one of its identities. Everything you do (post, like,
 message, read notifications) is done as that profile. Switch with POST /auth/switch;
@@ -467,6 +468,8 @@ PATCH /me/passkeys/:id   { "name" } → { "id", "name" }         account
 DELETE /me/passkeys/:id  → 204 (the password always keeps working)   account
 
 GET /me/identities                                             account
+  max_identities: how many identities you may own (your own limit, set by staff, or the
+  instance's). POST answers 400 once you own that many; bots don't count.
   { "max_identities", "max_members",
     "owned": [ { "username", "name", "avatar", "created_at", "members": [User] } ],
     "shared_with_me": [ { "username", "name", "avatar", "created_at", "owner" } ] }
@@ -958,6 +961,9 @@ GET /admin/users/:username   staff
              "reports_made", "log_entries" },
   "invites": { "invites", "pending", "available" (as in GET /me/invites), "used" (people who
                signed up with its codes), "invited_by": User | null }. 404 unknown user.
+  "identity_limit": { "limit" (what applies), "custom" (its own limit, null when it follows
+                      the instance's), "global" (the instance's), "owned" (identities it owns,
+                      bots aside), "can_edit" (you may change it) }.
 PUT /admin/users/:username/ban   staff
   Body: { "reason"? (max 200, shown to them), "duration"? }. duration: seconds, a whole
   number from 60 to 31536000 (a year); null or missing bans for good. Signs the account out
@@ -973,6 +979,12 @@ PUT /admin/users/:username/invites   { "invites": 0-1000 } → { "invites", "mes
   has out revokes the newest of them. Works on any account, staff included. Logged as
   action "invites" with details { "from", "to", "revoked" }. Raising it sends the account
   an "invites" notification (and a web push) with how many it got, unless it is your own.
+PUT /admin/users/:username/identity-limit   { "max_identities": 0-100 | null }   staff
+  Sets how many identities the account may own; null follows the instance's limit again.
+  Mods only on accounts they can moderate, admins on any account (their own too). Below what
+  it owns already, it keeps its identities but can't create more. 200: { "max_identities"
+  (its own limit or null), "limit" (what now applies), "message" }. 400 bad value, 403, 404.
+  Logged as action "identity_limit" with details { "from", "to" } (null: the instance's).
 POST /admin/users/:username/notes   { "note" (max 1000) } → 201 { "message" }   staff
   A note for the other staff, kept in the moderation log of the account. Works on any
   account, also ones you can't act on.
@@ -981,7 +993,7 @@ GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest 
   ?username= one account's entries (an identity finds its owner), ?actor= one staff
   member's, ?action= one of: ban, unban, mute, unmute, role, password, delete_post,
   delete_group, note, report_resolved, report_dismissed, report_reopened, invites,
-  invites_everyone (400 for another).
+  invites_everyone, identity_limit, identity_limit_global (400 for another).
   Items:
   { "id", "action", "actor": "username" | null, "target": "username" | null,
     "target_profile": User | null,   // null once the account is gone
@@ -994,12 +1006,21 @@ GET /admin/log?username=&actor=&action=   staff, paginated (default 30), newest 
                                       //   "owner", "members": [usernames], "messages" }
                                       //   (target null); invites: { "from", "to",
                                       //   "revoked" }; invites_everyone: { "count",
-                                      //   "accounts" } (target null); expired
+                                      //   "accounts" } (target null);
+                                      //   identity_limit: { "from", "to" } (numbers, or
+                                      //   null for the instance's); identity_limit_global:
+                                      //   { "from", "to" } (target null); expired
                                       //   unban/unmute: { "expired": true }
     "created_at", "system": false }   // system: no staff member (a ban that ran out)
 
 GET /admin/motd → { "motd", "custom", "default", "max" }                     admin
 PUT /admin/motd   { "motd": "one line" ("" resets) } → { "motd", "message" }   admin
+GET /admin/identity-limit → { "limit", "custom", "default", "max" }        staff
+  How many identities an account without its own limit may own. custom is false while the
+  default (${MAX_IDENTITIES}) applies; max is the highest value accepted (100).
+PUT /admin/identity-limit   { "max_identities": 0-100 | null (back to the default) }   admin
+  → { "limit", "message" }. Accounts already over it keep their identities. Logged as
+  "identity_limit_global" (target null). 400 bad value, 429 too many moderation actions.
 
 GET /admin/invites?status=all|pending|used|expired|revoked&username=   admin, paginated (default 50)
   Every invite code, newest first: Invite (see GET /me/invites) plus "inviter": User | null

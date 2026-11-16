@@ -3,7 +3,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, sessions, users } from './db/index.js';
 import { fail, rateLimit } from './api.js';
 import { closeSessionStreams } from './realtime.js';
-import { MAX_IDENTITIES, MAX_MEMBERS, removeAvatarFiles } from './accounts.js';
+import { MAX_MEMBERS, removeAvatarFiles } from './accounts.js';
+import { effectiveLimit, identityLimitOf } from './identityLimit.js';
 import { imagesOfMessagesOf, imagesOfPostTrees, removeUploads } from './images.js';
 import { isUniqueViolation, validateName, validateUsername } from './validation.js';
 
@@ -62,7 +63,7 @@ export async function listIdentities(accountId: number) {
 		.orderBy(asc(identity_members.created_at));
 
 	return {
-		max_identities: MAX_IDENTITIES,
+		max_identities: await identityLimitOf(accountId),
 		max_members: MAX_MEMBERS,
 		owned: owned.map(({ id, ...identity }) => ({
 			...identity,
@@ -92,15 +93,21 @@ export async function createIdentity(accountId: number, rawName: string, rawUser
 	if (invalid) fail(400, invalid);
 
 	let created;
+	let limit = 0;
 	try {
 		created = await db.transaction(async (tx) => {
 			// serialises concurrent creations so the limit can't be raced past
-			await tx.select({ id: users.id }).from(users).where(eq(users.id, accountId)).for('update');
+			const [account] = await tx
+				.select({ max_identities: users.max_identities })
+				.from(users)
+				.where(eq(users.id, accountId))
+				.for('update');
+			limit = await effectiveLimit(account?.max_identities ?? null);
 			const [{ n }] = await tx
 				.select({ n: count() })
 				.from(users)
 				.where(and(eq(users.owner_id, accountId), eq(users.bot, false)));
-			if (n >= MAX_IDENTITIES) return null;
+			if (n >= limit) return null;
 			const [identity] = await tx
 				.insert(users)
 				.values({ name, username, owner_id: accountId })
@@ -116,7 +123,13 @@ export async function createIdentity(accountId: number, rawName: string, rawUser
 		if (isUniqueViolation(e)) fail(400, 'Username already in use.');
 		throw e;
 	}
-	if (!created) fail(400, `You can have at most ${MAX_IDENTITIES} identities.`);
+	if (!created)
+		fail(
+			400,
+			limit === 0
+				? "You can't create identities."
+				: `You can have at most ${limit} ${limit === 1 ? 'identity' : 'identities'}.`
+		);
 	return created;
 }
 

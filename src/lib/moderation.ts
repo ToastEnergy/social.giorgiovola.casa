@@ -143,6 +143,16 @@ export type Account = AccountState & {
 		used: number;
 		invited_by: Profile | null;
 	};
+	identity_limit: {
+		/** what applies: its own limit, or the instance's */
+		limit: number;
+		/** its own limit, null when it follows the instance's */
+		custom: number | null;
+		global: number;
+		/** identities it owns (bots aside) */
+		owned: number;
+		can_edit: boolean;
+	};
 };
 
 /** GET /api/v1/admin/overview */
@@ -172,7 +182,9 @@ export const LOG_ACTIONS: Record<string, string> = {
 	report_dismissed: 'Report dismissed',
 	report_reopened: 'Report reopened',
 	invites: 'Invites changed',
-	invites_everyone: 'Invites given to everyone'
+	invites_everyone: 'Invites given to everyone',
+	identity_limit: 'Identity limit changed',
+	identity_limit_global: 'Instance identity limit changed'
 };
 
 /** "in 3 days", "2 hours ago": for when a ban ends. */

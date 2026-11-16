@@ -592,29 +592,31 @@ Read notifications are deleted by an hourly sweep once they are 6 months old. Un
 
 **Moderation and realtime**
 
-| method           | path                                         | who                |                                                                                                                                         |
-| ---------------- | -------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST`           | `/api/v1/reports`                            | signed in          | report a post `{ post_id, category, details? }` or a profile `{ username, category, details? }` to the staff; 10 an hour                |
-| `GET`            | `/api/v1/admin/overview`                     | staff              | counts: open reports, banned, muted, new accounts…                                                                                      |
-| `GET`            | `/api/v1/admin/reports?status=&username=`    | staff              | reports (open by default) with the post, reporter and account                                                                           |
-| `PATCH`          | `/api/v1/admin/reports/:id`                  | staff              | resolve / dismiss / reopen `{ status, note?, related? }`                                                                                |
-| `GET`            | `/api/v1/admin/users?q=&filter=`             | staff              | accounts (filter: reported, banned, muted, staff) with their identities and what you may do                                             |
-| `GET`            | `/api/v1/admin/users/:username`              | staff              | one account: state, identities, counts                                                                                                  |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`          | staff              | ban `{ reason?, duration? }` (seconds, null for good) / unban                                                                           |
-| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`         | staff              | mute `{ reason?, duration? }` / unmute                                                                                                  |
-| `POST`           | `/api/v1/admin/users/:username/notes`        | staff              | leave a note for the staff `{ note }`                                                                                                   |
-| `PUT`            | `/api/v1/admin/users/:username/role`         | admin              | `{ role: "mod" \| "user" }`                                                                                                             |
-| `PUT`            | `/api/v1/admin/users/:username/password`     | admin              | `{ password }`, signs them out                                                                                                          |
-| `GET`            | `/api/v1/admin/log?username=&actor=&action=` | staff              | the moderation log, newest first                                                                                                        |
-| `GET` / `PUT`    | `/api/v1/admin/motd`                         | admin              | message of the day / set `{ motd }`                                                                                                     |
-| `GET` / `DELETE` | `/api/v1/admin/groups/:id`                   | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                                             |
-| `GET` / `POST`   | `/api/v1/admin/invites?status=&username=`    | admin              | every invite code / create codes of your own `{ note?, count?, days? }`                                                                 |
-| `DELETE`         | `/api/v1/admin/invites/:id`                  | admin              | revoke any pending code                                                                                                                 |
-| `GET`            | `/api/v1/admin/invites/summary`              | admin              | invites held, available, out as codes and used, and who holds them                                                                      |
-| `POST`           | `/api/v1/admin/invites/grant`                | admin              | give every account that isn't banned `{ count }` more invites                                                                           |
-| `PUT`            | `/api/v1/admin/users/:username/invites`      | admin              | set how many invites an account holds `{ invites }`                                                                                     |
-| `GET`            | `/api/v1/stream`                             | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `version` on connect, `ping` every 8 s; at most 30 open per account |
-| `GET`            | `/api/v1/stream/bot`                         | bot                | the bot stream (same as /api/bot/stream)                                                                                                |
+| method           | path                                           | who                |                                                                                                                                         |
+| ---------------- | ---------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`           | `/api/v1/reports`                              | signed in          | report a post `{ post_id, category, details? }` or a profile `{ username, category, details? }` to the staff; 10 an hour                |
+| `GET`            | `/api/v1/admin/overview`                       | staff              | counts: open reports, banned, muted, new accounts…                                                                                      |
+| `GET`            | `/api/v1/admin/reports?status=&username=`      | staff              | reports (open by default) with the post, reporter and account                                                                           |
+| `PATCH`          | `/api/v1/admin/reports/:id`                    | staff              | resolve / dismiss / reopen `{ status, note?, related? }`                                                                                |
+| `GET`            | `/api/v1/admin/users?q=&filter=`               | staff              | accounts (filter: reported, banned, muted, staff) with their identities and what you may do                                             |
+| `GET`            | `/api/v1/admin/users/:username`                | staff              | one account: state, identities, counts                                                                                                  |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/ban`            | staff              | ban `{ reason?, duration? }` (seconds, null for good) / unban                                                                           |
+| `PUT` / `DELETE` | `/api/v1/admin/users/:username/mute`           | staff              | mute `{ reason?, duration? }` / unmute                                                                                                  |
+| `POST`           | `/api/v1/admin/users/:username/notes`          | staff              | leave a note for the staff `{ note }`                                                                                                   |
+| `PUT`            | `/api/v1/admin/users/:username/role`           | admin              | `{ role: "mod" \| "user" }`                                                                                                             |
+| `PUT`            | `/api/v1/admin/users/:username/password`       | admin              | `{ password }`, signs them out                                                                                                          |
+| `GET`            | `/api/v1/admin/log?username=&actor=&action=`   | staff              | the moderation log, newest first                                                                                                        |
+| `GET` / `PUT`    | `/api/v1/admin/motd`                           | admin              | message of the day / set `{ motd }`                                                                                                     |
+| `GET` / `PUT`    | `/api/v1/admin/identity-limit`                 | staff / admin      | identities an account may own / set it `{ max_identities }` (admin)                                                                     |
+| `GET` / `DELETE` | `/api/v1/admin/groups/:id`                     | admin              | any group chat (name, owner, members, message count) / delete it for everyone `{ reason? }`                                             |
+| `GET` / `POST`   | `/api/v1/admin/invites?status=&username=`      | admin              | every invite code / create codes of your own `{ note?, count?, days? }`                                                                 |
+| `DELETE`         | `/api/v1/admin/invites/:id`                    | admin              | revoke any pending code                                                                                                                 |
+| `GET`            | `/api/v1/admin/invites/summary`                | admin              | invites held, available, out as codes and used, and who holds them                                                                      |
+| `POST`           | `/api/v1/admin/invites/grant`                  | admin              | give every account that isn't banned `{ count }` more invites                                                                           |
+| `PUT`            | `/api/v1/admin/users/:username/invites`        | admin              | set how many invites an account holds `{ invites }`                                                                                     |
+| `PUT`            | `/api/v1/admin/users/:username/identity-limit` | staff              | give an account its own identity limit `{ max_identities }`, null to follow the instance                                                |
+| `GET`            | `/api/v1/stream`                               | public / signed in | server-sent events: posts, counts, notifications, messages, typing, `version` on connect, `ping` every 8 s; at most 30 open per account |
+| `GET`            | `/api/v1/stream/bot`                           | bot                | the bot stream (same as /api/bot/stream)                                                                                                |
 
 ## message images
 
@@ -630,8 +632,8 @@ The `dm-uploads` volume isn't in `scripts/backup.sh` yet.
 
 There are three roles: users, mods and admins.
 
-- **Mods** work from the panel at `/admin`: they handle reports, delete posts and replies, ban and mute users (for an hour up to 30 days, or for good) and lift bans and mutes. Banned users are signed out and can't sign in; muted users can't post, reply or send messages. Bans and mutes apply to the whole account, identities included: a muted owner's shared identities are muted for everyone using them, and a banned owner's ones stop working. Temporary ones are lifted by themselves within a minute of their end.
-- **Admins** can do everything a mod can, and also reset passwords, make users mods (or remove them), hand out invites and set the message of the day.
+- **Mods** work from the panel at `/admin`: they handle reports, delete posts and replies, ban and mute users (for an hour up to 30 days, or for good), lift bans and mutes and change how many identities an account may own (from its case page). Banned users are signed out and can't sign in; muted users can't post, reply or send messages. Bans and mutes apply to the whole account, identities included: a muted owner's shared identities are muted for everyone using them, and a banned owner's ones stop working. Temporary ones are lifted by themselves within a minute of their end.
+- **Admins** can do everything a mod can, and also reset passwords, make users mods (or remove them), hand out invites, set the message of the day and the identity limit for everyone (10 by default).
 - Staff only act on people ranked below them: mods on users, admins on users and mods. Nobody moderates themselves.
 
 The panel has five parts:
@@ -640,7 +642,7 @@ The panel has five parts:
 - **Accounts**: every account, searchable (identities and bots find their owner), filtered by reported, banned, muted or staff. Each opens a case page with the account's state, counts, actions, staff notes, history, the reports against it and its identities. Profiles have a short version of it with a link to the case.
 - **Log**: everything staff did and every ban or mute that ran out, filterable by account, staff member and action.
 - **Invites** (admins): how many invites there are, giving everyone more, links of your own and every code with who made and used it (see [invites](#invites)).
-- **Settings** (admins): the message of the day.
+- **Settings** (admins): the message of the day and the identity limit.
 
 The sidebar shows the number of open reports next to Moderation.
 

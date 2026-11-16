@@ -38,6 +38,12 @@ import { deleteGroup, groupSummary } from './groups.js';
 import { removeUploads } from './images.js';
 import { publishGroupUpdated } from './realtime.js';
 import { accountInvites } from './invites.js';
+import {
+	MAX_IDENTITY_LIMIT,
+	getGlobalIdentityLimit,
+	setGlobalIdentityLimit
+} from './identityLimit.js';
+import { MAX_IDENTITIES } from './accounts.js';
 
 export const ADMIN_FILTERS = ['all', 'banned', 'muted', 'staff', 'reported'] as const;
 export type AdminFilter = (typeof ADMIN_FILTERS)[number];
@@ -61,7 +67,9 @@ export const LOG_ACTIONS: LogAction[] = [
 	'report_dismissed',
 	'report_reopened',
 	'invites',
-	'invites_everyone'
+	'invites_everyone',
+	'identity_limit',
+	'identity_limit_global'
 ];
 
 /** open reports against the account or any of its identities */
@@ -240,22 +248,47 @@ export async function getAccount(locals: App.Locals, username: string) {
 		(SELECT count(*)::int FROM reports r WHERE r.target_id IN ${profiles}) AS reports,
 		(SELECT count(*)::int FROM reports r WHERE r.reporter_id IN ${profiles}) AS reports_made,
 		(SELECT count(*)::int FROM moderation_log WHERE target_id = ${target.id}) AS log_entries`);
-	const [email] = await db
-		.select({ email: users.email })
+	const [extra] = await db
+		.select({ email: users.email, max_identities: users.max_identities })
 		.from(users)
 		.where(eq(users.id, target.id));
 	const { id, ...account } = target;
 	return {
 		...account,
 		// only admins see addresses (they reset passwords)
-		email: locals.role === 'admin' ? email?.email ?? null : null,
+		email: locals.role === 'admin' ? extra?.email ?? null : null,
 		via: target.username !== username.toLowerCase() ? username.toLowerCase() : null,
 		...(await loadIdentities([id]))(id),
 		...permissions(locals, target),
 		stats: counts,
-		invites: await accountInvites(target.id)
+		invites: await accountInvites(target.id),
+		identity_limit: await identityLimitState(locals, target, extra?.max_identities ?? null)
 	};
 }
+
+/** How many identities an account may own, how many it has, and whether the caller can change it. */
+async function identityLimitState(
+	locals: App.Locals,
+	target: ModerationTarget,
+	own: number | null
+) {
+	const global = await getGlobalIdentityLimit();
+	const [{ owned }] = await db
+		.select({ owned: sql<number>`count(*)::int` })
+		.from(users)
+		.where(and(eq(users.owner_id, target.id), eq(users.bot, false)));
+	return {
+		limit: own ?? global,
+		custom: own,
+		global,
+		owned,
+		can_edit: canEditIdentityLimit(locals, target)
+	};
+}
+
+/** Admins may change anyone's identity limit (their own too), mods those of accounts they can moderate. */
+const canEditIdentityLimit = (locals: App.Locals, target: ModerationTarget) =>
+	locals.role === 'admin' || (isStaff(locals.role) && canModerate(locals, target));
 
 /** Who is acting, as the log records it: the account, not the identity in use. */
 async function actorOf(locals: App.Locals) {
@@ -498,6 +531,79 @@ export async function updateMotd(locals: App.Locals, motd: string) {
 	return {
 		motd: clean,
 		message: clean ? 'Message of the day updated.' : 'Message of the day reset.'
+	};
+}
+
+const limitText = (n: number) => (n === 1 ? '1 identity' : `${n} identities`);
+
+/**
+ * Sets how many identities an account may own; null follows the instance's limit again. Lowering
+ * it below what the account has keeps its identities, it just can't create more.
+ */
+export async function setIdentityLimit(locals: App.Locals, username: string, limit: number | null) {
+	if (!locals.user || locals.accountId === null || !isStaff(locals.role))
+		fail(403, 'Only moderators and admins can do this');
+	if (actionsLimited(locals.accountId)) fail(429, 'Too many actions, slow down.');
+	const target = await findTarget(username);
+	if (!target) fail(404, 'User not found.');
+	if (!canEditIdentityLimit(locals, target)) fail(403, `You can't moderate @${target.username}.`);
+	const from = await db.transaction(async (tx) => {
+		const [row] = await tx
+			.select({ max_identities: users.max_identities })
+			.from(users)
+			.where(eq(users.id, target.id))
+			.for('update');
+		await tx.update(users).set({ max_identities: limit }).where(eq(users.id, target.id));
+		return row?.max_identities ?? null;
+	});
+	if (from !== limit)
+		await logAction({
+			actor: await actorOf(locals),
+			target,
+			action: 'identity_limit',
+			details: { from, to: limit }
+		});
+	const global = await getGlobalIdentityLimit();
+	return {
+		max_identities: limit,
+		limit: limit ?? global,
+		message:
+			limit === null
+				? `@${target.username} follows the instance limit again (${limitText(global)}).`
+				: `@${target.username} can now own ${limitText(limit)}.`
+	};
+}
+
+/** The instance's identity limit: what accounts without their own limit may own. Staff. */
+export async function identityLimitSettings(locals: App.Locals) {
+	if (locals.accountId === null || !isStaff(locals.role))
+		fail(403, 'Only moderators and admins can do this');
+	const limit = await getGlobalIdentityLimit();
+	return {
+		limit,
+		custom: limit !== MAX_IDENTITIES,
+		default: MAX_IDENTITIES,
+		max: MAX_IDENTITY_LIMIT
+	};
+}
+
+/** Sets the instance's identity limit; null goes back to the default. Admin only. */
+export async function updateGlobalIdentityLimit(locals: App.Locals, limit: number | null) {
+	if (locals.role !== 'admin' || locals.accountId === null) fail(403, 'Only admins can do this');
+	if (actionsLimited(locals.accountId)) fail(429, 'Too many actions, slow down.');
+	const from = await getGlobalIdentityLimit();
+	await setGlobalIdentityLimit(limit);
+	const to = limit ?? MAX_IDENTITIES;
+	if (from !== to)
+		await logAction({
+			actor: await actorOf(locals),
+			target: null,
+			action: 'identity_limit_global',
+			details: { from, to }
+		});
+	return {
+		limit: to,
+		message: `Accounts can now own ${limitText(to)}, unless they have their own limit.`
 	};
 }
 

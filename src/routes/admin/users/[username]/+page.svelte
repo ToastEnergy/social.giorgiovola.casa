@@ -52,6 +52,30 @@
 		}
 	}
 
+	// the identity limit field: empty follows the instance's limit
+	let limitValue = $derived<number | null>(data.account.identity_limit.custom);
+
+	async function saveIdentityLimit(limit: number | null) {
+		busy = true;
+		try {
+			const res = await api<{ message: string }>(
+				`admin/users/${encodeURIComponent(a.username)}/identity-limit`,
+				{ method: 'PUT', json: { max_identities: limit } }
+			);
+			await changed(res.message);
+		} catch (err) {
+			await changed(messageOf(err), true);
+		} finally {
+			busy = false;
+		}
+	}
+
+	function submitIdentityLimit(e: SubmitEvent) {
+		e.preventDefault();
+		// a cleared number input binds to null
+		void saveIdentityLimit(typeof limitValue === 'number' ? limitValue : null);
+	}
+
 	async function changed(message: string, failed = false) {
 		flash = { message, failed };
 		dialog = null;
@@ -303,6 +327,50 @@
 			</form>
 		</section>
 	{/if}
+
+	<section class="flex flex-col gap-2.5" aria-labelledby="identity-limit-title">
+		<h3 id="identity-limit-title" class={sectionTitle}>Identity limit</h3>
+		<p class="text-[0.9em]">
+			Owns <b>{a.identity_limit.owned}</b> of
+			{a.identity_limit.limit}
+			{a.identity_limit.limit === 1 ? 'identity' : 'identities'}
+			<span class="text-muted"
+				>({a.identity_limit.custom === null
+					? 'the instance limit'
+					: `its own limit; the instance allows ${a.identity_limit.global}`})</span
+			>.
+		</p>
+		{#if a.identity_limit.can_edit}
+			<form class="flex flex-wrap items-end gap-2.5" onsubmit={submitIdentityLimit}>
+				<label class="flex w-28 flex-col" for="identity-limit">
+					<span class="text-[0.8em] opacity-80">Own limit</span>
+					<input
+						id="identity-limit"
+						class="border-b bg-transparent py-[5px] outline-none focus:border-accent"
+						type="number"
+						min="0"
+						max="100"
+						placeholder={String(a.identity_limit.global)}
+						bind:value={limitValue}
+					/>
+				</label>
+				<Button
+					size="sm"
+					type="submit"
+					disabled={busy || (limitValue ?? null) === a.identity_limit.custom}>Save</Button
+				>
+				{#if a.identity_limit.custom !== null}
+					<Button size="sm" disabled={busy} onclick={() => saveIdentityLimit(null)}
+						>Use instance limit</Button
+					>
+				{/if}
+			</form>
+			<p class="text-[0.85em] text-muted">
+				Leave it empty to follow the instance limit. Going below what it owns keeps its identities;
+				it just can't create more.
+			</p>
+		{/if}
+	</section>
 
 	<div class="flex flex-col">
 		<nav class="mb-2.5 flex overflow-x-auto [scrollbar-width:none]" aria-label="Case sections">

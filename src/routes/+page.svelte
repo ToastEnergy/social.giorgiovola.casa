@@ -29,7 +29,9 @@
 	}
 
 	// a followed profile (or you) regiorged a post: it moves to the top of the following feed.
-	// In the all feed it stays where it is and says who regiorged it last
+	// In the all feed it stays where it is and says who regiorged it last. the event's post is the
+	// fresh one, but an anonymous view: what the viewer did (liked, regiorged) is kept from the
+	// copy already shown
 	function addRegiorg(post: PostType) {
 		if (!post.regiorged_by) return;
 		const by = post.regiorged_by.username;
@@ -37,7 +39,12 @@
 			const regiorged_by = { ...post.regiorged_by, others: Math.max(0, post.regiorgs - 1) };
 			posts = posts.map((p) =>
 				p.id === post.id
-					? { ...p, regiorged_by, regiorged: by === $user?.username || p.regiorged }
+					? {
+							...post,
+							regiorged_by,
+							liked: p.liked,
+							regiorged: by === $user?.username || p.regiorged
+					  }
 					: p
 			);
 			return;

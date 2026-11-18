@@ -63,7 +63,10 @@ export const users = pgTable(
 		banned_until: timestamptz('banned_until'),
 		muted_until: timestamptz('muted_until'),
 		// invites an admin gave the account that it hasn't turned into codes yet (see invites)
-		invites: integer('invites').notNull().default(0)
+		invites: integer('invites').notNull().default(0),
+		// how many identities the account may own, set by staff; null follows the instance's
+		// limit (see src/lib/server/identityLimit.ts)
+		max_identities: integer('max_identities')
 	},
 	(t) => [
 		index('users_owner_id').on(t.owner_id),
@@ -76,6 +79,7 @@ export const users = pgTable(
 			.where(sql`${t.muted_until} IS NOT NULL`),
 		check('users_role_check', sql`${t.role} IN ('user', 'mod', 'admin')`),
 		check('users_invites_check', sql`${t.invites} >= 0`),
+		check('users_max_identities_check', sql`${t.max_identities} >= 0`),
 		check(
 			'users_identity_check',
 			sql`(${t.owner_id} IS NULL AND ${t.email} IS NOT NULL AND ${t.password} IS NOT NULL AND ${t.salt} IS NOT NULL)

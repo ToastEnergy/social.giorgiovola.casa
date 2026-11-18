@@ -9,6 +9,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Shield from '@lucide/svelte/icons/shield';
 	import Trash from '@lucide/svelte/icons/trash';
+	import Users from '@lucide/svelte/icons/users';
 	import LocalTime from '#lib/components/LocalTime.svelte';
 	import { LOG_ACTIONS, relative, type LogEntry } from '#lib/moderation.js';
 
@@ -39,7 +40,9 @@
 					report_dismissed: Flag,
 					report_reopened: Flag,
 					invites: Ticket,
-					invites_everyone: Ticket
+					invites_everyone: Ticket,
+					identity_limit: Users,
+					identity_limit_global: Users
 			  }[entry.action] ?? Shield
 	);
 	const danger = $derived(['ban', 'mute', 'delete_post', 'delete_group'].includes(entry.action));
@@ -76,6 +79,9 @@
 					>· {d.from} → {d.to}{#if typeof d.revoked === 'number' && d.revoked > 0}, {d.revoked}
 						{d.revoked === 1 ? 'code' : 'codes'} revoked{/if}</span
 				>
+			{/if}
+			{#if entry.action === 'identity_limit' || entry.action === 'identity_limit_global'}
+				<span class="text-muted">· {d.from ?? 'instance limit'} → {d.to ?? 'instance limit'}</span>
 			{/if}
 			{#if entry.action === 'invites_everyone'}
 				<span class="text-muted"

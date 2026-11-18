@@ -27,6 +27,30 @@
 		}
 	}
 
+	let limitFlash = $state<{ message: string; failed: boolean } | null>(null);
+	let limitBusy = $state(false);
+	// empty goes back to the default
+	let limitValue = $derived<number | null>(
+		data.identityLimit.custom ? data.identityLimit.limit : null
+	);
+
+	async function saveIdentityLimit(e: SubmitEvent) {
+		e.preventDefault();
+		limitBusy = true;
+		try {
+			const res = await api<{ message: string }>('admin/identity-limit', {
+				method: 'PUT',
+				json: { max_identities: typeof limitValue === 'number' ? limitValue : null }
+			});
+			limitFlash = { message: res.message, failed: false };
+			await invalidateAll();
+		} catch (err) {
+			limitFlash = { message: messageOf(err), failed: true };
+		} finally {
+			limitBusy = false;
+		}
+	}
+
 	type FoundGroup = {
 		id: number;
 		name: string;
@@ -117,6 +141,40 @@
 		</p>
 		<Button class="self-start" type="submit" disabled={busy}>Save</Button>
 	</form>
+</section>
+
+<section class="mb-10 flex flex-col gap-3">
+	<h2>Identity limit</h2>
+	<p class="text-[0.9em] text-muted">
+		How many identities an account can own (bots don't count). Staff can give an account its own
+		limit from its case page.
+	</p>
+	{#if limitFlash}
+		<p
+			class="rounded-[5px] p-[5px] {limitFlash.failed ? 'bg-danger' : 'bg-accent text-background'}"
+		>
+			{limitFlash.message}
+		</p>
+	{/if}
+	<form class="flex items-end gap-2.5" onsubmit={saveIdentityLimit}>
+		<label class="flex w-28 flex-col" for="identity-limit">
+			<span class="text-[0.8em] opacity-80">Per account</span>
+			<input
+				id="identity-limit"
+				class="input"
+				type="number"
+				min="0"
+				max={data.identityLimit.max}
+				placeholder={String(data.identityLimit.default)}
+				bind:value={limitValue}
+			/>
+		</label>
+		<Button type="submit" disabled={limitBusy}>Save</Button>
+	</form>
+	<p class="text-[0.85em] text-muted">
+		Leave it empty for the default ({data.identityLimit.default}). Lowering it keeps the identities
+		accounts already have; they just can't create more.
+	</p>
 </section>
 
 <section class="mb-10 flex flex-col gap-3">

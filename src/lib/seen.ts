@@ -14,8 +14,6 @@ const empty = (): Batch => ({ posts: [], engagement: [], followers: [], invites:
 let queue = empty();
 // already reported (or queued) in this page session, so scrolling past again sends nothing
 const reported = new Set<string>();
-// batches that failed once: retried a single time, then dropped
-const retried = new WeakSet<Batch>();
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const pending = (b: Batch) =>
@@ -43,16 +41,12 @@ const chunks = <T>(list: T[], size: number) =>
 		list.slice(i * size, (i + 1) * size)
 	);
 
-function requeue(b: Batch) {
-	// once only: a batch that fails again is forgotten, so a dead server isn't hammered
-	if (retried.has(b)) return;
-	retried.add(b);
-	queue.posts.push(...b.posts);
-	queue.engagement.push(...b.engagement);
-	queue.followers.push(...b.followers);
-	queue.invites ||= b.invites;
-	// retry later than the usual delay
-	timer ??= setTimeout(flushSeen, DELAY * 3);
+/** A batch that failed is dropped, but seeing the same things again reports them again. */
+function forget(b: Batch) {
+	for (const id of b.posts) reported.delete(`p${id}`);
+	for (const id of b.engagement) reported.delete(`e${id}`);
+	for (const u of b.followers) reported.delete(`f${u}`);
+	if (b.invites) reported.delete('invites');
 }
 
 async function send(b: Batch, keepalive: boolean) {
@@ -68,11 +62,11 @@ async function send(b: Batch, keepalive: boolean) {
 			}),
 			keepalive
 		});
-		if (!res.ok) return requeue(b);
+		if (!res.ok) return forget(b);
 		const { read } = (await res.json().catch(() => ({}))) as { read?: number };
 		if (read) closeStale();
 	} catch {
-		requeue(b);
+		forget(b);
 	}
 }
 

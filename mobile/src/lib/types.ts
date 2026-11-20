@@ -372,6 +372,25 @@ export type AdminAccount = AccountState & {
 	};
 	/** missing on servers from before invites */
 	invites?: InviteBalance & { used: number; invited_by: User | null };
+	/** missing on servers from before identity limits */
+	identity_limit?: {
+		/** what applies: its own limit, or the instance's */
+		limit: number;
+		/** its own limit, null when it follows the instance's */
+		custom: number | null;
+		global: number;
+		/** identities it owns (bots aside) */
+		owned: number;
+		can_edit: boolean;
+	};
+};
+
+/** GET /admin/identity-limit: how many identities accounts without their own limit may own */
+export type IdentityLimitSettings = {
+	limit: number;
+	custom: boolean;
+	default: number;
+	max: number;
 };
 
 export type InviteStatus = 'pending' | 'used' | 'expired' | 'revoked';

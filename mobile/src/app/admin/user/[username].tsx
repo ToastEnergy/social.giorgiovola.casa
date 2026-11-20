@@ -35,6 +35,8 @@ export default function AccountCase() {
 	const { me } = useSession();
 	// the invites field, reset to the account's count whenever it loads
 	const [invitesValue, setInvitesValue] = useState('');
+	// the identity limit field, the same: empty follows the instance's limit
+	const [limitValue, setLimitValue] = useState('');
 
 	const load = useCallback(async () => {
 		try {
@@ -47,6 +49,7 @@ export default function AccountCase() {
 			]);
 			setAccount(a);
 			setInvitesValue(a.invites ? String(a.invites.invites) : '');
+			setLimitValue(a.identity_limit?.custom != null ? String(a.identity_limit.custom) : '');
 			setLog(l);
 			setReports(r);
 			setError(null);
@@ -112,6 +115,33 @@ export default function AccountCase() {
 		} finally {
 			setBusy(false);
 		}
+	}
+
+	// null follows the instance's limit
+	async function saveIdentityLimit(limit: number | null) {
+		if (!account || busy) return;
+		setBusy(true);
+		try {
+			const res = await api<{ message: string }>(
+				`admin/users/${encodeURIComponent(account.username)}/identity-limit`,
+				{ method: 'PUT', body: { max_identities: limit } }
+			);
+			changed(res.message);
+		} catch (e) {
+			changed(errorMessage(e), true);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	function submitIdentityLimit() {
+		const text = limitValue.trim();
+		const limit = Number(text);
+		if (text && (!/^\d+$/.test(text) || limit > 100)) {
+			changed('The limit is a number from 0 to 100.', true);
+			return;
+		}
+		saveIdentityLimit(text ? limit : null);
 	}
 
 	async function addNote() {
@@ -436,6 +466,73 @@ export default function AccountCase() {
 								onPress={saveInvites}
 							/>
 						</View>
+					</View>
+				) : null}
+
+				{a.identity_limit ? (
+					<View style={{ gap: 10 }}>
+						<Txt bold size={13} muted style={sectionTitle}>
+							Identity limit
+						</Txt>
+						<Txt size={14}>
+							Owns{' '}
+							<Txt bold size={14}>
+								{a.identity_limit.owned}
+							</Txt>{' '}
+							of {a.identity_limit.limit} {a.identity_limit.limit === 1 ? 'identity' : 'identities'}{' '}
+							<Txt size={14} muted>
+								(
+								{a.identity_limit.custom === null
+									? 'the instance limit'
+									: `its own limit; the instance allows ${a.identity_limit.global}`}
+								)
+							</Txt>
+							.
+						</Txt>
+						{a.identity_limit.can_edit ? (
+							<>
+								<View
+									style={{
+										flexDirection: 'row',
+										alignItems: 'flex-end',
+										flexWrap: 'wrap',
+										gap: 10
+									}}
+								>
+									<View style={{ width: 110 }}>
+										<Field
+											label="Own limit"
+											value={limitValue}
+											onChangeText={setLimitValue}
+											placeholder={String(a.identity_limit.global)}
+											keyboardType="number-pad"
+											maxLength={3}
+											onSubmitEditing={submitIdentityLimit}
+										/>
+									</View>
+									<Button
+										size="sm"
+										label="Save"
+										disabled={
+											busy || limitValue.trim() === (a.identity_limit.custom?.toString() ?? '')
+										}
+										onPress={submitIdentityLimit}
+									/>
+									{a.identity_limit.custom !== null ? (
+										<Button
+											size="sm"
+											label="Use instance limit"
+											disabled={busy}
+											onPress={() => saveIdentityLimit(null)}
+										/>
+									) : null}
+								</View>
+								<Txt size={13} muted>
+									Leave it empty to follow the instance limit. Going below what it owns keeps its
+									identities; it just can’t create more.
+								</Txt>
+							</>
+						) : null}
 					</View>
 				) : null}
 			</View>

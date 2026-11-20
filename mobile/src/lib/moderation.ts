@@ -70,7 +70,11 @@ export const LOG_ACTIONS: Record<string, string> = {
 	note: 'Note',
 	report_resolved: 'Report resolved',
 	report_dismissed: 'Report dismissed',
-	report_reopened: 'Report reopened'
+	report_reopened: 'Report reopened',
+	invites: 'Invites changed',
+	invites_everyone: 'Invites given to everyone',
+	identity_limit: 'Identity limit changed',
+	identity_limit_global: 'Instance identity limit changed'
 };
 
 /** "in 3 days", "2 hours ago": for when a ban ends. (no Intl.RelativeTimeFormat: Hermes may lack it) */

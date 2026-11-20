@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db, identity_members, users } from './db/index.js';
+import { db, follows, identity_members, likes, regiorgs, users } from './db/index.js';
+import { getPost } from './feeds.js';
 import { fail } from './api.js';
 
 // anything with select: the db or a transaction
@@ -88,4 +89,49 @@ export async function inboxProfileIds(locals: App.Locals, url: URL): Promise<num
 	const ids = await profileIdsNamed(names, all);
 	if (ids.length < names.length) fail(400, 'Unknown profile in profiles');
 	return ids;
+}
+
+/**
+ * For each profile the account can use (the one in use first): whether it liked and regiorged
+ * the post and follows its author. Null when the viewer can't see the post.
+ */
+export async function postViewers(locals: App.Locals, postId: number) {
+	const viewer = locals.user;
+	if (!viewer || locals.accountId === null) return null;
+	const post = await getPost(postId, viewer);
+	if (!post) return null;
+	const [author] = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(eq(users.username, post.user.username));
+	const authorId = author?.id ?? -1;
+	const ids = await requestProfileIds(locals);
+	const [profiles, liked, regiorged, followed] = await Promise.all([
+		db
+			.select({ id: users.id, username: users.username, name: users.name, avatar: users.avatar })
+			.from(users)
+			.where(inArray(users.id, ids)),
+		db
+			.select({ id: likes.user_id })
+			.from(likes)
+			.where(and(eq(likes.post_id, postId), inArray(likes.user_id, ids))),
+		db
+			.select({ id: regiorgs.user_id })
+			.from(regiorgs)
+			.where(and(eq(regiorgs.post_id, postId), inArray(regiorgs.user_id, ids))),
+		db
+			.select({ id: follows.follower_id })
+			.from(follows)
+			.where(and(eq(follows.followed_id, authorId), inArray(follows.follower_id, ids)))
+	]);
+	const set = (rows: { id: number }[]) => new Set(rows.map((r) => r.id));
+	const [l, r, f] = [set(liked), set(regiorged), set(followed)];
+	return profiles
+		.sort((a, b) => Number(b.id === viewer.id) - Number(a.id === viewer.id) || a.id - b.id)
+		.map(({ id, ...p }) => ({
+			...p,
+			liked: l.has(id),
+			regiorged: r.has(id),
+			following: f.has(id)
+		}));
 }

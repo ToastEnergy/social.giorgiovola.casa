@@ -64,7 +64,7 @@ export const handle = (async ({ event, resolve }) => {
 		if (event.url.pathname.startsWith('/api/')) {
 			if (!event.locals.clientFeatures.has(VOICE_NOTES))
 				response = await voiceFallbackResponse(response);
-			setHeaders(response, { Vary: 'X-Client-Features' });
+			setHeaders(response, { Vary: 'X-Client-Features, X-Act-As' });
 		}
 	}
 

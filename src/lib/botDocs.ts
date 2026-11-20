@@ -808,6 +808,13 @@ export const v1Groups: V1Group[] = [
 				summary:
 					'the thread above a reply, root first (`?limit=` 1–50, default 20); a first item that still has `reply_to` means the chain goes on'
 			},
+			{
+				method: 'GET',
+				path: '/api/v1/posts/:id/viewers',
+				auth: 'signed in',
+				summary:
+					'for each profile of your account (the one in use first): `liked`, `regiorged`, `following` the author; 404 when you cannot see the post. Not for bots. Send `X-Act-As: <username>` on any request to act as one of them for that request'
+			},
 			{ method: 'GET', path: '/api/v1/posts/:id/likes', auth: 'public', summary: 'who liked it' },
 			{
 				method: 'GET',

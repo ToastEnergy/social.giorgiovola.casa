@@ -239,6 +239,78 @@ export function tokenError(locals: App.Locals): Response | null {
 	return response;
 }
 
+/**
+ * `X-Act-As: <username>` (cookie and human token requests): this one request acts as that
+ * profile instead of the session's, if the account in use may use it, by the rules of
+ * `sessions.acting_id` (the account itself, an identity it owns or one shared with it, not
+ * while its owner is banned; a shared identity is muted when its owner is). The session is
+ * never written. With several accounts signed in on the browser only the active one counts.
+ * Returns the error response for a profile the account can't use.
+ */
+async function actAs(locals: App.Locals, raw: string | null): Promise<Response | null> {
+	const name = raw?.trim().replace(/^@/, '').toLowerCase();
+	if (!name || locals.accountId === null || !locals.user) return null;
+	const accountId = locals.accountId;
+	const refused = () => apiError(403, `Can't act as @${name.slice(0, 64)}`);
+	if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) return refused();
+	// already the profile in use: nothing to look up
+	if (locals.user.username === name) return null;
+	const account = alias(users, 'account');
+	const owner = alias(users, 'owner');
+	const [row] = await db
+		.select({
+			profile: {
+				id: users.id,
+				email: users.email,
+				name: users.name,
+				username: users.username,
+				avatar: users.avatar,
+				created_at: users.created_at,
+				owner_id: users.owner_id
+			},
+			bot: users.bot,
+			account_muted_at: account.muted_at,
+			account_mute_reason: account.mute_reason,
+			owner_banned_at: owner.banned_at,
+			owner_muted_at: owner.muted_at,
+			owner_mute_reason: owner.mute_reason
+		})
+		.from(users)
+		.innerJoin(account, eq(account.id, accountId))
+		.leftJoin(owner, eq(owner.id, users.owner_id))
+		.where(
+			and(
+				eq(users.username, name),
+				or(
+					eq(users.id, accountId),
+					eq(users.owner_id, accountId),
+					exists(
+						db
+							.select({ one: sql`1` })
+							.from(identity_members)
+							.where(
+								and(
+									eq(identity_members.identity_id, users.id),
+									eq(identity_members.account_id, accountId)
+								)
+							)
+					)
+				)
+			)
+		);
+	if (!row || row.bot || row.owner_banned_at) return refused();
+	const isAccount = row.profile.id === accountId;
+	const mute = row.account_muted_at
+		? row.account_mute_reason
+		: !isAccount && row.owner_muted_at
+		? row.owner_mute_reason
+		: undefined;
+	locals.user = row.profile;
+	locals.muted = mute !== undefined;
+	locals.muteReason = mute ?? null;
+	return null;
+}
+
 /** Fills locals from a bearer token, or returns the error response for an invalid one. */
 async function fromToken(locals: App.Locals, request: Request, header: string) {
 	const match = /^(?:Bearer|Bot) (\S+)$/i.exec(header);
@@ -246,6 +318,8 @@ async function fromToken(locals: App.Locals, request: Request, header: string) {
 	if (token.startsWith('sgc_')) {
 		const bot = await authenticateBot(request);
 		if (bot instanceof Response) return bot;
+		if (request.headers.get('x-act-as')?.trim())
+			return apiError(400, 'Bots act as their own profile: X-Act-As is not allowed');
 		// bots act as their own profile; they are no account, so account endpoints refuse them
 		locals.user = bot.user;
 		locals.muted = bot.muted;
@@ -259,7 +333,7 @@ async function fromToken(locals: App.Locals, request: Request, header: string) {
 	fromSession(locals, row);
 	touch(row, true);
 	locals.auth = 'token';
-	return null;
+	return actAs(locals, request.headers.get('x-act-as'));
 }
 
 /**
@@ -302,7 +376,8 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 	if (parent?.key === key) {
 		Object.assign(locals, parent.locals, { sessions: [...parent.locals.sessions] });
 		cookieKeys.set(locals, key);
-		return null;
+		// the page's own resolution is what is shared; this subrequest may act as another profile
+		return actAs(locals, request.headers.get('x-act-as'));
 	}
 	const rows = await loadSessions(tokens.flatMap(keysOfCookie), 'cookie');
 	// each cookie with the row it opens, in the cookie's order
@@ -336,6 +411,7 @@ export async function authenticate(event: RequestEvent): Promise<Response | null
 	if (valid.length > 0) {
 		fromSession(locals, valid[0].row);
 		locals.auth = 'cookie';
+		return actAs(locals, request.headers.get('x-act-as'));
 	}
 	return null;
 }

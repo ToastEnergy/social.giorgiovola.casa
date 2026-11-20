@@ -18,6 +18,8 @@ export type RealtimeEvents = {
 	/** someone regiorged a post: the post, with `regiorged_by` set */
 	regiorg: Post;
 	notifications: { count: number };
+	/** unread notifications of a profile of the account, and over all of them */
+	inbox: { profile: string; count: number; total: number };
 	message: ChatMessage;
 	message_deleted: { id: number };
 	/** the sender changed the text of a direct message: the whole message, as it is now */
@@ -111,6 +113,7 @@ const events: (keyof RealtimeEvents)[] = [
 	'regiorg',
 	'poll',
 	'notifications',
+	'inbox',
 	'message',
 	'message_deleted',
 	'message_edited',

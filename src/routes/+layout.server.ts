@@ -7,11 +7,13 @@ import type { GifConfig } from '#lib/klipy.js';
 import { redirect } from '@sveltejs/kit';
 import { isPublicPage } from '#lib/membersOnly.js';
 import { rememberedFeed } from '#lib/feed.js';
+import { activeProfiles, rememberedInbox } from '#lib/inbox.js';
 
 export const load = (async ({ fetch, cookies, request, route, url, depends }) => {
 	// creating or revoking a code changes the invites the profile menu offers
 	depends('app:invites');
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
+	const inboxScope = rememberedInbox(url, cookies);
 	const [me, accounts, instance] = await Promise.all([
 		fetch('/api/v1/me').then((res) => (res.ok ? (res.json() as Promise<Me>) : null)),
 		fetch('/api/v1/auth/accounts').then(async (res) =>
@@ -36,7 +38,13 @@ export const load = (async ({ fetch, cookies, request, route, url, depends }) =>
 		reportsCount: me?.open_reports ?? 0,
 		// invites the account can still give: the profile menu offers to invite someone
 		invitesAvailable: me?.invites?.available ?? 0,
-		notisCount: me?.unread.notifications ?? 0,
+		// the badge counts every profile of the account: the switcher already has their counts
+		notisCount:
+			inboxScope === 'all' && me
+				? activeProfiles(accounts).reduce((n, p) => n + p.unread, 0)
+				: me?.unread.notifications ?? 0,
+		// notifications of every profile (the default) or only the profile in use (UI preference cookie)
+		inboxAll: inboxScope === 'all',
 		// reactions to your messages make a chat unread too
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),
 		accounts,

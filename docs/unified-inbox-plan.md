@@ -53,7 +53,7 @@ Shared identities keep sharing their read state between members, as today.
 - `POST /api/v1/notifications/seen` (new), batched so scrolling a feed is one request every few
   seconds, not one per post:
   ```json
-  { "posts": [12, 15], "engagement": [12], "followers": true, "invites": false }
+  { "posts": [12, 15], "engagement": [12], "followers": ["alice"], "invites": false }
   ```
   `posts`: posts that were on screen (max 100). `engagement`: posts whose page or people list was
   opened. Answers `{ "read": n }`, sends the new unread counts over realtime. Rate limited like

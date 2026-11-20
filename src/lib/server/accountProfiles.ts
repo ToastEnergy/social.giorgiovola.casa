@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, users } from './db/index.js';
 
@@ -58,4 +58,14 @@ export async function siblingProfileIds(profileId: number, ex: Executor = db): P
 		.where(eq(users.id, profileId));
 	if (!row || row.bot || row.shared) return [profileId];
 	return accountProfileIds(row.owner_id ?? profileId, ex);
+}
+
+/** The ids of the profiles named `usernames`, among `within`. */
+export async function profileIdsNamed(usernames: string[], within: number[]): Promise<number[]> {
+	if (usernames.length === 0 || within.length === 0) return [];
+	const rows = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(and(inArray(users.username, usernames), inArray(users.id, within)));
+	return rows.map((r) => r.id);
 }

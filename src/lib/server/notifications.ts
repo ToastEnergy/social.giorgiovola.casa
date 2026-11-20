@@ -230,8 +230,8 @@ export type Seen = {
 	posts?: number[];
 	/** posts whose page or people list was opened */
 	engagement?: number[];
-	/** the followers list was opened */
-	followers?: boolean;
+	/** the profiles (ids) whose followers list was opened */
+	followers?: number[];
 	/** the invites page was opened */
 	invites?: boolean;
 };
@@ -264,7 +264,8 @@ export async function markSeen(profileIds: number[], seen: Seen) {
 		await run(
 			and(inArray(inbox.post_id, seen.engagement), inArray(inbox.type, [...ENGAGEMENT_TYPES]))
 		);
-	if (seen.followers) await run(eq(inbox.type, 'follow'));
+	if (seen.followers?.length)
+		await run(and(inArray(inbox.user_id, seen.followers), eq(inbox.type, 'follow')));
 	if (seen.invites) await run(eq(inbox.type, 'invites'));
 	if (changed.size > 0) void pushUnread(changed);
 	return read;

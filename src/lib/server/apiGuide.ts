@@ -697,18 +697,19 @@ GET /notifications/unread             signed in → { "notifications": 2, "messa
 POST /notifications/read              marks all read → 204
 POST /notifications/seen              signed in (bots too, for their own profile). Tells the server
   what you have shown, so the notifications about it are read for every profile of your account.
-  Body (all optional, JSON): { "posts": [12, 15], "engagement": [12], "followers": true,
+  Body (all optional, JSON): { "posts": [12, 15], "engagement": [12], "followers": ["alice"],
   "invites": false }
   - "posts": ids of posts that were on screen (at most 100): reads their unread "mention",
     "reply", "quote" and "ratio" notifications.
   - "engagement": ids of posts whose page or people list was opened (at most 100): reads their
     unread "like", "regiorg" and "ratioed_by_you" notifications.
-  - "followers": true reads every unread "follow" notification. "invites": true reads every
-    unread "invites" notification.
+  - "followers": usernames of your profiles whose followers list was opened (at most 20):
+    reads their unread "follow" notifications. Usernames that aren't one of your profiles are
+    ignored. "invites": true reads every unread "invites" notification.
   Answers { "read": 3 } (how many notifications were marked read), and sends the new unread
   count of each profile it changed as a "notifications" realtime event. Unknown or foreign
-  post ids are ignored. 400 for a non-array, more than 100 ids or an id that isn't a positive
-  integer. Rate limit: 120 a minute per account, so batch what you saw and send it every few
+  post ids are ignored. 400 for a non-array, more than 100 ids, an id that isn't a positive
+  integer, or "followers" that isn't a list of at most 20 usernames. Rate limit: 120 a minute per account, so batch what you saw and send it every few
   seconds.
 POST /notifications/stale             account tokens and browser sessions only (bots: 403).
   Body: { "tags": ["like:12", "message:bob:alice"] } (at most 100 strings of up to 100

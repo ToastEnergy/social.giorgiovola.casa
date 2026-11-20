@@ -1023,7 +1023,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/notifications/seen',
 				auth: 'signed in',
 				summary:
-					'`{ posts?, engagement?, followers?, invites? }`: what was seen is read for all your profiles → `{ read }`, 120 a minute'
+					'`{ posts?, engagement?, followers? (usernames), invites? }`: what was seen is read for all your profiles → `{ read }`, 120 a minute'
 			},
 			{
 				method: 'POST',

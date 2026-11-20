@@ -998,25 +998,28 @@ export const v1Groups: V1Group[] = [
 				method: 'GET',
 				path: '/api/v1/notifications/grouped',
 				auth: 'signed in',
-				summary: 'your notifications, likes, regiorgs and follows grouped per day'
+				summary:
+					'your notifications, likes, regiorgs and follows grouped per day; ?profiles=all (or usernames) for every profile of your account, merged by post, with recipients (bots: ignored)'
 			},
 			{
 				method: 'POST',
 				path: '/api/v1/notifications/groups/:key/read',
 				auth: 'signed in',
-				summary: 'mark a group read'
+				summary:
+					'mark a group read; ?profiles=all takes the keys of that mode (p-<post id>, <user id>/<key>)'
 			},
 			{
 				method: 'GET',
 				path: '/api/v1/notifications/unread',
 				auth: 'signed in',
-				summary: 'unread notifications, messages and reactions to your messages'
+				summary:
+					'unread notifications, messages and reactions to your messages; ?profiles=all adds total and per-profile counts'
 			},
 			{
 				method: 'POST',
 				path: '/api/v1/notifications/read',
 				auth: 'signed in',
-				summary: 'mark all read'
+				summary: 'mark all read; ?profiles=all for every profile of your account'
 			},
 			{
 				method: 'POST',

@@ -1,5 +1,6 @@
 import { version } from '$app/env';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { accountProfileIds } from './accountProfiles.js';
 import { db, follows, inbox, posts, users } from './db/index.js';
 import { unreadMessageCount } from './messages';
 import { unreadReactionCount } from './messageReactions.js';
@@ -17,6 +18,8 @@ import { withVoiceFallback } from './voiceFallback.js';
 
 type Client = {
 	userId: number | null;
+	/** the account the stream was opened by (null for bots and anonymous streams) */
+	accountId: number | null;
 	/** the session or token (sessions.token) the stream was opened with */
 	sessionKey: string | null;
 	/** the bot whose token opened the stream, so revoking the token ends it (closeBotStreams) */
@@ -155,14 +158,15 @@ export function openStream(
 	botId: number | null,
 	owner: StreamOwner,
 	signal: AbortSignal,
-	voiceNotes: boolean
+	voiceNotes: boolean,
+	accountId: number | null = null
 ) {
 	const release = reserve(owner);
 	if (!release) return null;
 	// a real event, not a comment: clients can't see comments (EventSource drops them), and a
 	// client that hears nothing for a while knows the connection died without telling it
 	return eventStream(signal, frame('ping', {}), (send, close) => {
-		const client: Client = { userId, sessionKey, botId, voiceNotes, send, close };
+		const client: Client = { userId, accountId, sessionKey, botId, voiceNotes, send, close };
 		clients.add(client);
 		// a page still running an older build learns that a new one is out (#lib/appUpdate.ts):
 		// every deploy restarts the server, so every open page reconnects and hears it
@@ -297,15 +301,57 @@ export function broadcast(event: string, data: unknown) {
 	for (const client of [...clients]) deliver(client, c);
 }
 
-/** Pushes the fresh unread count to the connected streams of these users. */
+/**
+ * Pushes the fresh unread count to the connected streams of these users: a `notifications` frame
+ * to those of the profile itself (what old clients expect), and an `inbox` frame to every stream
+ * of an account that can use the profile, so one that reads the whole inbox hears about all of
+ * them (`{ profile: username, count, total }`, total over the account's profiles).
+ */
 export async function pushUnread(userIds: Iterable<number | null>) {
 	const targets = new Set([...userIds].filter((id): id is number => id !== null));
-	for (const id of targets) {
-		const watching = [...clients].filter((c) => c.userId === id);
-		if (watching.length === 0) continue;
-		const counts = frame('notifications', { count: await unreadCount(id) });
-		for (const client of watching) client.send(counts);
+	if (targets.size === 0) return;
+	const accountsWatching = new Set<number>();
+	for (const c of clients) if (c.accountId !== null) accountsWatching.add(c.accountId);
+	// profile -> accounts watching that can use it (the same set as push.ts deliver)
+	const watchers = new Map<number, number[]>();
+	if (accountsWatching.size > 0) {
+		const rows = (await db.execute(sql`
+			SELECT id AS profile_id, COALESCE(owner_id, id) AS account_id FROM users
+			WHERE id IN ${[...targets]} AND NOT bot
+			UNION SELECT identity_id, account_id FROM identity_members
+			WHERE identity_id IN ${[...targets]}
+		`)) as unknown as { profile_id: number; account_id: number }[];
+		for (const r of rows)
+			if (accountsWatching.has(r.account_id))
+				watchers.set(r.profile_id, [...(watchers.get(r.profile_id) ?? []), r.account_id]);
 	}
+	const totals = new Map<number, number>();
+	for (const id of targets) {
+		const own = [...clients].filter((c) => c.userId === id);
+		const accounts = watchers.get(id) ?? [];
+		if (own.length === 0 && accounts.length === 0) continue;
+		const count = await unreadCount(id);
+		const counts = frame('notifications', { count });
+		for (const client of own) client.send(counts);
+		if (accounts.length === 0) continue;
+		const [row] = await db.select({ username: users.username }).from(users).where(eq(users.id, id));
+		for (const account of accounts) {
+			// once per account, however many of its profiles changed
+			if (!totals.has(account)) totals.set(account, await accountUnreadTotal(account));
+			const inboxFrame = frame('inbox', {
+				profile: row?.username,
+				count,
+				total: totals.get(account)
+			});
+			for (const client of clients) if (client.accountId === account) client.send(inboxFrame);
+		}
+	}
+}
+
+/** Unread notifications over every profile of an account. */
+async function accountUnreadTotal(accountId: number) {
+	const ids = await accountProfileIds(accountId);
+	return db.$count(inbox, and(inArray(inbox.user_id, ids), isNull(inbox.read_at)));
 }
 
 /** The `messages_unread` frame: unread messages, and unread reactions to the user's messages. */

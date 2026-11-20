@@ -4,6 +4,7 @@ import { db, inbox } from './db/index.js';
 import { unreadMessageCount } from './messages.js';
 import { unreadReactionCount } from './messageReactions.js';
 import { pushUnread } from './realtime.js';
+import { profileUnreadCounts } from './profileUnread.js';
 
 /** A profile's notifications, newest first (`limit + 1` rows, see offsetPage). */
 export async function listNotifications(userId: number, limit: number, offset: number) {
@@ -60,7 +61,7 @@ const keyOf = (t: string) => sql.raw(`COALESCE(${t}.group_key, ${computedKey(t)}
  * `userId`'s rows of `t` in the group `key` (an SQL text expression): by group_key, by id for
  * 'n-<id>', or computed for the rows inserted without a key. Each branch has its index.
  */
-function inGroup(t: string, userId: number, key: SQL) {
+function inGroup(t: string, userId: number | SQL, key: SQL) {
 	const r = sql.raw(t);
 	return sql`${r}.user_id = ${userId} AND (
 		${r}.group_key = ${key}
@@ -179,6 +180,180 @@ export async function listNotificationGroups(
 	}));
 }
 
+// ---------------------------------------------------------------------------------------------
+// the inbox of an account: several profiles at once (?profiles=)
+//
+// Same groups, except that what is about one post is one group across the profiles it reached:
+// a reply that also mentions another of your profiles is one entry ('p-<post_id>', with the
+// strongest type and every recipient). Likes, regiorgs, follows and invites are about one
+// profile, so they keep their own key with the recipient in front ('<user_id>/like-12-20261120',
+// '<user_id>/n-99'). The two key formats never meet: these keys only work with ?profiles=.
+
+const POSTED = `('mention', 'reply', 'quote', 'ratio')`;
+
+// a row is merged by post when it has one; the odd row of these types without a post stays alone
+const isPosted = (t: string) => `(${t}.type IN ${POSTED} AND ${t}.post_id IS NOT NULL)`;
+const ownKey = (t: string) => `COALESCE(${t}.group_key, ${computedKey(t)})`;
+const multiKey = (t: string) =>
+	`CASE WHEN ${isPosted(t)} THEN 'p-' || ${t}.post_id ELSE ${t}.user_id || '/' || ${ownKey(t)} END`;
+
+export const MULTI_GROUP_KEY =
+	/^(?:p-\d{1,10}|\d{1,10}\/(?:(?:like|regiorg)-\d{1,10}-\d{8}|follow-\d{8}|n-\d{1,10}))$/;
+
+// postgres-js would expand a JS array into a list, so the ids are spelled out
+const idArray = (ids: number[]) =>
+	sql`ARRAY[${sql.join(
+		ids.map((i) => sql`${i}::int`),
+		sql`, `
+	)}]::int[]`;
+
+/**
+ * listNotificationGroups for `profileIds` together (the inbox of an account), with the profiles
+ * each group reached in `recipients`, `currentId` first. Same walk and cursors; the "next row" is
+ * one LIMIT 1 index scan of inbox_user_created per profile (a LATERAL join over the ids), and the
+ * newest of those, so the rows are never sorted across profiles.
+ */
+export async function listNotificationGroupsOf(
+	profileIds: number[],
+	currentId: number,
+	limit: number,
+	cursor: GroupCursor | null,
+	offset = 0
+) {
+	const ids = idArray(profileIds);
+	const at =
+		cursor && sql`('epoch'::timestamptz + ${cursor.at}::bigint * interval '1 microsecond')`;
+	const start = cursor ? sql`(inbox.created_at, inbox.id) < (${at}, ${cursor.id}::int)` : sql`true`;
+	const above = cursor && sql`(m.created_at, m.id) >= (${at}, ${cursor.id}::int)`;
+	// is the group of this row (r) one without a notification at or above the cursor? a post
+	// group is its rows of the post across the profiles, the others one profile's group, as in
+	// listNotificationGroups
+	const onPage = cursor
+		? sql`(SELECT (NOT r.posted AND r.own_key LIKE 'n-%') OR NOT (
+			EXISTS (SELECT 1 FROM inbox m
+				WHERE r.posted AND m.user_id = ANY(${ids}) AND m.post_id = r.post_id
+					AND m.type IN ${sql.raw(POSTED)} AND ${above})
+			OR EXISTS (SELECT 1 FROM inbox m
+				WHERE NOT r.posted AND m.user_id = r.user_id AND m.group_key = r.own_key AND ${above})
+			OR EXISTS (SELECT 1 FROM inbox m
+				WHERE NOT r.posted AND m.user_id = r.user_id AND m.group_key IS NULL
+					AND m.type IN ${sql.raw(GROUPED)}
+					AND ${sql.raw(computedKey('m'))} = r.own_key AND ${above})
+		) AS on_page OFFSET 0)`
+		: sql`(SELECT true AS on_page)`;
+	const next = (after: SQL, seen: SQL) => sql`(
+		SELECT c.* FROM unnest(${ids}) AS prof(pid)
+		CROSS JOIN LATERAL (
+			SELECT inbox.created_at, inbox.id, inbox.user_id, inbox.post_id,
+				${sql.raw(isPosted('inbox'))} AS posted,
+				${sql.raw(ownKey('inbox'))} AS own_key,
+				${sql.raw(multiKey('inbox'))} AS key
+			FROM inbox
+			WHERE inbox.user_id = prof.pid AND ${after} AND ${sql.raw(multiKey('inbox'))} <> ALL(${seen})
+			ORDER BY inbox.created_at DESC, inbox.id DESC LIMIT 1
+		) c
+		ORDER BY c.created_at DESC, c.id DESC LIMIT 1
+	)`;
+	const rows = (await db.execute(sql`
+		WITH RECURSIVE walk AS (
+			SELECT r.created_at, r.id, r.user_id, r.post_id, r.posted, r.own_key, r.key,
+				ARRAY[r.key] AS seen, e.on_page, e.on_page::int AS found
+			FROM ${next(start, sql`'{}'::text[]`)} r
+			CROSS JOIN LATERAL ${onPage} e
+			UNION ALL
+			SELECT r.created_at, r.id, r.user_id, r.post_id, r.posted, r.own_key, r.key,
+				w.seen || r.key, e.on_page, w.found + e.on_page::int
+			FROM walk w
+			CROSS JOIN LATERAL ${next(sql`(inbox.created_at, inbox.id) < (w.created_at, w.id)`, sql`w.seen`)} r
+			CROSS JOIN LATERAL ${onPage} e
+			WHERE w.found < ${limit + 1 + offset}
+		)
+		SELECT g.key, g.type, g.count, g.unread, g.invites, g.created_at,
+			CASE WHEN g.unread > 0 THEN NULL ELSE g.read_at END AS read_at,
+			COALESCE((
+				SELECT jsonb_agg(
+					jsonb_build_object('id', u.id, 'username', u.username, 'name', u.name, 'avatar', u.avatar)
+					ORDER BY array_position(g.sender_ids, u.id)
+				)
+				FROM users u WHERE u.id = ANY(g.sender_ids)
+			), '[]'::jsonb) AS senders,
+			COALESCE((
+				SELECT jsonb_agg(
+					jsonb_build_object('id', u.id, 'username', u.username, 'name', u.name, 'avatar', u.avatar)
+					ORDER BY (u.id <> ${currentId}::int), u.id
+				)
+				FROM users u WHERE u.id = ANY(g.recipient_ids)
+			), '[]'::jsonb) AS recipients,
+			(
+				SELECT jsonb_build_object('content', p.content, 'id', p.id)
+				FROM posts p WHERE p.id = g.post_id
+			) AS post,
+			(extract(epoch FROM walk.created_at) * 1000000)::bigint || '-' || walk.id AS cursor
+		FROM walk
+		CROSS JOIN LATERAL (
+			SELECT walk.key,
+				-- the strongest type: reply > quote > ratio > mention (the others are alone)
+				(array_agg(gr.type ORDER BY CASE gr.type WHEN 'reply' THEN 0 WHEN 'quote' THEN 1
+					WHEN 'ratio' THEN 2 ELSE 3 END))[1] AS type,
+				min(gr.post_id) AS post_id,
+				min(gr.invites) AS invites,
+				count(*)::int AS count,
+				(count(*) FILTER (WHERE gr.read_at IS NULL))::int AS unread,
+				max(gr.created_at) AS created_at,
+				max(gr.read_at) AS read_at,
+				(array_agg(gr.sender_id ORDER BY gr.created_at DESC, gr.id DESC)
+					FILTER (WHERE gr.sender_id IS NOT NULL))[1:3] AS sender_ids,
+				array_agg(DISTINCT gr.user_id) AS recipient_ids
+			FROM (
+				-- one branch applies per walk row; its condition keeps the other from running
+				SELECT inbox.* FROM inbox
+				WHERE walk.posted AND inbox.user_id = ANY(${ids}) AND inbox.post_id = walk.post_id
+					AND inbox.type IN ${sql.raw(POSTED)}
+				UNION ALL
+				SELECT inbox.* FROM inbox
+				WHERE NOT walk.posted AND ${inGroup('inbox', sql`walk.user_id`, sql`walk.own_key`)}
+			) gr
+		) g
+		WHERE walk.on_page
+		ORDER BY walk.created_at DESC, walk.id DESC
+		LIMIT ${limit + 1} OFFSET ${offset}
+	`)) as unknown as (NotificationGroup & { cursor: string })[];
+	return rows.map(({ cursor, ...r }) => ({
+		item: { ...r, created_at: new Date(r.created_at), read_at: r.read_at && new Date(r.read_at) },
+		cursor
+	}));
+}
+
+/**
+ * Marks a group of listNotificationGroupsOf read (a MULTI_GROUP_KEY): the rows of a post across
+ * `profileIds`, or one profile's group. False when there is no such group among them.
+ */
+export async function markMultiGroupRead(profileIds: number[], key: string) {
+	const ids = idArray(profileIds);
+	let rows: SQL;
+	if (key.startsWith('p-')) {
+		rows = sql`inbox.user_id = ANY(${ids}) AND inbox.post_id = ${Number(key.slice(2))}
+			AND inbox.type IN ${sql.raw(POSTED)}`;
+	} else {
+		const slash = key.indexOf('/');
+		const userId = Number(key.slice(0, slash));
+		if (!profileIds.includes(userId)) return false;
+		rows = inGroup('inbox', userId, sql`${key.slice(slash + 1)}::text`);
+	}
+	const [res] = (await db.execute(sql`
+		WITH g AS (SELECT inbox.id, inbox.read_at FROM inbox WHERE ${rows}),
+		updated AS (
+			UPDATE inbox SET read_at = NOW()
+			WHERE inbox.id IN (SELECT id FROM g WHERE read_at IS NULL)
+			RETURNING inbox.user_id
+		)
+		SELECT (SELECT count(*) FROM g)::int AS found,
+			COALESCE((SELECT array_agg(DISTINCT user_id) FROM updated), '{}') AS changed
+	`)) as unknown as { found: number; changed: number[] }[];
+	if (res.changed.length > 0) void pushUnread(res.changed);
+	return res.found > 0;
+}
+
 /** Marks every notification of a group read. False when the profile has no such group. */
 export async function markNotificationGroupRead(userId: number, key: string) {
 	const [row] = (await db.execute(sql`
@@ -205,6 +380,32 @@ export async function unreadCounts(userId: number) {
 	return { notifications, messages, reactions };
 }
 
+/**
+ * unreadCounts of the profile in use, plus each of `profileIds` (the account's, see
+ * accountProfiles.ts) and the unread notifications over all of them as `total`.
+ */
+export async function unreadCountsOf(userId: number, profileIds: number[]) {
+	const [current, rows] = await Promise.all([
+		unreadCounts(userId),
+		profileUnreadCounts(profileIds)
+	]);
+	// the profile in use first, then in the order of the ids
+	const order = (id: number) => (id === userId ? -1 : profileIds.indexOf(id));
+	const profiles = rows
+		.sort((a, b) => order(a.id) - order(b.id))
+		.map((r) => ({
+			username: r.username,
+			notifications: r.notifications,
+			messages: r.messages,
+			reactions: r.reactions
+		}));
+	return {
+		...current,
+		total: profiles.reduce((n, p) => n + p.notifications, 0),
+		profiles
+	};
+}
+
 /** Marks one notification read. False when it isn't one of the profile's. */
 export async function markNotificationRead(userId: number, id: number) {
 	const updated = await db
@@ -214,6 +415,17 @@ export async function markNotificationRead(userId: number, id: number) {
 		.returning({ id: inbox.id });
 	void pushUnread([userId]);
 	return updated.length > 0;
+}
+
+/** Marks every notification of all of `profileIds` read. */
+export async function markAllNotificationsReadOf(profileIds: number[]) {
+	if (profileIds.length === 0) return;
+	const rows = await db
+		.update(inbox)
+		.set({ read_at: sql`NOW()` })
+		.where(and(inArray(inbox.user_id, profileIds), isNull(inbox.read_at)))
+		.returning({ user_id: inbox.user_id });
+	void pushUnread(new Set(rows.map((r) => r.user_id)));
 }
 
 export async function markAllNotificationsRead(userId: number) {

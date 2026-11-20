@@ -704,15 +704,15 @@ GET /notifications/grouped            signed in, paginated (default 50, at most 
       usual. E.g. @bob replies to alice's post and mentions alice_art in it: one group of
       type "reply" with both profiles in "recipients".
     - likes, regiorgs, follows and invites stay one profile's: their key is the usual key
-      with the recipient's user id in front, "<user id>/like-123-20261109",
-      "<user id>/follow-20261109", "<user id>/n-99"; "recipients" has that one profile.
+      with the recipient's user id in front, "<user id>.like-123-20261109",
+      "<user id>.follow-20261109", "<user id>.n-99"; "recipients" has that one profile.
   These keys only work with ?profiles= on POST /notifications/groups/:key/read, and the
-  usual ones only without it. Keys contain "/": URL-encode it ("12%2Fn-99"). Cursors work
+  usual ones only without it. Cursors work
   the same (the cursor of one mode isn't meant for the other).
 POST /notifications/groups/:key/read  marks every notification of the group read → 204;
   404 when you have no such group. With ?profiles=all (or a list) takes the keys of that
   mode: "p-<post id>" reads that post's mentions, replies, quotes and ratios for those
-  profiles, "<user id>/<key>" one profile's group (404 when the user id isn't one of those
+  profiles, "<user id>.<key>" one profile's group (404 when the user id isn't one of those
   profiles).
 GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,
   "reactions": 1 }   (of the profile in use)

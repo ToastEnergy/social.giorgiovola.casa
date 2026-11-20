@@ -186,8 +186,8 @@ export async function listNotificationGroups(
 // Same groups, except that what is about one post is one group across the profiles it reached:
 // a reply that also mentions another of your profiles is one entry ('p-<post_id>', with the
 // strongest type and every recipient). Likes, regiorgs, follows and invites are about one
-// profile, so they keep their own key with the recipient in front ('<user_id>/like-12-20261120',
-// '<user_id>/n-99'). The two key formats never meet: these keys only work with ?profiles=.
+// profile, so they keep their own key with the recipient in front ('<user_id>.like-12-20261120',
+// '<user_id>.n-99'). The two key formats never meet: these keys only work with ?profiles=.
 
 const POSTED = `('mention', 'reply', 'quote', 'ratio')`;
 
@@ -195,10 +195,10 @@ const POSTED = `('mention', 'reply', 'quote', 'ratio')`;
 const isPosted = (t: string) => `(${t}.type IN ${POSTED} AND ${t}.post_id IS NOT NULL)`;
 const ownKey = (t: string) => `COALESCE(${t}.group_key, ${computedKey(t)})`;
 const multiKey = (t: string) =>
-	`CASE WHEN ${isPosted(t)} THEN 'p-' || ${t}.post_id ELSE ${t}.user_id || '/' || ${ownKey(t)} END`;
+	`CASE WHEN ${isPosted(t)} THEN 'p-' || ${t}.post_id ELSE ${t}.user_id || '.' || ${ownKey(t)} END`;
 
 export const MULTI_GROUP_KEY =
-	/^(?:p-\d{1,10}|\d{1,10}\/(?:(?:like|regiorg)-\d{1,10}-\d{8}|follow-\d{8}|n-\d{1,10}))$/;
+	/^(?:p-\d{1,10}|\d{1,10}\.(?:(?:like|regiorg)-\d{1,10}-\d{8}|follow-\d{8}|n-\d{1,10}))$/;
 
 // postgres-js would expand a JS array into a list, so the ids are spelled out
 const idArray = (ids: number[]) =>
@@ -335,10 +335,10 @@ export async function markMultiGroupRead(profileIds: number[], key: string) {
 		rows = sql`inbox.user_id = ANY(${ids}) AND inbox.post_id = ${Number(key.slice(2))}
 			AND inbox.type IN ${sql.raw(POSTED)}`;
 	} else {
-		const slash = key.indexOf('/');
-		const userId = Number(key.slice(0, slash));
+		const dot = key.indexOf('.');
+		const userId = Number(key.slice(0, dot));
 		if (!profileIds.includes(userId)) return false;
-		rows = inGroup('inbox', userId, sql`${key.slice(slash + 1)}::text`);
+		rows = inGroup('inbox', userId, sql`${key.slice(dot + 1)}::text`);
 	}
 	const [res] = (await db.execute(sql`
 		WITH g AS (SELECT inbox.id, inbox.read_at FROM inbox WHERE ${rows}),

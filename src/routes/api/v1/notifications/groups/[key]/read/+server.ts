@@ -10,7 +10,7 @@ import {
 
 /**
  * Marks every notification of a group (GET /notifications/grouped) read. With `?profiles=` the
- * keys are the ones of that mode (`p-<post_id>`, `<user_id>/<key>`).
+ * keys are the ones of that mode (`p-<post_id>`, `<user_id>.<key>`).
  */
 export const POST: RequestHandler = v1(async ({ locals, params, url }) => {
 	const user = requireUser(locals);

@@ -1006,7 +1006,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/notifications/groups/:key/read',
 				auth: 'signed in',
 				summary:
-					'mark a group read; ?profiles=all takes the keys of that mode (p-<post id>, <user id>/<key>)'
+					'mark a group read; ?profiles=all takes the keys of that mode (p-<post id>, <user id>.<key>)'
 			},
 			{
 				method: 'GET',

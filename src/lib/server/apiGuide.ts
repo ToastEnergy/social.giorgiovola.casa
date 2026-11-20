@@ -290,8 +290,9 @@ Notification:
     not right after a letter, digit, "_", "@" or "/" (emails and post links aren't mentions).
   - Editing a post (PATCH /posts/:id) notifies the profiles it now mentions that the previous
     text didn't. Removing a mention by editing doesn't remove its notification.
-  - Nobody is notified of their own actions, and no notification is created between two
-    profiles when either has blocked the other. Notifications from before the block stay.
+  - Nobody is notified of their own actions, nor of actions of another profile of the same
+    account (an identity and its owner, or two identities of one owner); bots still notify their
+    owner. No notification is created between two profiles when either has blocked the other. Notifications from before the block stay.
   - Unliking, undoing a regiorg and unfollowing delete the "like", "regiorg" or "follow"
     notification they created (ratio notifications stay). Doing it again within a day
     brings it back as it was (read if it had been read) and sends no second push.

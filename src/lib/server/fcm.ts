@@ -84,7 +84,8 @@ export async function sendFcm(
 	const data: Record<string, string> = {
 		title: message.title,
 		message: message.body,
-		body: JSON.stringify({ url: message.url, profile: message.profile }),
+		// the tag in the data too: the app reads it from there to clear read notifications
+		body: JSON.stringify({ url: message.url, profile: message.profile, tag: message.tag }),
 		channelId: message.channel
 	};
 	if (message.tag) data.tag = message.tag;

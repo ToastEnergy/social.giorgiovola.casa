@@ -55,11 +55,14 @@ async function loadOwners() {
 	ownersAt = Date.now();
 }
 
-/** the tag the server gave a push (see src/lib/server/fcm.ts), which expo keeps in the FCM message */
+/**
+ * the tag the server gave a push (see src/lib/server/fcm.ts): in the content's data (newer
+ * servers), else in the FCM message expo keeps
+ */
 function tagOf(n: Notification): string | null {
 	const trigger = n.request.trigger;
 	const message = trigger && 'remoteMessage' in trigger ? trigger.remoteMessage : undefined;
-	const tag = message?.data?.tag ?? message?.notification?.tag;
+	const tag = n.request.content.data?.tag ?? message?.data?.tag ?? message?.notification?.tag;
 	return typeof tag === 'string' && tag ? tag : null;
 }
 

@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { allPages, api, type Page } from '#lib/api.js';
 	import Avatar from './Avatar.svelte';
+	import { seeEngagement } from '#lib/seen.js';
 
 	type Kind = 'likes' | 'regiorgs' | 'quotes';
 	// a quote also carries the quoting post, to link to it
@@ -19,6 +20,8 @@
 	};
 
 	onMount(async () => {
+		// the people who reacted are what like and regiorg notifications point at
+		if (kind !== 'quotes') seeEngagement(postId);
 		try {
 			users = await allPages((cursor) =>
 				api<Page<Entry>>(

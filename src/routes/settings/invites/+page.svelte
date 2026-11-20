@@ -2,7 +2,8 @@
 	import type { PageProps } from './$types';
 	import Button from '#lib/components/Button.svelte';
 	import InviteList from '#lib/components/InviteList.svelte';
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { seeInvites } from '#lib/seen.js';
 	import { browser } from '$app/env';
 	import { invalidate } from '$app/navigation';
 	import { api, messageOf } from '#lib/api.js';
@@ -10,6 +11,8 @@
 	import { hintClass, inputClass, labelClass, sectionClass } from '#lib/settings.js';
 
 	let { data }: PageProps = $props();
+
+	onMount(seeInvites);
 
 	const b = $derived(data.balance);
 	const pending = $derived(data.invites.filter((i) => i.status === 'pending'));

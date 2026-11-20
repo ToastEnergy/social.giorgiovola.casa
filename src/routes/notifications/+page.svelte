@@ -9,6 +9,7 @@
 	import { onMount } from 'svelte';
 	import { getPushState, type PushState } from '#lib/push.js';
 	import { api, withCursor, type Page } from '#lib/api.js';
+	import { closeStale } from '#lib/seen.js';
 	let { data }: { data: PageData } = $props();
 
 	// reassignable so read state can be updated locally until the next load
@@ -75,7 +76,9 @@
 
 	const readGroup = (group: NotificationGroup, redirect = true) => {
 		if (group.unread > 0) {
-			api(`notifications/groups/${group.key}/read`, { method: 'POST' }).catch(() => {});
+			api(`notifications/groups/${group.key}/read`, { method: 'POST' })
+				.then(() => closeStale())
+				.catch(() => {});
 			$notisCount = Math.max(0, $notisCount - group.unread);
 			const now = new Date();
 			groups = groups.map((g) => (g.key === group.key ? { ...g, unread: 0, read_at: now } : g));
@@ -102,6 +105,7 @@
 			return;
 		}
 		$notisCount = 0;
+		void closeStale();
 		const now = new Date();
 		groups = groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now }));
 	};

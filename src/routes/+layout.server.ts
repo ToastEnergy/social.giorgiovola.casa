@@ -7,12 +7,14 @@ import type { GifConfig } from '#lib/klipy.js';
 import { redirect } from '@sveltejs/kit';
 import { isPublicPage } from '#lib/membersOnly.js';
 import { rememberedFeed } from '#lib/feed.js';
+import { rememberedInbox } from '#lib/inbox.js';
 
 export const load = (async ({ fetch, cookies, request, route, url, depends }) => {
 	// creating or revoking a code changes the invites the profile menu offers
 	depends('app:invites');
 	// signed out is fine for /me and /auth/accounts: every page decides what that means for it
-	const [me, accounts, instance] = await Promise.all([
+	const inboxScope = rememberedInbox(url, cookies);
+	const [me, accounts, instance, unread] = await Promise.all([
 		fetch('/api/v1/me').then((res) => (res.ok ? (res.json() as Promise<Me>) : null)),
 		fetch('/api/v1/auth/accounts').then(async (res) =>
 			res.ok ? ((await res.json()) as { items: SwitcherAccount[] }).items : []
@@ -22,7 +24,13 @@ export const load = (async ({ fetch, cookies, request, route, url, depends }) =>
 			gifs: GifConfig | null;
 			members_only?: boolean;
 			voice_notes?: { max_duration_ms: number } | null;
-		}>(fetch, '/instance')
+		}>(fetch, '/instance'),
+		// the badge counts every profile of the account (401 when signed out)
+		inboxScope === 'all'
+			? fetch('/api/v1/notifications/unread?profiles=all').then((res) =>
+					res.ok ? (res.json() as Promise<{ total: number }>) : null
+			  )
+			: null
 	]);
 	// a members-only instance: signed-out visitors only see the login pages. The request hook
 	// already redirects full page loads, this covers client-side navigation
@@ -36,7 +44,9 @@ export const load = (async ({ fetch, cookies, request, route, url, depends }) =>
 		reportsCount: me?.open_reports ?? 0,
 		// invites the account can still give: the profile menu offers to invite someone
 		invitesAvailable: me?.invites?.available ?? 0,
-		notisCount: me?.unread.notifications ?? 0,
+		notisCount: unread?.total ?? me?.unread.notifications ?? 0,
+		// notifications of every profile (the default) or only the profile in use (UI preference cookie)
+		inboxAll: inboxScope === 'all',
 		// reactions to your messages make a chat unread too
 		messagesCount: (me?.unread.messages ?? 0) + (me?.unread.reactions ?? 0),
 		accounts,

@@ -9,6 +9,7 @@
 	import MobileHeader from '#lib/components/MobileHeader.svelte';
 	import type { LayoutData } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
+	import { resetInboxUnread, setInboxUnread } from '#lib/inboxUnread.svelte.js';
 	import { page } from '$app/state';
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
@@ -52,6 +53,8 @@
 	const frame = (id: string | null) => `frame frame-sidebar ${isWide(id) ? 'frame-wide' : ''}`;
 	$user = data.user;
 	$notisCount = data.notisCount;
+	// a load brings fresh per-profile counts
+	$: if (data.accounts) resetInboxUnread();
 	$messagesCount = data.messagesCount;
 
 	// a post or a profile drawn as on the site (#lib/server/socialCard.ts)
@@ -113,7 +116,15 @@
 	onMount(() => {
 		mounted = true;
 		syncTimeCookies(data.time);
-		const offNotifications = onRealtime('notifications', ({ count }) => ($notisCount = count));
+		// the badge is the total over the account's profiles (`inbox` frames) or, when the setting
+		// says so, the profile in use's count (`notifications` frames); the other kind is ignored
+		const offNotifications = onRealtime('notifications', ({ count }) => {
+			if (!data.inboxAll) $notisCount = count;
+		});
+		const offInbox = onRealtime('inbox', ({ profile, count, total }) => {
+			setInboxUnread(profile, count);
+			if (data.inboxAll) $notisCount = total;
+		});
 		const offMessages = onRealtime(
 			'messages_unread',
 			({ count, reactions }) => ($messagesCount = count + (reactions ?? 0))
@@ -126,6 +137,7 @@
 		});
 		return () => {
 			offNotifications();
+			offInbox();
 			offMessages();
 			offResume();
 			disconnectRealtime();

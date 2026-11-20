@@ -12,6 +12,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import type { SwitcherAccount, SwitcherProfile } from '#lib/types.js';
 	import { user } from '#lib/store.js';
+	import { inboxUnread } from '#lib/inboxUnread.svelte.js';
 	import { getAvatar } from '#lib/utils.js';
 	import UnreadBadges from './UnreadBadges.svelte';
 	import { previousProfile, rememberProfile, switchTo } from '#lib/accounts.js';
@@ -82,7 +83,10 @@
 		accounts()
 			.flatMap(profilesOf)
 			.filter((p) => !p.active)
-			.reduce((n, p) => n + p.unread + p.unreadMessages + p.unreadReactions, 0);
+			.reduce(
+				(n, p) => n + inboxUnread(p.username, p.unread) + p.unreadMessages + p.unreadReactions,
+				0
+			);
 
 	beforeNavigate(() => (open = false));
 
@@ -300,7 +304,7 @@
 											>
 										</span>
 										<UnreadBadges
-											notifications={profile.unread}
+											notifications={inboxUnread(profile.username, profile.unread)}
 											messages={profile.unreadMessages + profile.unreadReactions}
 										/>
 									</button>

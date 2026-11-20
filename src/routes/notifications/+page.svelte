@@ -10,6 +10,10 @@
 	import { getPushState, type PushState } from '#lib/push.js';
 	import { api, withCursor, type Page } from '#lib/api.js';
 	import { closeStale } from '#lib/seen.js';
+	import { page } from '$app/state';
+	import { activeProfiles } from '#lib/inbox.js';
+	import { inboxUnread, setInboxUnread } from '#lib/inboxUnread.svelte.js';
+	import type { SwitcherAccount } from '#lib/types.js';
 	let { data }: { data: PageData } = $props();
 
 	// reassignable so read state can be updated locally until the next load
@@ -47,6 +51,17 @@
 		}
 	}
 
+	// the profiles of the account, from the layout (the account switcher's data): no extra request
+	const profiles = $derived(activeProfiles((page.data.accounts ?? []) as SwitcherAccount[]));
+	const unreadOf = (p: (typeof profiles)[number]) => inboxUnread(p.username, p.unread);
+	const allUnread = $derived(profiles.reduce((n, p) => n + unreadOf(p), 0));
+	// ?profiles= of the reads: the filter, as in the list (nothing: only the profile in use)
+	const scopeQuery = $derived(data.scope ? `?profiles=${encodeURIComponent(data.scope)}` : '');
+	const tabClass = (active: boolean) =>
+		`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-foreground hover:no-underline ${
+			active ? 'border-accent' : 'border-transparent opacity-60 hover:opacity-100'
+		}`;
+
 	let push: PushState | null = $state(null);
 	// the unread count is pushed by the layout; fetch the new ones when it grows
 	onMount(() => {
@@ -58,7 +73,13 @@
 		});
 	});
 
-	const ownPost = (group: NotificationGroup) => `/@${$user?.username}/${group.post?.id}`;
+	// the profile a group is for: in the inbox of several profiles it is the recipient
+	const recipient = (group: NotificationGroup) =>
+		group.recipients?.[0]?.username ?? $user?.username;
+	const ownPost = (group: NotificationGroup) => `/@${recipient(group)}/${group.post?.id}`;
+	// recipients other than the profile in use: they get their avatars and a "to" line
+	const foreign = (group: NotificationGroup) =>
+		!!group.recipients?.some((r) => r.username !== $user?.username);
 	const senderPost = (group: NotificationGroup) =>
 		`/@${group.senders[0]?.username}/${group.post?.id}`;
 
@@ -67,7 +88,7 @@
 		const sender = group.senders[0];
 		if (group.type === 'invites') return '/settings/invites';
 		if (group.type === 'follow')
-			return group.count > 1 ? `/@${$user?.username}/followers` : `/@${sender?.username}`;
+			return group.count > 1 ? `/@${recipient(group)}/followers` : `/@${sender?.username}`;
 		if (!group.post) return `/@${sender?.username}`;
 		if (group.type === 'like' || group.type === 'ratioed_by_you' || group.type === 'regiorg')
 			return ownPost(group);
@@ -76,7 +97,7 @@
 
 	const readGroup = (group: NotificationGroup, redirect = true) => {
 		if (group.unread > 0) {
-			api(`notifications/groups/${group.key}/read`, { method: 'POST' })
+			api(`notifications/groups/${group.key}/read${scopeQuery}`, { method: 'POST' })
 				.then(() => closeStale())
 				.catch(() => {});
 			$notisCount = Math.max(0, $notisCount - group.unread);
@@ -100,11 +121,17 @@
 
 	const readAll = async () => {
 		try {
-			await api('notifications/read', { method: 'POST' });
+			await api(`notifications/read${scopeQuery}`, { method: 'POST' });
 		} catch {
 			return;
 		}
-		$notisCount = 0;
+		if (data.scope === 'all' || data.scope === null) $notisCount = 0;
+		else {
+			// one profile: only its share of the badge goes
+			const own = profiles.find((p) => p.username === data.scope);
+			if (own) $notisCount = Math.max(0, $notisCount - unreadOf(own));
+			setInboxUnread(data.scope, 0);
+		}
 		void closeStale();
 		const now = new Date();
 		groups = groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now }));
@@ -141,6 +168,36 @@
 		<a href="/settings/notifications">push notifications</a>.
 	</p>
 {/if}
+{#if data.scope && profiles.length > 1}
+	<nav
+		class="mt-2.5 flex overflow-x-auto border-b border-line [scrollbar-width:none]"
+		aria-label="Notifications of"
+	>
+		<a
+			class={tabClass(data.scope === 'all')}
+			href="/notifications"
+			data-sveltekit-replacestate
+			data-sveltekit-noscroll
+			aria-current={data.scope === 'all' ? 'page' : undefined}
+		>
+			All
+			{#if allUnread > 0}<span class="text-[0.75em] text-accent">{allUnread}</span>{/if}
+		</a>
+		{#each profiles as p (p.username)}
+			<a
+				class={tabClass(data.scope === p.username)}
+				href={`/notifications?profile=${encodeURIComponent(p.username)}`}
+				data-sveltekit-replacestate
+				data-sveltekit-noscroll
+				aria-current={data.scope === p.username ? 'page' : undefined}
+			>
+				<Avatar user={p} size={20} clickable={false} />
+				<span class="whitespace-nowrap">@{p.username}</span>
+				{#if unreadOf(p) > 0}<span class="text-[0.75em] text-accent">{unreadOf(p)}</span>{/if}
+			</a>
+		{/each}
+	</nav>
+{/if}
 <div class="mt-2.5 flex flex-col gap-3.75">
 	{#each groups as group (group.key)}
 		{@const sender = group.senders[0]}
@@ -154,18 +211,30 @@
 			onclick={(e) => clickGroup(e, group)}
 		>
 			<div class="flex min-w-0 gap-2.5">
-				{#if group.senders.length > 1}
-					<!-- the latest senders stacked: the group reads as one entry -->
-					<div class="flex w-[50px] shrink-0 -space-x-4 self-start pt-1">
-						{#each group.senders as s (s.id)}
-							<div class="rounded-full border-2 border-black">
-								<Avatar user={s} size={24} />
-							</div>
-						{/each}
-					</div>
-				{:else if sender}
-					<div class="shrink-0"><Avatar user={sender} size={50} /></div>
-				{/if}
+				<div class="relative shrink-0 self-start">
+					{#if group.senders.length > 1}
+						<!-- the latest senders stacked: the group reads as one entry -->
+						<div class="flex w-[50px] -space-x-4 self-start pt-1">
+							{#each group.senders as s (s.id)}
+								<div class="rounded-full border-2 border-black">
+									<Avatar user={s} size={24} />
+								</div>
+							{/each}
+						</div>
+					{:else if sender}
+						<Avatar user={sender} size={50} />
+					{/if}
+					{#if group.recipients && foreign(group)}
+						<!-- the profiles it is for, on the corner of the avatar -->
+						<div class="absolute -right-1.5 -bottom-1.5 flex -space-x-2">
+							{#each group.recipients.slice(0, 3) as r (r.id)}
+								<div class="rounded-full border-2 border-black" title={`@${r.username}`}>
+									<Avatar user={r} size={20} clickable={false} />
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
 				<div class="flex min-w-0 flex-col justify-center wrap-anywhere">
 					{#if !sender}
 						<!-- the sender was deleted along with the notification, so this can't happen -->
@@ -206,7 +275,7 @@
 						<p>
 							<a href={`/@${sender.username}`}>@{sender.username}</a>
 							<a href={senderPost(group)}>quoted</a>
-							your post
+							{group.recipients ? 'a post' : 'your post'}
 						</p>
 						{#if group.post.content}
 							<p class="text-muted">{clip(group.post.content)}</p>
@@ -214,14 +283,14 @@
 					{:else if group.type === 'mention'}
 						<p>
 							<a href={`/@${sender.username}`}>@{sender.username}</a>
-							mentioned you in
+							mentioned {group.recipients ? '' : 'you '}in
 							<a href={senderPost(group)}>a post</a>
 						</p>
 					{:else if group.type === 'ratio'}
 						<p>
 							<a href={`/@${sender.username}`}>@{sender.username}</a>
 							ratioed
-							<a href={senderPost(group)}>your post</a>
+							<a href={senderPost(group)}>{group.recipients ? 'a post' : 'your post'}</a>
 						</p>
 					{:else if group.type === 'ratioed_by_you'}
 						<p>
@@ -233,9 +302,14 @@
 						<p>
 							<a href={`/@${sender.username}`}>@{sender.username}</a>
 							replied to
-							<a href={senderPost(group)}>your post</a>
+							<a href={senderPost(group)}>{group.recipients ? 'a post' : 'your post'}</a>
 						</p>
 						<p class="text-muted">{clip(group.post.content)}</p>
+					{/if}
+					{#if group.recipients && foreign(group)}
+						<p class="text-[0.85em] text-muted">
+							to {group.recipients.map((r) => `@${r.username}`).join(', ')}
+						</p>
 					{/if}
 				</div>
 			</div>

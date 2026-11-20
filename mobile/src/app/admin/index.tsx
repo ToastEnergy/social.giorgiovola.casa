@@ -31,6 +31,7 @@ import { colors } from '@/lib/theme';
 import type {
 	AdminGroup,
 	AdminUser,
+	IdentityLimitSettings,
 	Invite,
 	InviteStatus,
 	InviteSummary,
@@ -847,12 +848,50 @@ function SettingsTab({ header, onStaff }: { header: React.ReactElement; onStaff:
 	const [reason, setReason] = useState('');
 	const [groupFlash, setGroupFlash] = useState<{ message: string; failed: boolean } | null>(null);
 	const [busy, setBusy] = useState(false);
+	const [idLimit, setIdLimit] = useState<IdentityLimitSettings | null>(null);
+	const [idLimitError, setIdLimitError] = useState<string | null>(null);
+	// empty goes back to the default
+	const [idLimitValue, setIdLimitValue] = useState('');
+	const [idLimitFlash, setIdLimitFlash] = useState<{ message: string; failed: boolean } | null>(
+		null
+	);
+	const [idLimitBusy, setIdLimitBusy] = useState(false);
 
 	useEffect(() => {
 		api<Motd>('admin/motd')
 			.then(setMotd)
 			.catch((e) => setMotdError(errorMessage(e)));
+		api<IdentityLimitSettings>('admin/identity-limit')
+			.then((s) => {
+				setIdLimit(s);
+				setIdLimitValue(s.custom ? String(s.limit) : '');
+			})
+			.catch((e) => setIdLimitError(errorMessage(e)));
 	}, []);
+
+	async function saveIdentityLimit() {
+		if (!idLimit || idLimitBusy) return;
+		const text = idLimitValue.trim();
+		const limit = text ? wholeNumber(text, 0, idLimit.max) : null;
+		if (text && limit === null) {
+			setIdLimitFlash({ message: `The limit is a number from 0 to ${idLimit.max}.`, failed: true });
+			return;
+		}
+		setIdLimitBusy(true);
+		try {
+			const res = await api<{ limit: number; message: string }>('admin/identity-limit', {
+				method: 'PUT',
+				body: { max_identities: limit }
+			});
+			setIdLimit({ ...idLimit, limit: res.limit, custom: limit !== null });
+			setIdLimitFlash({ message: res.message, failed: false });
+			emit('moderation_changed');
+		} catch (e) {
+			setIdLimitFlash({ message: errorMessage(e), failed: true });
+		} finally {
+			setIdLimitBusy(false);
+		}
+	}
 
 	async function editMotd() {
 		if (!motd) return;
@@ -946,6 +985,39 @@ function SettingsTab({ header, onStaff }: { header: React.ReactElement; onStaff:
 							/>
 						</>
 					) : !motdError ? (
+						<Loading />
+					) : null}
+				</Section>
+
+				<Section title="Identity limit">
+					<Hint>
+						How many identities an account can own (bots don’t count). Staff can give an account its
+						own limit from its case page.
+					</Hint>
+					<ErrorBanner message={idLimitError} />
+					{flashView(idLimitFlash)}
+					{idLimit ? (
+						<>
+							<View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+								<View style={{ width: 110 }}>
+									<Field
+										label="Per account"
+										value={idLimitValue}
+										onChangeText={setIdLimitValue}
+										placeholder={String(idLimit.default)}
+										keyboardType="number-pad"
+										maxLength={String(idLimit.max).length}
+										onSubmitEditing={saveIdentityLimit}
+									/>
+								</View>
+								<Button label="Save" loading={idLimitBusy} onPress={saveIdentityLimit} />
+							</View>
+							<Hint>
+								Leave it empty for the default ({idLimit.default}). Lowering it keeps the identities
+								accounts already have; they just can’t create more.
+							</Hint>
+						</>
+					) : !idLimitError ? (
 						<Loading />
 					) : null}
 				</Section>

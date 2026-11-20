@@ -10,6 +10,7 @@ import { imagesOfPostTrees, removeUploads } from './images.js';
 import { linkedPosts } from './linkedPosts.js';
 import { linkPreviews, warmLinkPreview } from './linkPreviews.js';
 import {
+	markActedOnPost,
 	onLike,
 	onPostCreated,
 	onRegiorg,
@@ -389,6 +390,9 @@ export async function createPost(
 			reply_to,
 			quote_of
 		});
+		// replying to or quoting a post reads what its account was told about that post
+		const target = reply_to ?? quote_of;
+		if (target !== null) notifications.push(...(await markActedOnPost(tx, user.id, target)));
 		return { created: row, notifications };
 	});
 
@@ -445,6 +449,7 @@ export async function setLiked(userId: number, postId: number, liked: boolean) {
 	const { total, changes } = await db.transaction(async (tx) => {
 		let created: Notification[] = [];
 		let removed: Notification[] = [];
+		let read: Notification[] = [];
 		// liking (or unliking) again changes nothing
 		if (liked) {
 			const added = await tx
@@ -452,7 +457,10 @@ export async function setLiked(userId: number, postId: number, liked: boolean) {
 				.values({ user_id: userId, post_id: postId })
 				.onConflictDoNothing({ target: [likes.user_id, likes.post_id] })
 				.returning({ post_id: likes.post_id });
-			if (added.length) created = await onLike(tx, userId, postId);
+			if (added.length) {
+				created = await onLike(tx, userId, postId);
+				read = await markActedOnPost(tx, userId, postId);
+			}
 		} else {
 			const gone = await tx
 				.delete(likes)
@@ -462,7 +470,7 @@ export async function setLiked(userId: number, postId: number, liked: boolean) {
 		}
 		return {
 			total: await tx.$count(likes, eq(likes.post_id, postId)),
-			changes: { created, removed }
+			changes: { created, removed, read }
 		};
 	});
 	void publishLikes(postId, total, changes);
@@ -480,6 +488,7 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 		let added = false;
 		let created: Notification[] = [];
 		let removed: Notification[] = [];
+		let read: Notification[] = [];
 		if (regiorged) {
 			const res = await tx
 				.insert(regiorgs)
@@ -487,7 +496,10 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 				.onConflictDoNothing({ target: [regiorgs.user_id, regiorgs.post_id] })
 				.returning({ post_id: regiorgs.post_id });
 			added = res.length > 0;
-			if (added) created = await onRegiorg(tx, userId, postId);
+			if (added) {
+				created = await onRegiorg(tx, userId, postId);
+				read = await markActedOnPost(tx, userId, postId);
+			}
 		} else {
 			const gone = await tx
 				.delete(regiorgs)
@@ -498,7 +510,7 @@ export async function setRegiorged(userId: number, postId: number, regiorged: bo
 		return {
 			added,
 			total: await tx.$count(regiorgs, eq(regiorgs.post_id, postId)),
-			changes: { created, removed }
+			changes: { created, removed, read }
 		};
 	});
 	void publishRegiorg(postId, total, added ? userId : null, changes);

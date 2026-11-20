@@ -850,7 +850,7 @@ export const v1Groups: V1Group[] = [
 				method: 'POST',
 				path: '/api/v1/posts/:id/seen',
 				auth: 'signed in',
-				summary: 'mark your mention notification for it read'
+				summary: 'mark its mention, reply, quote and ratio notifications read (all your profiles)'
 			},
 			{
 				method: 'POST',
@@ -1017,6 +1017,19 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/notifications/read',
 				auth: 'signed in',
 				summary: 'mark all read'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/notifications/seen',
+				auth: 'signed in',
+				summary:
+					'`{ posts?, engagement?, followers?, invites? }`: what was seen is read for all your profiles → `{ read }`, 120 a minute'
+			},
+			{
+				method: 'POST',
+				path: '/api/v1/notifications/stale',
+				auth: 'account (not bots)',
+				summary: '`{ tags }`: which push tags have nothing unread left → `{ stale }`'
 			},
 			{
 				method: 'POST',

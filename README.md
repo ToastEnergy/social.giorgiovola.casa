@@ -277,6 +277,7 @@ Notifications are created by the app (`src/lib/server/notify.ts`), in the same t
 - **Likes, regiorgios, follows and ratios:** a like, regiorgio or follow notifies the post's author or the followed profile. Undoing it (unlike, undo the regiorgio, unfollow) deletes its notification; ratio notifications stay. Redoing it within a day of its push brings the notification back as it was, read if it had been read, without a second push, so toggling a like doesn't ping anyone again (the removed ones are kept in `inbox_removed` for that).
 - **Blocks:** no notification is created between two profiles when either blocked the other. Notifications from before the block stay.
 - Nobody is notified of their own actions.
+- **Seen means read:** the inbox belongs to the account. A notification is read once what it is about was seen (`POST /api/v1/notifications/seen`: posts on screen, a post's page or people list, the followers list, the invites page), and acting on it reads it too: replying to, quoting, liking or regiorging a post reads the mention, reply, quote and ratio notifications about it, and following someone reads their follow notification. This applies to every profile the account can use (itself, its identities and the ones shared with it), not only the one in use. `POST /api/v1/notifications/stale` tells a client which of its push tags have nothing unread left, so it can clear them from the tray.
 - **Pushes:** a notification is also a push to send. Every server process runs a worker that sends the pending ones as soon as the transaction commits (Postgres `LISTEN/NOTIFY`, with a poll every 30 seconds as a fallback), so a push survives a deploy or a crash and is sent by whichever container runs next. A push that reached no device because the push service failed is retried a few times. Likes, regiorgios and follows that arrive together go out as one push ("Alice and 2 others"). A notification read before its push went out, or more than a day old, isn't pushed.
 
 ## regiorgios
@@ -528,7 +529,7 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 | `PUT`                      | `/api/v1/posts/:id/vote`                       | signed in                         | vote `{ option }`                                                                                                 |
 | `PUT` / `DELETE`           | `/api/v1/posts/:id/pin`                        | author                            | pin to / unpin from your profile                                                                                  |
 | `PUT` / `DELETE`           | `/api/v1/posts/:id/timeline-pin`               | staff                             | pin above / unpin from the home timeline                                                                          |
-| `POST`                     | `/api/v1/posts/:id/seen`                       | signed in                         | mark your mention notification for it read                                                                        |
+| `POST`                     | `/api/v1/posts/:id/seen`                       | signed in                         | mark its mention, reply, quote and ratio notifications read                                                       |
 | `POST`                     | `/api/v1/uploads`                              | not muted                         | upload an image (raw body) for a post or message → `{ id }`                                                       |
 | `DELETE`                   | `/api/v1/uploads/:id`                          | signed in                         | drop an unused upload (an image, a voice note or its session)                                                     |
 | `POST`                     | `/api/v1/uploads/audio`                        | not muted (bots too)              | upload a voice note (raw body, up to an hour) → `{ id, status, duration_ms, waveform }`                           |
@@ -539,27 +540,29 @@ Everything the web UI does is a documented JSON API under `/api/v1`, and the web
 
 **People, search and notifications**
 
-| method           | path                                                         | who       |                                                          |
-| ---------------- | ------------------------------------------------------------ | --------- | -------------------------------------------------------- |
-| `GET`            | `/api/v1/users/:username`                                    | public    | profile, counts, relationship, blocks, pinned post id    |
-| `GET`            | `/api/v1/users/:username/card`                               | public    | the hover card                                           |
-| `GET`            | `/api/v1/users/:username/posts?tab=posts\|replies\|regiorgs` | public    | a profile's posts, its replies or the posts it regiorged |
-| `GET`            | `/api/v1/users/:username/pinned`                             | public    | its pinned post                                          |
-| `GET`            | `/api/v1/users/:username/followers`                          | public    | followers                                                |
-| `GET`            | `/api/v1/users/:username/following`                          | public    | who it follows                                           |
-| `GET`            | `/api/v1/users/:username/followers/known`                    | signed in | its followers you follow too                             |
-| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in | follow / unfollow (removes the follow notification)      |
-| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in | block / unblock (no messages or new notifications)       |
-| `GET`            | `/api/v1/search?q=`                                          | signed in | users and hashtags                                       |
-| `GET`            | `/api/v1/search/users?q=`                                    | signed in | username / name prefix, for mention pickers              |
-| `GET`            | `/api/v1/hashtags/:tag`                                      | public    | a hashtag and its post count                             |
-| `GET`            | `/api/v1/hashtags/:tag/posts`                                | public    | posts with it                                            |
-| `GET`            | `/api/v1/notifications`                                      | signed in | your notifications (read ones are kept for 6 months)     |
-| `GET`            | `/api/v1/notifications/grouped`                              | signed in | your notifications, likes/regiorgs/follows grouped       |
-| `POST`           | `/api/v1/notifications/groups/:key/read`                     | signed in | mark a group read                                        |
-| `GET`            | `/api/v1/notifications/unread`                               | signed in | unread notifications, messages and reactions             |
-| `POST`           | `/api/v1/notifications/read`                                 | signed in | mark all read                                            |
-| `POST`           | `/api/v1/notifications/:id/read`                             | signed in | mark one read                                            |
+| method           | path                                                         | who                |                                                                                                                              |
+| ---------------- | ------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET`            | `/api/v1/users/:username`                                    | public             | profile, counts, relationship, blocks, pinned post id                                                                        |
+| `GET`            | `/api/v1/users/:username/card`                               | public             | the hover card                                                                                                               |
+| `GET`            | `/api/v1/users/:username/posts?tab=posts\|replies\|regiorgs` | public             | a profile's posts, its replies or the posts it regiorged                                                                     |
+| `GET`            | `/api/v1/users/:username/pinned`                             | public             | its pinned post                                                                                                              |
+| `GET`            | `/api/v1/users/:username/followers`                          | public             | followers                                                                                                                    |
+| `GET`            | `/api/v1/users/:username/following`                          | public             | who it follows                                                                                                               |
+| `GET`            | `/api/v1/users/:username/followers/known`                    | signed in          | its followers you follow too                                                                                                 |
+| `PUT` / `DELETE` | `/api/v1/users/:username/follow`                             | signed in          | follow / unfollow (removes the follow notification)                                                                          |
+| `PUT` / `DELETE` | `/api/v1/users/:username/block`                              | signed in          | block / unblock (no messages or new notifications)                                                                           |
+| `GET`            | `/api/v1/search?q=`                                          | signed in          | users and hashtags                                                                                                           |
+| `GET`            | `/api/v1/search/users?q=`                                    | signed in          | username / name prefix, for mention pickers                                                                                  |
+| `GET`            | `/api/v1/hashtags/:tag`                                      | public             | a hashtag and its post count                                                                                                 |
+| `GET`            | `/api/v1/hashtags/:tag/posts`                                | public             | posts with it                                                                                                                |
+| `GET`            | `/api/v1/notifications`                                      | signed in          | your notifications (read ones are kept for 6 months)                                                                         |
+| `GET`            | `/api/v1/notifications/grouped`                              | signed in          | your notifications, likes/regiorgs/follows grouped                                                                           |
+| `POST`           | `/api/v1/notifications/groups/:key/read`                     | signed in          | mark a group read                                                                                                            |
+| `GET`            | `/api/v1/notifications/unread`                               | signed in          | unread notifications, messages and reactions                                                                                 |
+| `POST`           | `/api/v1/notifications/read`                                 | signed in          | mark all read                                                                                                                |
+| `POST`           | `/api/v1/notifications/seen`                                 | signed in          | `{ posts, engagement, followers, invites }`: what was seen is read for all the account's profiles → `{ read }`, 120 a minute |
+| `POST`           | `/api/v1/notifications/stale`                                | account (not bots) | `{ tags }`: which push tags have nothing unread left → `{ stale }`, 60 a minute                                              |
+| `POST`           | `/api/v1/notifications/:id/read`                             | signed in          | mark one read                                                                                                                |
 
 Read notifications are deleted by an hourly sweep once they are 6 months old. Unread ones are kept until they are read.
 

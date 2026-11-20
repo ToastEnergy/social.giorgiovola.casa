@@ -72,6 +72,31 @@ Every /api/v1 response has \`Access-Control-Allow-Origin: *\`, and preflight (OP
 requests are answered, so a web app on any origin can call the API with a bearer token.
 Cookies are never accepted from other origins.
 
+### Acting as another of your profiles (X-Act-As)
+
+An account can use several profiles: itself, the identities it owns and the identities shared
+with it. A session or token acts as one of them at a time (POST /auth/switch changes it).
+X-Act-As: <username> (an optional leading @ is ignored) makes ONE request act as another of
+those profiles without switching: every endpoint then sees that profile as the caller (likes,
+posts, follows, "liked"/"following" flags, rate limits, mute state).
+
+  X-Act-As: alice_art
+
+- Who may use it: cookie sessions and human tokens (sgu_). A bot token (sgc_) is refused with
+  400, bots only act as themselves. An empty or absent header changes nothing.
+- Which profiles: exactly those the account could switch to: the account itself, an identity it
+  owns, an identity shared with it (not while its owner is banned). A shared identity is muted
+  when its owner is, like when switching. Anything else, including an unknown username, answers
+  403 { "error": "Can't act as @name" }.
+- The session or token is not changed: the profile in use stays the one it was
+  (nothing is written), and other requests without the header keep acting as it.
+- With several accounts signed in on one browser only the account in use is considered.
+- Cross-origin: the header is allowed in CORS preflights; cookies are still never accepted from
+  other origins and credentials are never allowed.
+- GET /stream: applies like anywhere else if the header is sent (the stream opens as that
+  profile), but the browser's EventSource can't set headers, so web clients don't use it there.
+- Responses carry Vary: X-Act-As.
+
 ### Client features (voice notes)
 
 Declare what your client supports with a header on every request, a comma-separated list
@@ -632,6 +657,12 @@ GET /posts/:id/ancestors        public. The thread above a reply: the post it re
   again for that item's id to keep going up). A post that is not a reply gives "items": [].
   Deleting a post deletes its replies, so the chain has no gaps. "liked"/"regiorged" are filled
   for the caller like everywhere else. 404 when the post doesn't exist; 400 for a bad limit.
+GET /posts/:id/viewers          Your account's profiles and what each did with the post, the profile
+                                in use first: { "items": [{ "username", "name", "avatar",
+                                "liked", "regiorged", "following" }] } ("following": it follows the
+                                post's author). Cookie or human token only (403 for bots), 401
+                                signed out, 404 when the post doesn't exist or you can't see it.
+                                For "like as…" pickers; pair with X-Act-As to act.
 GET /posts/:id/likes            Users who liked, latest first; limit up to 200 (default 50)
 GET /posts/:id/regiorgs         Users who regiorged, latest first; same limits
 GET /posts/:id/quotes           { "id", "content", "username", "name", "avatar" } quotes; same limits

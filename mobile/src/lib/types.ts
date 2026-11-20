@@ -145,6 +145,8 @@ export type NotificationGroup = {
 	invites?: number | null;
 	created_at: string;
 	read_at: string | null;
+	/** the profiles it is for: only in the inbox of several profiles (?profiles=) */
+	recipients?: (User & { id: number })[];
 };
 
 export type Me = {

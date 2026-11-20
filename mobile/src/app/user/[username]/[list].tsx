@@ -1,10 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router/stack';
 import { FlatList, RefreshControl } from 'react-native';
 import { toast } from '@/components/overlays';
 import { refreshColors } from '@/components/PostList';
 import { Button, ListState, UserRow } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { seeFollowers } from '@/lib/seen';
 import type { FollowEntry } from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
 
@@ -22,6 +24,11 @@ export default function FollowList() {
 	}>();
 	const config = lists[kind] ?? lists.followers;
 	const list = usePaged<FollowEntry>(`users/${username}/${config.path}`, (u) => u.username);
+
+	// the followers of your profile were looked at (the server ignores other profiles)
+	useEffect(() => {
+		if (kind === 'followers' && username) seeFollowers(username);
+	}, [kind, username]);
 
 	async function toggle(entry: FollowEntry) {
 		try {

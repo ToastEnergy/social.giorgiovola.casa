@@ -39,7 +39,7 @@ const verbs: Record<NotificationType, string> = {
 // 'you' (like the website)
 const merged: Partial<Record<NotificationType, string>> = {
 	reply: 'replied to a post',
-	mention: 'mentioned someone in a post',
+	mention: 'mentioned you in a post',
 	quote: 'quoted a post',
 	ratio: 'ratioed a post'
 };
@@ -76,8 +76,13 @@ function TypeIcon({ type }: { type: NotificationType }) {
 
 /** "Alice, Bob and 3 others" */
 function people(group: NotificationGroup) {
-	const shown = group.senders.slice(0, group.count <= 3 ? 3 : 2).map((u) => u.name);
-	const others = group.count - shown.length;
+	// likes, regiorgs and follows are a row per person; a post group reaching several profiles has
+	// a row per profile, all from its one author
+	const people = ['like', 'regiorg', 'follow'].includes(group.type)
+		? group.count
+		: group.senders.length;
+	const shown = group.senders.slice(0, people <= 3 ? 3 : 2).map((u) => u.name);
+	const others = people - shown.length;
 	if (others > 0)
 		return `${shown.join(', ')} and ${count(others)} ${others === 1 ? 'other' : 'others'}`;
 	if (shown.length <= 1) return shown[0] ?? 'Someone';
@@ -146,8 +151,23 @@ export default function Notifications() {
 	const scopeQuery = scope ? `?profiles=${encodeURIComponent(scope)}` : '';
 	const list = usePaged<NotificationGroup>(`notifications/grouped${scopeQuery}`, (g) => g.key);
 	const { items, setItems, reload } = list;
-	const countOf = (p: SwitcherProfile) => profileCounts[p.username] ?? p.unread;
-	const allUnread = profiles.reduce((n, p) => n + countOf(p), 0);
+	// each profile's unread count, fetched fresh whenever the badge's total changes (a frame, a read,
+	// the tab opened): realtime frames alone can miss a read made elsewhere
+	const [counts, setCounts] = useState<Record<string, number>>({});
+	const refreshCounts = useCallback(() => {
+		if (!inboxAll) return;
+		api<{ profiles: { username: string; notifications: number }[] }>(
+			'notifications/unread?profiles=all'
+		)
+			.then((res) =>
+				setCounts(Object.fromEntries(res.profiles.map((p) => [p.username, p.notifications])))
+			)
+			.catch(() => {});
+	}, [inboxAll]);
+	useEffect(refreshCounts, [refreshCounts, unread.notifications, profileCounts]);
+	const countOf = (p: SwitcherProfile) => counts[p.username] ?? p.unread;
+	// the badge's total, which the session keeps up to date
+	const allUnread = unread.notifications;
 
 	// reloaded when the tab is opened again and when the unread count grows
 	const last = useRef(unread.notifications);
@@ -158,9 +178,12 @@ export default function Notifications() {
 	const first = useRef(true);
 	useFocusEffect(
 		useCallback(() => {
-			if (!first.current) reload(true);
+			if (!first.current) {
+				reload(true);
+				refreshCounts();
+			}
 			first.current = false;
-		}, [reload])
+		}, [reload, refreshCounts])
 	);
 
 	function open(group: NotificationGroup) {
@@ -168,7 +191,10 @@ export default function Notifications() {
 			api(`notifications/groups/${encodeURIComponent(group.key)}/read${scopeQuery}`, {
 				method: 'POST'
 			})
-				.then(() => clearTray('read'))
+				.then(() => {
+					clearTray('read');
+					refreshCounts();
+				})
 				.catch(() => {});
 			setUnread({ notifications: Math.max(0, unread.notifications - group.unread) });
 			const now = new Date().toISOString();
@@ -200,6 +226,7 @@ export default function Notifications() {
 		const now = new Date().toISOString();
 		setItems((groups) => groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now })));
 		clearTray('read');
+		refreshCounts();
 	}
 
 	return (

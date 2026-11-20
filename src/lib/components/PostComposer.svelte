@@ -7,7 +7,9 @@
 	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
 	import Mic from '@lucide/svelte/icons/mic';
 	import { canReadClipboard, clipboardImages, pastedFiles } from '#lib/clipboard.js';
-	import { api, errorOf } from '#lib/api.js';
+	import { ACT_AS_HEADER, api, errorOf } from '#lib/api.js';
+	import { actingAs, myProfiles } from '#lib/actingAs.svelte.js';
+	import ProfilePicker from './ProfilePicker.svelte';
 	import { onMount, untrack } from 'svelte';
 	import type { Gif, Post, QuotedPost } from '#lib/types.js';
 	import { shareGif } from '#lib/klipy.js';
@@ -31,6 +33,7 @@
 	import { canEdit, editImage } from '#lib/photoEditor.svelte.js';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import { user } from '#lib/store.js';
+	import { getAvatar } from '#lib/utils.js';
 	import {
 		clearDraft,
 		loadDraft,
@@ -153,6 +156,32 @@
 	 * was put away) */
 	let voiceKey = '';
 
+	// ---- who posts: the context profile of the page (?as=) or else the profile in use, or any other
+	// profile of the account picked from the avatar. the profile in use is no header; the drafts
+	// stay the profile in use's, like the composer's own state
+	const profiles = $derived(myProfiles());
+	const contextName = $derived(actingAs()?.username ?? null);
+	let picked: string | undefined = $state();
+	const posterName = $derived(picked ?? contextName ?? $user?.username ?? '');
+	const poster = $derived(profiles.find((p) => p.username === posterName));
+	const asHeader = $derived(posterName && posterName !== $user?.username ? posterName : null);
+	let choosing = $state(false);
+	// a page in another context starts over with its own profile
+	$effect(() => {
+		void contextName;
+		untrack(() => (picked = undefined));
+	});
+	// uploads belong to the profile that made them: moved to the one posting now
+	let uploadedAs = untrack(() => asHeader);
+	$effect(() => {
+		const as = asHeader;
+		untrack(() => {
+			if (as === uploadedAs) return;
+			uploadedAs = as;
+			for (const a of attachments) a.reassign(as);
+		});
+	});
+
 	// ---- voice notes: recorded hands free from the mic in the toolbar, the field is the caption
 	let recordable = $state(false);
 	// the server processes audio, this browser can record, and drafts can be kept
@@ -164,7 +193,9 @@
 	const voiceAttached = $derived(session.recorder.active);
 	// why the mic can't be used now (a voice note takes a caption, nothing else)
 	const micBlocked = $derived(
-		attachments.length > 0
+		asHeader
+			? 'A voice note is posted by the profile in use: pick it to record'
+			: attachments.length > 0
 			? 'A voice note can’t have images: remove them to record'
 			: gif
 			? 'A voice note can’t have a GIF: remove it to record'
@@ -174,7 +205,9 @@
 	);
 	const voiceOnly = 'A post with a voice note can only have a caption';
 	const me = $derived(
-		$user
+		poster
+			? { username: poster.username, name: poster.name, avatar: poster.avatar }
+			: $user
 			? { username: $user.username, name: $user.name, avatar: $user.avatar }
 			: { username: '', name: 'You', avatar: null }
 	);
@@ -206,7 +239,8 @@
 			!!content.trim() ||
 			attachments.length > 0 ||
 			!!pollOptions ||
-			session.shown
+			session.shown ||
+			!!asHeader
 	);
 	/** false until the saved draft was looked at: saving before would overwrite it */
 	let loaded = false;
@@ -355,7 +389,7 @@
 	/** starts uploading `file` as an attachment */
 	function stage(file: File) {
 		// uploaded right away, so posting doesn't wait for it
-		const attachment = new Attachment(file);
+		const attachment = new Attachment(file, asHeader);
 		attachment.done.catch((e) => {
 			// once it's part of a post, submit reports it
 			if (!attachments.includes(attachment)) return;
@@ -509,6 +543,10 @@
 		if (!content.trim() && attachments.length === 0 && !gif && !voiceAttached) return;
 		if (pollOptions && !content.trim()) return showError('A poll needs a question.');
 		if (pollOptions?.some((o) => !o.trim())) return showError('Fill in every poll option.');
+		// the recording was made as the profile in use: its upload isn't the other profile's
+		if (voiceAttached && asHeader)
+			return showError('A voice note is posted by the profile in use: pick it to post this one.');
+		const as = asHeader;
 		// the saved draft is exactly what's sent, and stays until the post lands
 		persist();
 		const submittedAt = Date.now();
@@ -553,7 +591,10 @@
 			}
 			return fetch('/api/v1/posts', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(as ? { [ACT_AS_HEADER]: as } : {})
+				},
 				body: JSON.stringify({
 					content: draft.content,
 					reply_to: replyTo,
@@ -591,7 +632,7 @@
 					voice.upload(true);
 					throw e;
 				});
-				posted(await api<Post>(`posts/${sent.id}`).catch(() => null));
+				posted(await api<Post>(`posts/${sent.id}`, { as }).catch(() => null));
 				return;
 			}
 			if (res.ok) {
@@ -710,6 +751,39 @@
 			multiple
 			hidden
 		/>
+		{#if profiles.length > 1}
+			<!-- the avatar says who posts and opens the list of the account's profiles -->
+			<div class="relative flex">
+				<button
+					type="button"
+					title="Posting as @{posterName}"
+					aria-label="Posting as @{posterName}"
+					aria-haspopup="menu"
+					aria-expanded={choosing}
+					onmousedown={keepFocus}
+					onclick={() => (choosing = !choosing)}
+					class="flex cursor-pointer items-center rounded-full p-[3px] outline-none hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-accent"
+					><img
+						class="size-6 max-w-none rounded-full object-cover"
+						src={getAvatar(me, 24)}
+						alt=""
+						width="24"
+						height="24"
+					/></button
+				>
+				{#if choosing}
+					<ProfilePicker
+						title="Posting as"
+						profiles={profiles.map((p) => ({ ...p, current: p.username === posterName }))}
+						onpick={(username) => {
+							picked = username;
+							choosing = false;
+						}}
+						onclose={() => (choosing = false)}
+					/>
+				{/if}
+			</div>
+		{/if}
 		<button
 			type="button"
 			title={voiceAttached ? voiceOnly : 'Attach images'}
@@ -913,13 +987,13 @@
 	<!-- on its way: dimmed, with the loading mark, until the real post replaces it -->
 	<div class="mb-5 flex gap-2.5 opacity-70" aria-busy="true">
 		{#if $user}
-			<Avatar user={$user} size={45} />
+			<Avatar user={me} size={45} clickable={false} />
 		{/if}
 		<div class="flex min-w-0 flex-1 flex-col gap-2.5">
 			<div class="flex items-center justify-between gap-2.5">
 				<p class="truncate">
-					<span class="font-bold">{$user?.name}</span>
-					<span class="opacity-80">@{$user?.username}</span>
+					<span class="font-bold">{me.name}</span>
+					<span class="opacity-80">@{me.username}</span>
 				</p>
 				<LoadingScreen size={20} />
 			</div>

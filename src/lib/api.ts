@@ -3,7 +3,12 @@
  * API third-party clients use (see /api.txt); the session cookie authenticates it.
  */
 
+import { browser } from '$app/env';
+import { actingAs } from './actingAs.svelte.js';
+
 export const API = '/api/v1';
+
+export const ACT_AS_HEADER = 'X-Act-As';
 
 /**
  * What this client supports, sent with every API call: without `voice-notes` the server fills
@@ -47,6 +52,11 @@ type Options = Omit<RequestInit, 'body'> & {
 	json?: unknown;
 	/** sent as is (FormData, a File…) */
 	body?: BodyInit;
+	/**
+	 * Acts as this other profile of the account for this call (X-Act-As). By default a page in the
+	 * context of a profile (`?as=`) acts as it; null opts out (the profile in use acts).
+	 */
+	as?: string | null;
 };
 
 /** The error message of a failed API response. */
@@ -60,10 +70,14 @@ export async function errorOf(res: Response): Promise<ApiError> {
 /** Calls the API: resolves with the JSON answer (undefined for 204), throws an ApiError. */
 export async function api<T = unknown>(
 	path: string,
-	{ json, body, ...init }: Options = {}
+	{ json, body, as, ...init }: Options = {}
 ): Promise<T> {
 	const headers = new Headers(init.headers);
 	headers.set('X-Client-Features', CLIENT_FEATURES);
+	// signing in and switching are about the session, never about a context profile
+	const acting =
+		as !== undefined ? as : browser && !path.startsWith('auth/') ? actingAs()?.username : null;
+	if (acting) headers.set(ACT_AS_HEADER, acting);
 	// writes always say they are JSON, even without a body: SvelteKit's CSRF check refuses
 	// cross-site writes that have no content type, and the API documents it for every client
 	if (json !== undefined || (body === undefined && init.method && init.method !== 'GET'))

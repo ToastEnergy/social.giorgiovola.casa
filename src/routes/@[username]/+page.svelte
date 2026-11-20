@@ -11,6 +11,9 @@
 	import { openImage } from '#lib/imageViewer.svelte.js';
 	import { openReport } from '#lib/report.svelte.js';
 	import Flag from '@lucide/svelte/icons/flag';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ProfilePicker from '#lib/components/ProfilePicker.svelte';
+	import { actingAs, myProfiles, withAs } from '#lib/actingAs.svelte.js';
 
 	let { data }: PageProps = $props();
 
@@ -47,6 +50,54 @@
 			follow = await api(`users/${profile.username}/follow`, {
 				method: follow.followed ? 'DELETE' : 'PUT'
 			});
+			error = null;
+		} catch (e) {
+			error = messageOf(e, 'Could not update follow');
+		} finally {
+			followBusy = false;
+		}
+	}
+
+	// ---- follow as another of your profiles: the account's profiles (but the one being viewed) with
+	// whether each follows this profile, from the profile as each of them sees it
+	const shownAs = $derived(actingAs()?.username ?? $user?.username);
+	const followers = $derived(myProfiles().filter((p) => p.username !== profile.username));
+	let followPicker = $state(false);
+	let followStates: Record<string, boolean> | null = $state(null);
+
+	async function showFollowPicker() {
+		if (followPicker) return (followPicker = false);
+		followPicker = true;
+		followStates = null;
+		const name = encodeURIComponent(profile.username);
+		try {
+			const entries = await Promise.all(
+				followers.map(async (p) => {
+					// the profile in use acts without a header
+					const as = p.username === $user?.username ? null : p.username;
+					const { followed } = await api<{ followed: boolean }>(`users/${name}`, { as });
+					return [p.username, followed] as const;
+				})
+			);
+			if (followPicker) followStates = Object.fromEntries(entries);
+		} catch (e) {
+			followPicker = false;
+			error = messageOf(e, 'Could not load your profiles');
+		}
+	}
+
+	async function followAs(username: string) {
+		const target = !followStates?.[username];
+		followPicker = false;
+		followBusy = true;
+		try {
+			const as = username === $user?.username ? null : username;
+			const stats = await api<typeof follow>(`users/${profile.username}/follow`, {
+				method: target ? 'PUT' : 'DELETE',
+				as
+			});
+			// the button shows the profile the page is shown as: for another one only the count moves
+			follow = username === shownAs ? stats : { ...follow, followers: stats.followers };
 			error = null;
 		} catch (e) {
 			error = messageOf(e, 'Could not update follow');
@@ -106,10 +157,10 @@
 			>
 		{/if}
 		<p class="mt-1 flex gap-3 text-[0.9em] text-muted">
-			<a class="text-inherit" href="/@{profile.username}/following"
+			<a class="text-inherit" href={withAs(`/@${profile.username}/following`)}
 				><b class="text-foreground">{nf.format(follow.following)}</b> following</a
 			>
-			<a class="text-inherit" href="/@{profile.username}/followers"
+			<a class="text-inherit" href={withAs(`/@${profile.username}/followers`)}
 				><b class="text-foreground">{nf.format(follow.followers)}</b>
 				{follow.followers === 1 ? 'follower' : 'followers'}</a
 			>
@@ -117,7 +168,7 @@
 		{#if data.followedBy.total > 0}
 			<a
 				class="mt-2 flex items-center gap-2.5 text-[0.85em] text-muted"
-				href="/@{profile.username}/followers/known"
+				href={withAs(`/@${profile.username}/followers/known`)}
 			>
 				<span class="flex shrink-0">
 					{#each data.followedBy.users as u, i (u.username)}
@@ -144,6 +195,34 @@
 				disabled={followBusy}
 				onclick={toggleFollow}>{follow.followed ? 'Unfollow' : 'Follow'}</Button
 			>
+			{#if followers.length > 1}
+				<!-- follow as another of your profiles -->
+				<div class="relative flex">
+					<Button
+						size="sm"
+						class="size-8"
+						title="Follow as…"
+						aria-label="Follow as another profile"
+						aria-haspopup="menu"
+						aria-expanded={followPicker}
+						onclick={showFollowPicker}><ChevronDown size={16} /></Button
+					>
+					{#if followPicker}
+						<ProfilePicker
+							title="Follow as…"
+							right
+							profiles={followers.map((p) => ({
+								...p,
+								current: p.username === shownAs,
+								note: followStates?.[p.username] ? 'Following' : undefined
+							}))}
+							loading={!followStates}
+							onpick={followAs}
+							onclose={() => (followPicker = false)}
+						/>
+					{/if}
+				</div>
+			{/if}
 			<Button size="sm" href={`/messages/${profile.username}`}>Message</Button>
 			<Button
 				size="sm"
@@ -174,21 +253,21 @@
 <nav class="mb-5 flex">
 	<a
 		class={tabClass(data.tab === 'posts')}
-		href="/@{profile.username}"
+		href={withAs(`/@${profile.username}`)}
 		data-sveltekit-noscroll
 		data-sveltekit-replacestate
 		aria-current={data.tab === 'posts' ? 'page' : undefined}>Posts</a
 	>
 	<a
 		class={tabClass(data.tab === 'replies')}
-		href="/@{profile.username}?tab=replies"
+		href={withAs(`/@${profile.username}?tab=replies`)}
 		data-sveltekit-noscroll
 		data-sveltekit-replacestate
 		aria-current={data.tab === 'replies' ? 'page' : undefined}>Replies</a
 	>
 	<a
 		class={tabClass(data.tab === 'regiorgs')}
-		href="/@{profile.username}?tab=regiorgs"
+		href={withAs(`/@${profile.username}?tab=regiorgs`)}
 		data-sveltekit-noscroll
 		data-sveltekit-replacestate
 		aria-current={data.tab === 'regiorgs' ? 'page' : undefined}>Regiorgios</a

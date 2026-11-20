@@ -5,6 +5,7 @@
 	import { compose, closeCompose, composed } from '#lib/compose.svelte.js';
 	import type { Post } from '#lib/types.js';
 	import { keyboard } from '#lib/keyboard.svelte.js';
+	import { user } from '#lib/store.js';
 	import { lockScroll } from '#lib/scrollLock.js';
 	import Button from './Button.svelte';
 	import PostComposer from './PostComposer.svelte';
@@ -70,12 +71,15 @@
 			</div>
 			<!-- the field grows up to what's left above the keyboard beside the Cancel row and the
 				attachment buttons, so the line being typed stays in view -->
-			<PostComposer
-				autofocus
-				formId="compose-sheet"
-				maxHeight="max-h-[max(5lh,calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-9rem))]"
-				{oncreated}
-			/>
+			<!-- a switch of the profile in use starts the composer again, taking its carried draft -->
+			{#key $user?.id}
+				<PostComposer
+					autofocus
+					formId="compose-sheet"
+					maxHeight="max-h-[max(5lh,calc(var(--vv-height,100dvh)-env(safe-area-inset-top)-9rem))]"
+					{oncreated}
+				/>
+			{/key}
 		</div>
 	{/if}
 </dialog>

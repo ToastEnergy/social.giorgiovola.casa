@@ -18,10 +18,20 @@ export class Attachment {
 	/** resolves to the id, rejects with a message to show when the upload fails */
 	done!: Promise<string>;
 	#xhr: XMLHttpRequest | null = null;
+	/** the profile of the account it is uploaded as (X-Act-As), null: the profile in use */
+	#as: string | null;
 
-	constructor(file: File) {
+	constructor(file: File, as: string | null = null) {
 		this.file = file;
+		this.#as = as;
 		this.url = URL.createObjectURL(file);
+		this.upload();
+	}
+
+	/** Moves the upload to another profile: uploads belong to the profile that made them. */
+	reassign(as: string | null) {
+		this.unstage();
+		this.#as = as;
 		this.upload();
 	}
 
@@ -35,6 +45,7 @@ export class Attachment {
 			const xhr = new XMLHttpRequest();
 			this.#xhr = xhr;
 			xhr.open('POST', '/api/v1/uploads');
+			if (this.#as) xhr.setRequestHeader('X-Act-As', this.#as);
 			xhr.upload.onprogress = (e) => {
 				if (e.lengthComputable) this.progress = e.loaded / e.total;
 			};
@@ -97,7 +108,10 @@ export class Attachment {
 		if (this.id) {
 			fetch(`/api/v1/uploads/${this.id}`, {
 				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(this.#as ? { 'X-Act-As': this.#as } : {})
+				},
 				keepalive: true
 			}).catch(() => {});
 		}

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, users } from './db/index.js';
+import { fail } from './api.js';
 
 // anything with select: the db or a transaction
 type Executor = Pick<typeof db, 'select'>;
@@ -68,4 +69,23 @@ export async function profileIdsNamed(usernames: string[], within: number[]): Pr
 		.from(users)
 		.where(and(inArray(users.username, usernames), inArray(users.id, within)));
 	return rows.map((r) => r.id);
+}
+
+/**
+ * `?profiles=` of the inbox endpoints: null without it (the profile in use only, as before, and
+ * always for a bot), else the ids of `all` the account's profiles or of the usernames listed
+ * (comma separated). A name that isn't one of the account's profiles is a 400, so a typo
+ * doesn't quietly show less than asked for.
+ */
+export async function inboxProfileIds(locals: App.Locals, url: URL): Promise<number[] | null> {
+	const raw = url.searchParams.get('profiles');
+	if (raw === null || raw === '' || !locals.user || locals.auth === 'bot') return null;
+	const all = await requestProfileIds(locals);
+	if (raw === 'all') return all;
+	const names = [...new Set(raw.split(',').map((n) => n.trim()))];
+	if (names.length > 50 || names.some((n) => !/^[A-Za-z0-9_.-]{1,64}$/.test(n)))
+		fail(400, 'Invalid profiles');
+	const ids = await profileIdsNamed(names, all);
+	if (ids.length < names.length) fail(400, 'Unknown profile in profiles');
+	return ids;
 }

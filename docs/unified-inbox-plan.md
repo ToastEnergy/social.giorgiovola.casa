@@ -133,7 +133,7 @@ merge them too:
   ratio > mention) and `recipients` lists every profile it reached ("@bob replied to @alice and
   mentioned @alice_art"). Likes, regiorgs and follows stay per profile: they are about one
   profile's post or one profile's followers, and their keys get the recipient prefixed
-  (`<user_id>/like-12-20261120`). Lookups use `inbox_post_id` (post + `user_id = ANY`) and
+  (`<user_id>.like-12-20261120`). Lookups use `inbox_post_id` (post + `user_id = ANY`) and
   `inbox_user_group_key`. Reading a merged group reads all its rows. Keys of this mode are only
   valid with `?profiles=all` on `groups/:key/read`, so the single-profile keys don't change.
   Fallback if the SQL gets out of hand: return per-profile groups and merge them in the clients

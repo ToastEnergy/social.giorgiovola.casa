@@ -286,12 +286,16 @@ NotificationGroup (GET /notifications/grouped):
   { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
     "avatar" } ], "count": 5, "unread": 2, "post": { "id", "content" } | null,
     "invites": 3 | null,   // as in Notification
-    "created_at", "read_at": "…" | null }
+    "created_at", "read_at": "…" | null,
+    "recipients": [ { "id", "username", "name", "avatar" } ] }   // only with ?profiles=
   Likes and regiorgs of the same post, and follows, that arrived on the same UTC day are
   one group; every other notification is a group of one ("count": 1). "senders" are the
   latest, at most 3; "count" is how many notifications (people) the group has, "unread"
   how many of them are unread. "created_at" is the newest one's; "read_at" is null while
   any is unread. "key" is opaque and stays the same while the group grows.
+  With ?profiles= (see GET /notifications/grouped) "recipients" lists the profiles of your
+  account the group reached (the profile in use first, if it is one of them), and a post that
+  notified several of them is one group: its keys, count and unread are described there.
 
 Me (GET /me):
   { "user": { "id", "username", "name", "avatar", "bio", "website", "email" (null for
@@ -688,13 +692,37 @@ GET /notifications/grouped            signed in, paginated (default 50, at most 
   notification moves back to the top. Later pages (?cursor) leave out every group that is
   now above where the previous page ended, so they never repeat or skip a group: fetch the
   first page again to see the ones that moved up, and replace your copy of each by "key".
+  Optional ?profiles=all (or ?profiles=alice,alice_art: usernames, comma separated) answers
+  for the whole inbox of your account instead of only the profile in use: its own profile,
+  the identities it owns and the ones shared with it (not bots). A name that isn't one of
+  those profiles is a 400 "Unknown profile in profiles". Bot tokens: ?profiles is ignored,
+  a bot only has its own profile. Without ?profiles nothing changes (profile in use only, no
+  "recipients"). In this mode every group has "recipients", and:
+    - mentions, replies, quotes and ratios are grouped by post, across the profiles they
+      reached: key "p-<post id>", "count" = how many notifications, "unread" = how many are
+      unread, "type" = the strongest present (reply > quote > ratio > mention), "senders" as
+      usual. E.g. @bob replies to alice's post and mentions alice_art in it: one group of
+      type "reply" with both profiles in "recipients".
+    - likes, regiorgs, follows and invites stay one profile's: their key is the usual key
+      with the recipient's user id in front, "<user id>.like-123-20261109",
+      "<user id>.follow-20261109", "<user id>.n-99"; "recipients" has that one profile.
+  These keys only work with ?profiles= on POST /notifications/groups/:key/read, and the
+  usual ones only without it. Cursors work
+  the same (the cursor of one mode isn't meant for the other).
 POST /notifications/groups/:key/read  marks every notification of the group read → 204;
-  404 when you have no such group.
+  404 when you have no such group. With ?profiles=all (or a list) takes the keys of that
+  mode: "p-<post id>" reads that post's mentions, replies, quotes and ratios for those
+  profiles, "<user id>.<key>" one profile's group (404 when the user id isn't one of those
+  profiles).
 GET /notifications/unread             signed in → { "notifications": 2, "messages": 5,
-  "reactions": 1 }
+  "reactions": 1 }   (of the profile in use)
   (messages: unread direct and group messages; reactions: unread reactions others made to
   your messages; muted chats left out of both. The website's messages badge shows the sum.)
-POST /notifications/read              marks all read → 204
+  With ?profiles=all (or a list, as above) the same three, plus "total" (unread
+  notifications over those profiles) and "profiles": [ { "username", "notifications",
+  "messages", "reactions" } ] for each of them, the profile in use first. Bots: ignored.
+POST /notifications/read              marks all read → 204. With ?profiles=all (or a list) it
+  marks the notifications of all those profiles read, not only the profile in use's.
 POST /notifications/seen              signed in (bots too, for their own profile). Tells the server
   what you have shown, so the notifications about it are read for every profile of your account.
   Body (all optional, JSON): { "posts": [12, 15], "engagement": [12], "followers": ["alice"],
@@ -1162,6 +1190,14 @@ GET /stream                           public or signed in
                          with their own to know they're out of date. Bots can ignore it
   Signed in, also (for the profile in use):
     notifications   { "count" }   unread notifications, sent on connect and on change
+    inbox           { "profile": "username", "count", "total" }   a profile of your account
+                    (the profile in use, an identity you own or one shared with you) has a
+                    new unread count: "count" is that profile's, "total" the unread
+                    notifications over all the account's profiles (what ?profiles=all
+                    returns). Sent on change, not on connect (use GET /notifications/unread
+                    ?profiles=all), to every stream of the account, whichever profile it
+                    uses. The "notifications" frame above is unchanged: only the profile in
+                    use's own count, for the streams using that profile
     messages_unread { "count", "reactions" }   unread messages, and unread reactions to your
                     messages, sent on connect and on change
     message         <Message> sent or received

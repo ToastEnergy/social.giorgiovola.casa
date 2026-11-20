@@ -25,7 +25,8 @@ export const GET: RequestHandler = ({ locals, request, getClientAddress }) => {
 		botId,
 		owner,
 		request.signal,
-		locals.clientFeatures.has(VOICE_NOTES)
+		locals.clientFeatures.has(VOICE_NOTES),
+		locals.accountId
 	);
 	return body ? new Response(body, { headers: SSE_HEADERS }) : tooManyStreams();
 };

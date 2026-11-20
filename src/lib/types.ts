@@ -237,6 +237,11 @@ export type NotificationGroup = {
 	created_at: Date;
 	/** null while any of them is unread */
 	read_at: Date | null;
+	/**
+	 * only with ?profiles=: the profiles it reached (the one in use first, if it is among them);
+	 * a post that reaches several of them is one group
+	 */
+	recipients?: Pick<User, 'id' | 'username' | 'name' | 'avatar'>[];
 };
 
 /** A direct message. Sender and recipient are usernames: ids of other profiles stay private. */

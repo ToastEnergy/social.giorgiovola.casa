@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, identity_members, users } from './db/index.js';
 import * as storage from './storage.js';
+import { profileUnreadColumns } from './profileUnread.js';
 import type { SwitcherAccount, SwitcherProfile } from '#lib/types.js';
 
 /** How many identities a single account can own. */
@@ -40,37 +41,7 @@ export async function getSwitcher(locals: App.Locals): Promise<SwitcherAccount[]
 			avatar: users.avatar,
 			owner_id: users.owner_id,
 			owner_username: owner.username,
-			// correlated subquery: the table names are written out so they can't be mis-qualified
-			unread: sql<number>`(
-				SELECT COUNT(*) FROM inbox WHERE inbox.user_id = users.id AND inbox.read_at IS NULL
-			)::int`,
-			unread_messages: sql<number>`(
-				(SELECT COUNT(*) FROM messages WHERE messages.recipient_id = users.id AND messages.read_at IS NULL
-					AND NOT EXISTS (SELECT 1 FROM dm_mutes
-						WHERE dm_mutes.user_id = users.id AND dm_mutes.peer_id = messages.sender_id))
-				+ (SELECT COUNT(*) FROM group_messages
-					JOIN group_members ON group_members.group_id = group_messages.group_id
-						AND group_members.user_id = users.id
-					WHERE group_messages.id > group_members.last_read_id
-						AND group_messages.sender_id != users.id
-						AND group_messages.kind = 'message'
-						AND NOT group_members.muted)
-			)::int`,
-			// reactions others made to the profile's messages it hasn't seen yet
-			unread_reactions: sql<number>`(
-				(SELECT COUNT(*) FROM message_reactions
-					JOIN messages ON messages.id = message_reactions.message_id
-					WHERE messages.sender_id = users.id AND message_reactions.read_at IS NULL
-						AND NOT EXISTS (SELECT 1 FROM dm_mutes
-							WHERE dm_mutes.user_id = users.id AND dm_mutes.peer_id = messages.recipient_id))
-				+ (SELECT COUNT(*) FROM group_message_reactions
-					JOIN group_messages ON group_messages.id = group_message_reactions.message_id
-					JOIN group_members ON group_members.group_id = group_messages.group_id
-						AND group_members.user_id = users.id
-					WHERE group_messages.sender_id = users.id
-						AND group_message_reactions.read_at IS NULL
-						AND NOT group_members.muted)
-			)::int`
+			...profileUnreadColumns
 		})
 		.from(users)
 		.leftJoin(owner, eq(owner.id, users.owner_id))

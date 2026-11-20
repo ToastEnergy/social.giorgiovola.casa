@@ -18,8 +18,10 @@ import {
 } from 'lucide-react-native';
 import { memo } from 'react';
 import { Pressable, Share, View } from 'react-native';
+import { useActingAs, withAs } from '@/lib/actAs';
 import { count, fullDate, isRatio, ratioPercent, timeAgo } from '@/lib/format';
-import { deletePost, postUrl, setPin, toggleLike, toggleRegiorg, vote } from '@/lib/posts';
+import { deletePost, postUrl, reactAs, setPin, toggleLike, toggleRegiorg, vote } from '@/lib/posts';
+import { useKnownProfiles } from '@/lib/profilesStore';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Poll, Post } from '@/lib/types';
@@ -94,30 +96,39 @@ type Props = {
 
 export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Props) {
 	const { me } = useSession();
-	const mine = me?.user.username === post.user.username;
+	const as = useActingAs();
+	const profiles = useKnownProfiles();
+	// in the context of another profile the post is that profile's to edit and delete
+	const mine = (as ?? me?.user.username) === post.user.username;
 	const staff = !!me && me.role !== 'user';
 	const ratio = isRatio(post);
 	const iconColor = colors.muted;
-	const openProfile = () => router.push(`/user/${post.user.username}`);
+	const openProfile = () => router.push(withAs(`/user/${post.user.username}`, as));
 	// double tap to like, like the web app; a single tap waits out the double tap window
-	const doubleTap = useDoubleTapLike(post, !!me);
+	const doubleTap = useDoubleTapLike(post, !!me, as);
+
+	// long press on like or regiorgio: act as any profile of the account (only with several)
+	const pickReactor = (kind: 'like' | 'regiorg') =>
+		profiles.length > 1 && me
+			? () => reactAs(post, kind, profiles, as ?? me.user.username, me.user.username)
+			: undefined;
 
 	const regiorgMenu = () =>
 		showMenu([
 			{
 				label: post.regiorged ? 'Undo regiorgio' : 'Regiorgio',
 				icon: <Repeat2 size={18} color={colors.foreground} />,
-				onPress: () => toggleRegiorg(post)
+				onPress: () => toggleRegiorg(post, as)
 			},
 			{
 				label: 'Quote',
 				icon: <Quote size={18} color={colors.foreground} />,
-				onPress: () => router.push(`/compose?quote=${post.id}`)
+				onPress: () => router.push(withAs(`/compose?quote=${post.id}`, as))
 			},
 			(post.regiorgs > 0 || post.quotes > 0) && {
 				label: 'Regiorgios and quotes',
 				icon: <Users size={18} color={colors.foreground} />,
-				onPress: () => router.push(`/post/${post.id}/people?tab=regiorgs`)
+				onPress: () => router.push(withAs(`/post/${post.id}/people?tab=regiorgs`, as))
 			}
 		]);
 
@@ -148,24 +159,24 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			{
 				label: 'Users who liked',
 				icon: <Heart size={18} color={colors.foreground} />,
-				onPress: () => router.push(`/post/${post.id}/people?tab=likes`)
+				onPress: () => router.push(withAs(`/post/${post.id}/people?tab=likes`, as))
 			},
 			mine && {
 				label: 'Edit',
 				icon: <Pencil size={18} color={colors.foreground} />,
-				onPress: () => router.push(`/compose?edit=${post.id}`)
+				onPress: () => router.push(withAs(`/compose?edit=${post.id}`, as))
 			},
 			mine &&
 				!post.reply_to && {
 					label: post.pinned ? 'Unpin from profile' : 'Pin to profile',
 					icon: <Pin size={18} color={colors.foreground} />,
-					onPress: () => setPin(post, 'pin', !post.pinned)
+					onPress: () => setPin(post, 'pin', !post.pinned, as)
 				},
 			staff &&
 				!post.reply_to && {
 					label: post.timeline_pinned ? 'Unpin from timeline' : 'Pin to timeline',
 					icon: <Pin size={18} color={colors.foreground} />,
-					onPress: () => setPin(post, 'timeline-pin', !post.timeline_pinned)
+					onPress: () => setPin(post, 'timeline-pin', !post.timeline_pinned, as)
 				},
 			!mine &&
 				!!me &&
@@ -187,7 +198,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 							true
 						)
 					)
-						deletePost(post);
+						deletePost(post, as);
 				}
 			}
 		]);
@@ -213,7 +224,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				onTap={doubleTap.tap}
 			/>
 			{post.gif ? <GifMedia gif={post.gif} /> : null}
-			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option)} /> : null}
+			{post.poll ? <PollCard poll={post.poll} onVote={(option) => vote(post, option, as)} /> : null}
 			{post.quote ? <QuoteCard quote={post.quote} viewable={!!detail} /> : null}
 			{!post.quote && post.linked_post ? (
 				<QuoteCard quote={post.linked_post} viewable={!!detail} />
@@ -232,13 +243,20 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				paddingRight: 10
 			}}
 		>
-			<IconButton label="Reply" onPress={() => router.push(`/compose?reply=${post.id}`)}>
+			<IconButton
+				label="Reply"
+				onPress={() => router.push(withAs(`/compose?reply=${post.id}`, as))}
+			>
 				<MessageCircle size={18} color={iconColor} />
 				<Txt size={14} muted>
 					{count(post.replies_count)}
 				</Txt>
 			</IconButton>
-			<IconButton label="Regiorgio or quote" onPress={regiorgMenu}>
+			<IconButton
+				label="Regiorgio or quote"
+				onPress={regiorgMenu}
+				onLongPress={pickReactor('regiorg')}
+			>
 				<Repeat2 size={20} color={post.regiorged ? colors.accent : iconColor} />
 				<Txt size={14} muted accent={post.regiorged}>
 					{count(post.regiorgs + post.quotes)}
@@ -246,8 +264,11 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 			</IconButton>
 			<IconButton
 				label={post.liked ? 'Unlike' : 'Like'}
-				onPress={() => toggleLike(post)}
-				onLongPress={() => router.push(`/post/${post.id}/people?tab=likes`)}
+				onPress={() => toggleLike(post, as)}
+				onLongPress={
+					pickReactor('like') ??
+					(() => router.push(withAs(`/post/${post.id}/people?tab=likes`, as)))
+				}
 			>
 				<Heart
 					size={18}
@@ -301,7 +322,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				<Txt
 					size={13}
 					accent
-					onPress={() => router.push(`/post/${post.reply_to?.id}`)}
+					onPress={() => router.push(withAs(`/post/${post.reply_to?.id}`, as))}
 					suppressHighlighting
 				>
 					@{post.reply_to.username}
@@ -322,7 +343,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 				{banner}
 				<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
 					<Avatar user={post.user} size={50} link />
-					<Pressable style={{ flex: 1 }} onPress={() => router.push(`/user/${post.user.username}`)}>
+					<Pressable style={{ flex: 1 }} onPress={openProfile}>
 						<View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
 							<Txt bold numberOfLines={1} style={{ flexShrink: 1 }}>
 								{post.user.name}
@@ -347,7 +368,7 @@ export const PostCard = memo(function PostCard({ post, detail, hideReplyTo }: Pr
 	return (
 		<Pressable
 			ref={doubleTap.ref}
-			onPress={(e) => doubleTap.tap(e, () => router.push(`/post/${post.id}`))}
+			onPress={(e) => doubleTap.tap(e, () => router.push(withAs(`/post/${post.id}`, as)))}
 			style={({ pressed }) => ({
 				paddingVertical: 12,
 				paddingHorizontal: 20,

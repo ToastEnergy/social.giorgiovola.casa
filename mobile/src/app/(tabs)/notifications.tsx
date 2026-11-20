@@ -14,6 +14,7 @@ import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-nat
 import { refreshColors } from '@/components/PostList';
 import { Avatar, Button, ListState, Txt } from '@/components/ui';
 import { useAccountProfiles } from '@/lib/accountProfiles';
+import { withAs } from '@/lib/actAs';
 import { api } from '@/lib/api';
 import { count, timeAgo } from '@/lib/format';
 import { useInboxAll } from '@/lib/inboxScope';
@@ -203,15 +204,23 @@ export default function Notifications() {
 			);
 		}
 		const sender = group.senders[0];
-		if (group.type === 'invites') router.push('/settings/invites');
+		// a group for another profile than the one in use opens as that profile (without switching):
+		// the profile in use when it is among the recipients, else the first
+		const recipients = group.recipients;
+		const as =
+			recipients?.length && !recipients.some((r) => r.username === me?.user.username)
+				? recipients[0].username
+				: null;
+		const go = (href: string) => router.push(withAs(href, as));
+		if (group.type === 'invites') go('/settings/invites');
 		else if (group.type === 'follow')
-			router.push(
+			go(
 				group.count > 1
 					? `/user/${recipientOf(group, me?.user.username)}/followers`
 					: `/user/${sender?.username}`
 			);
-		else if (group.post) router.push(`/post/${group.post.id}`);
-		else if (sender) router.push(`/user/${sender.username}`);
+		else if (group.post) go(`/post/${group.post.id}`);
+		else if (sender) go(`/user/${sender.username}`);
 	}
 
 	async function readAll() {

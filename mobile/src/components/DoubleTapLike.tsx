@@ -28,7 +28,7 @@ type Burst = { id: number; x: number; y: number; tilt: number };
  * post, or the image), just after the double tap window has passed. Pass the returned `tap` the
  * press event and what a single tap does; put `ref` on the post and `hearts` inside it.
  */
-export function useDoubleTapLike(post: Post, enabled: boolean) {
+export function useDoubleTapLike(post: Post, enabled: boolean, as?: string | null) {
 	const ref = useRef<ComponentRef<typeof View>>(null);
 	const [bursts, setBursts] = useState<Burst[]>([]);
 	const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
@@ -37,6 +37,8 @@ export function useDoubleTapLike(post: Post, enabled: boolean) {
 	// the latest copy, so a quick third tap sees the like the second one made
 	const postRef = useRef(post);
 	postRef.current = post;
+	const asRef = useRef(as);
+	asRef.current = as;
 
 	useEffect(() => () => clearTimeout(pending.current), []);
 
@@ -65,7 +67,7 @@ export function useDoubleTapLike(post: Post, enabled: boolean) {
 				// a double tap only ever likes, like everywhere else
 				if (!postRef.current.liked) {
 					Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-					like(postRef.current);
+					like(postRef.current, asRef.current);
 				}
 				return;
 			}

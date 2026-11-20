@@ -1,8 +1,15 @@
 import { router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { ChartNoAxesColumn, ImagePlus, Mic, X } from 'lucide-react-native';
+import { ChartNoAxesColumn, ChevronDown, ImagePlus, Mic, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { AppState, KeyboardAvoidingView, ScrollView, TextInput, View } from 'react-native';
+import {
+	AppState,
+	KeyboardAvoidingView,
+	Pressable,
+	ScrollView,
+	TextInput,
+	View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
 	AttachmentStrip,
@@ -14,8 +21,10 @@ import {
 import { GifPicker } from '@/components/GifPicker';
 import { MentionSuggestions, useMentionSuggestions } from '@/components/mentions';
 import { QuoteCard } from '@/components/media';
+import { pickProfile } from '@/components/overlays';
 import { Avatar, Button, ErrorBanner, IconButton, Input, Loading, Txt } from '@/components/ui';
 import { ComposerRecorder } from '@/components/VoiceRecorder';
+import { useAsParam } from '@/lib/actAs';
 import { api, auth, errorMessage } from '@/lib/api';
 import { emit, useBus } from '@/lib/bus';
 import { voicePreview } from '@/lib/format';
@@ -27,6 +36,7 @@ import {
 	type DraftOwner
 } from '@/lib/drafts';
 import { isSending, startPost } from '@/lib/posting';
+import { useKnownProfiles } from '@/lib/profilesStore';
 import { useVoiceRecorder } from '@/lib/recorder';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
@@ -48,6 +58,7 @@ const VOICE_ONLY = 'A voice note can’t have images, a GIF or a poll: only a ca
 export default function Compose() {
 	const params = useLocalSearchParams<{ reply?: string; quote?: string; edit?: string }>();
 	const { me, instance, server } = useSession();
+	const profiles = useKnownProfiles();
 	const insets = useSafeAreaInsets();
 	const limits = instance?.limits ?? {};
 	const maxLength = limits.postContent ?? 2000;
@@ -64,13 +75,23 @@ export default function Compose() {
 	const [poll, setPoll] = useState<{ options: string[]; minutes: number } | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	// who posts: the screen the composer was opened from (?as=), else the profile in use, or any
+	// other profile of the account picked from the avatar. Drafts stay the profile in use's
+	const contextAs = useAsParam();
+	const [picked, setPicked] = useState<string | null | undefined>(undefined);
+	const wanted = picked === undefined ? contextAs : picked;
+	const postingAs =
+		wanted && wanted !== me?.user.username && profiles.some((p) => p.username === wanted)
+			? wanted
+			: null;
+	const poster = profiles.find((p) => p.username === postingAs) ?? me?.user;
 	const mention = useMentionSuggestions(text, cursor);
 	const clipboard = useClipboardImage();
 	const input = useRef<ComponentRef<typeof TextInput>>(null);
 
 	useEffect(() => {
 		if (!targetId) return;
-		api<Post>(`posts/${targetId}`)
+		api<Post>(`posts/${targetId}`, { as: contextAs })
 			.then((post) => {
 				setTarget(post);
 				if (params.edit) {
@@ -79,7 +100,7 @@ export default function Compose() {
 				}
 			})
 			.catch((e) => setError(errorMessage(e)));
-	}, [targetId, params.edit]);
+	}, [targetId, params.edit, contextAs]);
 
 	const editing = !!params.edit;
 
@@ -99,8 +120,7 @@ export default function Compose() {
 	const rec = useVoiceRecorder({
 		maxMs: instance?.voice_notes?.max_duration_ms,
 		onReview: (voice) => {
-			startVoiceUpload(voice.uri);
-			// also when the screen goes away while recording: kept with the draft
+			// uploading starts below, once it's in review. also when the screen goes away while recording: kept with the draft
 			if (composer && owner.current && loaded.current && !submitted.current)
 				saveDraft(owner.current, composer, { ...latest.current, voice });
 		}
@@ -115,10 +135,13 @@ export default function Compose() {
 		images,
 		gif: gif?.gif ?? null,
 		poll,
-		voice: reviewVoice
+		voice: reviewVoice,
+		as: postingAs
 	};
 	const latest = useRef(current);
 	latest.current = current;
+	/** the profile a recorded voice note's staged upload belongs to */
+	const uploadedAs = useRef<string | null>(null);
 	/** false until the saved draft was looked at: saving before would overwrite it */
 	const loaded = useRef(false);
 	/** the profile whose draft the form holds */
@@ -151,9 +174,11 @@ export default function Compose() {
 		setGif(draft.gif ? { gif: draft.gif, sent: () => {} } : null);
 		setPoll(draft.poll);
 		setError(draft.error ?? null);
+		if (draft.as) setPicked(draft.as);
 		if (draft.voice) {
+			// its staged upload is the profile's it was written as
+			uploadedAs.current = draft.as ?? null;
 			restoreVoice(draft.voice);
-			startVoiceUpload(draft.voice.uri);
 		}
 	}, [composer, restoreVoice]);
 
@@ -167,12 +192,21 @@ export default function Compose() {
 		};
 	}, [restore, persist, userId]);
 
+	// a voice note is uploaded as the profile that posts it: another one starts over
+	const reviewUri = reviewVoice?.uri;
+	useEffect(() => {
+		if (!reviewVoice) return;
+		if (uploadedAs.current !== postingAs) reviewVoice.upload = null;
+		uploadedAs.current = postingAs;
+		startVoiceUpload(reviewVoice.uri, { ...auth, as: postingAs });
+	}, [reviewUri, postingAs]);
+
 	// saved as it's typed
 	useEffect(() => {
 		if (!loaded.current) return;
 		const timer = setTimeout(persist, SAVE_DELAY_MS);
 		return () => clearTimeout(timer);
-	}, [text, images, gif, poll, reviewVoice, persist]);
+	}, [text, images, gif, poll, reviewVoice, postingAs, persist]);
 
 	// closing while recording: stop into review first, so the recording is whole in the draft
 	const allowLeave = usePreventRemove(recording, ({ repeat }) => {
@@ -215,6 +249,7 @@ export default function Compose() {
 			try {
 				const post = await api<Post>(`posts/${params.edit}`, {
 					method: 'PATCH',
+					as: contextAs,
 					body: { content: text }
 				});
 				emit('post_patch', post);
@@ -243,6 +278,7 @@ export default function Compose() {
 			draft,
 			savedAt,
 			token: auth.token,
+			as: postingAs,
 			onSent: gif?.sent
 		});
 		router.back();
@@ -286,8 +322,47 @@ export default function Compose() {
 							: ''}
 					</Txt>
 				) : null}
+				{postingAs && !editing ? (
+					<Txt size={14} muted>
+						Posting as{' '}
+						<Txt size={14} bold>
+							@{postingAs}
+						</Txt>
+					</Txt>
+				) : null}
 				<View style={{ flexDirection: 'row', gap: 10 }}>
-					<Avatar user={me.user} size={45} />
+					{profiles.length > 1 && !editing ? (
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel="Choose who posts"
+							onPress={async () => {
+								const username = await pickProfile({
+									title: 'Posting as',
+									profiles,
+									current: postingAs ?? me.user.username
+								});
+								if (username) setPicked(username === me.user.username ? null : username);
+							}}
+							style={{ alignSelf: 'flex-start' }}
+						>
+							<Avatar user={poster ?? me.user} size={45} />
+							<View
+								style={{
+									position: 'absolute',
+									right: -3,
+									bottom: -3,
+									borderRadius: 9,
+									backgroundColor: colors.background,
+									borderWidth: 1,
+									borderColor: colors.line
+								}}
+							>
+								<ChevronDown size={14} color={colors.accent} />
+							</View>
+						</Pressable>
+					) : (
+						<Avatar user={me.user} size={45} />
+					)}
 					<TextInput
 						ref={input}
 						autoFocus

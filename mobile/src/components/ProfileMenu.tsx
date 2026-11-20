@@ -129,9 +129,9 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 	async function use(index: number, profile: SwitcherProfile) {
 		if (index === session.current && profile.username === me?.user.username) return;
 		try {
+			// the screen underneath stays, and reloads as the new profile
 			await session.actAs(index, profile.username);
-			if (sheet) router.dismissTo('/');
-			else router.navigate('/');
+			if (sheet && router.canGoBack()) router.back();
 		} catch (e) {
 			toast(errorMessage(e));
 		}

@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { type ReactNode, useState } from 'react';
 import { type GestureResponderEvent, Pressable, View, type ViewStyle } from 'react-native';
+import { useActingAs, withAs } from '@/lib/actAs';
 import { instanceImage } from '@/lib/api';
 import { timeAgo } from '@/lib/format';
 import { colors } from '@/lib/theme';
@@ -215,6 +216,7 @@ export function QuoteCard({
 	/** tapping an image opens the viewer instead of the quoted post */
 	viewable?: boolean;
 }) {
+	const as = useActingAs();
 	const frame = {
 		borderWidth: 1,
 		borderColor: colors.line,
@@ -231,7 +233,7 @@ export function QuoteCard({
 			</View>
 		);
 	return (
-		<Pressable style={frame} onPress={() => router.push(`/post/${quote.id}`)}>
+		<Pressable style={frame} onPress={() => router.push(withAs(`/post/${quote.id}`, as))}>
 			<View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
 				<Avatar user={quote.user} size={24} />
 				<Txt bold size={14} numberOfLines={1} style={{ flexShrink: 1 }}>

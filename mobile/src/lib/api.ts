@@ -26,6 +26,11 @@ type Options = {
 	/** another instance or token than the current ones (signing in, other accounts) */
 	server?: string;
 	token?: string | null;
+	/**
+	 * Act as this other profile of the account for this request only (X-Act-As), without
+	 * switching the profile in use. Never sent to auth/ calls.
+	 */
+	as?: string | null;
 	signal?: AbortSignal;
 };
 
@@ -45,6 +50,7 @@ export async function api<T = unknown>(path: string, options: Options = {}): Pro
 		'X-Client-Features': CLIENT_FEATURES
 	};
 	if (token) headers.Authorization = `Bearer ${token}`;
+	if (options.as && !path.startsWith('auth/')) headers['X-Act-As'] = options.as;
 	// every write needs a Content-Type, even without a body
 	if (method !== 'GET') headers['Content-Type'] = options.raw?.type ?? 'application/json';
 	let res: Response;
@@ -99,8 +105,12 @@ export function withQuery(
 	return query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
 }
 
-export const getPage = <T>(path: string, cursor?: string | null, limit?: number) =>
-	api<Page<T>>(withQuery(path, { cursor, limit }));
+export const getPage = <T>(
+	path: string,
+	cursor?: string | null,
+	limit?: number,
+	as?: string | null
+) => api<Page<T>>(withQuery(path, { cursor, limit }), { as });
 
 export const errorMessage = (e: unknown) =>
 	e instanceof Error ? e.message : 'Something went wrong.';
@@ -116,6 +126,8 @@ export async function uploadImage(
 		onProgress?: (share: number) => void;
 		server?: string;
 		token?: string | null;
+		/** the profile the upload belongs to (a staged upload is the uploading profile's) */
+		as?: string | null;
 	} = {}
 ) {
 	let data: Blob;
@@ -132,6 +144,7 @@ export async function uploadImage(
 		xhr.setRequestHeader('Accept', 'application/json');
 		xhr.setRequestHeader('Content-Type', image.mimeType || data.type || 'image/jpeg');
 		if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+		if (options.as) xhr.setRequestHeader('X-Act-As', options.as);
 		xhr.timeout = 120_000;
 		xhr.upload.onprogress = (e) => {
 			if (e.lengthComputable && e.total > 0) options.onProgress?.(e.loaded / e.total);

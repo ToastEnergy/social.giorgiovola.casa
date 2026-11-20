@@ -1,6 +1,7 @@
 import { useScrollToTop } from 'expo-router';
 import { useRef } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
+import { useActingAs } from '@/lib/actAs';
 import { usePostSync } from '@/lib/posts';
 import { useSeenPosts } from '@/lib/useSeenPosts';
 import { colors } from '@/lib/theme';
@@ -31,7 +32,8 @@ export function PostList({
 	/** the list's state when the screen needs it too (adding new posts) */
 	list?: ReturnType<typeof usePaged<Post>>;
 }) {
-	const own = usePaged<Post>(list ? null : path, (p) => p.id);
+	const as = useActingAs();
+	const own = usePaged<Post>(list ? null : path, (p) => p.id, undefined, as);
 	const { items, setItems, loading, refreshing, error, refresh, loadMore } = list ?? own;
 	usePostSync(setItems);
 	const ref = useRef<FlatList<Post>>(null);

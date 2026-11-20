@@ -10,7 +10,9 @@ import { useSession } from './session';
 export function usePaged<T>(
 	path: string | null,
 	key: (item: T) => string | number,
-	limit?: number
+	limit?: number,
+	/** the screen's context profile: the list is read as it (X-Act-As) */
+	as?: string | null
 ) {
 	const { profileKey } = useSession();
 	const [items, setItems] = useState<T[]>([]);
@@ -30,7 +32,7 @@ export function usePaged<T>(
 			const id = ++run.current;
 			if (!quiet) setLoading(true);
 			try {
-				const page = await getPage<T>(path, null, limit);
+				const page = await getPage<T>(path, null, limit, as);
 				if (id !== run.current) return;
 				next.current = page.next_cursor;
 				setItems(page.items);
@@ -44,12 +46,12 @@ export function usePaged<T>(
 				}
 			}
 		},
-		[path, limit]
+		[path, limit, as]
 	);
 
 	// a new list (path or profile) starts out loading in the same render: an error or items left
 	// from the one before would otherwise show for a frame before the effect below runs
-	const listKey = path && profileKey ? `${profileKey} ${path}` : null;
+	const listKey = path && profileKey ? `${profileKey} ${as ?? ''} ${path}` : null;
 	const [shownKey, setShownKey] = useState(listKey);
 	if (shownKey !== listKey) {
 		setShownKey(listKey);
@@ -73,7 +75,7 @@ export function usePaged<T>(
 		busy.current = true;
 		const id = run.current;
 		try {
-			const page = await getPage<T>(path, next.current, limit);
+			const page = await getPage<T>(path, next.current, limit, as);
 			if (id !== run.current) return;
 			next.current = page.next_cursor;
 			setItems((now) => {
@@ -85,7 +87,7 @@ export function usePaged<T>(
 		} finally {
 			busy.current = false;
 		}
-	}, [path, limit]);
+	}, [path, limit, as]);
 
 	const refresh = useCallback(() => {
 		setRefreshing(true);

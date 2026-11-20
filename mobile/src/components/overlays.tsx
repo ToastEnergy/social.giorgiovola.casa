@@ -4,6 +4,7 @@ import { Alert, Dimensions, Modal, Pressable, ScrollView, View } from 'react-nat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/lib/theme';
 import { ImageViewer } from './ImageViewer';
+import { ProfileSheet, type PickerOptions } from './ProfileSheet';
 import { Button, Input, Txt } from './ui';
 
 // the overlays every screen shares, mounted once in the root layout and driven from anywhere:
@@ -36,6 +37,7 @@ type PromptOptions = {
 };
 
 type State = {
+	picker: (PickerOptions & { resolve: (username: string | null) => void }) | null;
 	menu: MenuState | null;
 	prompt: (PromptOptions & { resolve: (value: string | null) => void }) | null;
 	/** `key` is new on every open, so the viewer starts over */
@@ -43,7 +45,7 @@ type State = {
 	toast: string | null;
 };
 
-let state: State = { menu: null, prompt: null, images: null, toast: null };
+let state: State = { picker: null, menu: null, prompt: null, images: null, toast: null };
 let listener: ((state: State) => void) | null = null;
 const set = (patch: Partial<State>) => {
 	state = { ...state, ...patch };
@@ -55,6 +57,10 @@ export const showMenu = (
 	emojis?: MenuState['emojis'],
 	anchor?: MenuAnchor
 ) => set({ menu: { items: items.filter((i): i is MenuItem => !!i), emojis, anchor } });
+
+/** Asks which of the account's profiles to act as; null when dismissed. */
+export const pickProfile = (options: PickerOptions) =>
+	new Promise<string | null>((resolve) => set({ picker: { ...options, resolve } }));
 
 /** Asks for a line of text; null when cancelled. */
 export const ask = (options: PromptOptions) =>
@@ -93,7 +99,7 @@ export function Overlays() {
 			listener = null;
 		};
 	}, []);
-	const { menu, prompt, images, toast: toastText } = current;
+	const { menu, prompt, picker, images, toast: toastText } = current;
 
 	return (
 		<>
@@ -147,6 +153,17 @@ export function Overlays() {
 			</Modal>
 
 			{prompt ? <Prompt key={prompt.title} {...prompt} /> : null}
+
+			{picker ? (
+				<ProfileSheet
+					key={picker.title}
+					{...picker}
+					onClose={(username) => {
+						set({ picker: null });
+						picker.resolve(username);
+					}}
+				/>
+			) : null}
 
 			<Modal
 				visible={!!images}

@@ -11,6 +11,7 @@ import {
 import { AppState } from 'react-native';
 import { api, auth, setUnauthorizedHandler } from './api';
 import { emit, useBus } from './bus';
+import { clearAccountProfiles, loadAccountProfiles } from './profilesStore';
 import { useInboxAll } from './inboxScope';
 import { startStream, stopStream } from './realtime';
 import type { Instance, LoginResult, Me } from './types';
@@ -187,6 +188,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			sub.remove();
 			stopStream();
 		};
+	}, [profileKey]);
+
+	// the account's profiles for the pickers: another account has other ones
+	useEffect(() => clearAccountProfiles(), [token]);
+	useEffect(() => {
+		if (profileKey) loadAccountProfiles().catch(() => {});
 	}, [profileKey]);
 
 	// notes each profile used, whichever way it was switched to (the menu, a login, settings)

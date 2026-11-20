@@ -4,6 +4,7 @@
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import Heart from '@lucide/svelte/icons/heart';
 	import MessageCircle from '@lucide/svelte/icons/message-circle';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Forward from '@lucide/svelte/icons/forward';
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import Share from '@lucide/svelte/icons/share';
@@ -17,7 +18,17 @@
 	import { page } from '$app/state';
 	import { goto, invalidate } from '$app/navigation';
 	import { afterPageChange, goBack, overlayEntry } from '#lib/history.svelte.js';
-	import { api, allPages, ApiError, errorOf, messageOf, type Page } from '#lib/api.js';
+	import {
+		ACT_AS_HEADER,
+		api,
+		allPages,
+		ApiError,
+		errorOf,
+		messageOf,
+		type Page
+	} from '#lib/api.js';
+	import { actingAs, myProfiles, withAs } from '#lib/actingAs.svelte.js';
+	import ProfilePicker from './ProfilePicker.svelte';
 	import Likes from './Likes.svelte';
 	import Avatar from './Avatar.svelte';
 	import LocalTime from './LocalTime.svelte';
@@ -90,6 +101,22 @@
 	let canNativeShare = $state(false);
 	let quoting = $state(false);
 	let regiorgBusy = false;
+
+	// the profile whose state (liked, regiorged) and actions the page shows: the context profile
+	// of the page (?as=) or else the one in use. null: the profile in use acts, no header
+	const contextName = $derived(actingAs()?.username ?? null);
+	const me = $derived(contextName ?? $user?.username);
+	// with several profiles, a like or regiorgio can be made as any of them
+	const profiles = $derived(myProfiles());
+	const multi = $derived(!!$user && profiles.length > 1);
+	type Viewer = { username: string; liked: boolean; regiorged: boolean };
+	let asPicker: 'like' | 'regiorg' | null = $state(null);
+	let viewers: Viewer[] | null = $state(null);
+
+	const actHeaders = (as: string | null) => ({
+		'Content-Type': 'application/json',
+		...(as ? { [ACT_AS_HEADER]: as } : {})
+	});
 
 	// writable derived: follow the post, overwritten by the buttons and realtime counts
 	let liked = $derived(post.liked ?? false);
@@ -188,10 +215,7 @@
 	let isPinned = $derived(post.pinned ?? false);
 	// only from the profile, where the pinned state is shown
 	const canPin = $derived(
-		!!$user &&
-			$user.username === post.user.username &&
-			!post.reply_to &&
-			page.route.id === '/@[username]'
+		!!$user && me === post.user.username && !post.reply_to && page.route.id === '/@[username]'
 	);
 
 	async function togglePin() {
@@ -233,32 +257,40 @@
 	// only the latest like request's answer counts, older ones may arrive after it
 	let likeSeq = 0;
 
-	async function setLike(target: boolean) {
+	/**
+	 * Likes or unlikes as `as` (a profile of the account, null: the profile in use). The state shown
+	 * is the context profile's: for any other profile only the count follows.
+	 */
+	async function setLike(target: boolean, as: string | null = contextName) {
 		if (!$user) return goto('/login');
-		if (target === liked) return;
+		const shown = as === contextName;
+		if (shown && target === liked) return;
 		// optimistic: the heart and count change right away, and go back if it fails
 		const before = { liked, likes };
-		liked = target;
-		likes = Math.max(0, likes + (target ? 1 : -1));
-		if (target) likePop++;
+		if (shown) {
+			liked = target;
+			likes = Math.max(0, likes + (target ? 1 : -1));
+			if (target) likePop++;
+		}
 		const seq = ++likeSeq;
 		try {
 			// the wanted state, not a toggle: repeated taps can't flip it the wrong way
 			const res = await fetch(`/api/v1/posts/${post.id}/like`, {
 				method: target ? 'PUT' : 'DELETE',
-				headers: { 'Content-Type': 'application/json' }
+				headers: actHeaders(as)
 			});
 			if (seq !== likeSeq) return;
 			if (res.ok) {
 				const data = await res.json();
-				liked = data.liked;
+				if (shown) liked = data.liked;
 				// absolute count, so it doesn't double up with the realtime `counts` event
 				likes = data.likes;
 			} else {
-				({ liked, likes } = before);
+				if (shown) ({ liked, likes } = before);
+				else showToast((await errorOf(res)).message || 'Could not like');
 			}
 		} catch {
-			if (seq === likeSeq) ({ liked, likes } = before);
+			if (seq === likeSeq && shown) ({ liked, likes } = before);
 		}
 	}
 
@@ -325,7 +357,7 @@
 		// already on it: navigating again would only pile a copy onto the history
 		if (isPostOpen || decodeURIComponent(page.url.pathname).toLowerCase() === href.toLowerCase())
 			return;
-		goto(href);
+		goto(withAs(href));
 	}
 
 	onMount(() => () => {
@@ -333,34 +365,127 @@
 		clearTimeout(disarm);
 	});
 
-	async function toggleRegiorg() {
+	/** Regiorgs (or undoes it) as `as`; like setLike, the button shows the context profile's. */
+	async function setRegiorg(target: boolean, as: string | null = contextName) {
 		menuOpen = false;
 		if (regiorgBusy) return;
 		regiorgBusy = true;
+		const shown = as === contextName;
 		// optimistic: the button and count change right away, and go back if it fails
 		const before = { regiorged, regiorgs };
-		regiorged = !before.regiorged;
-		regiorgs = Math.max(0, before.regiorgs + (regiorged ? 1 : -1));
+		if (shown) {
+			regiorged = target;
+			regiorgs = Math.max(0, before.regiorgs + (target ? 1 : -1));
+		}
 		try {
 			const res = await fetch(`/api/v1/posts/${post.id}/regiorg`, {
-				method: regiorged ? 'PUT' : 'DELETE',
-				headers: { 'Content-Type': 'application/json' }
+				method: target ? 'PUT' : 'DELETE',
+				headers: actHeaders(as)
 			});
 			if (res.ok) {
 				const data = await res.json();
-				regiorged = data.regiorged;
+				if (shown) regiorged = data.regiorged;
 				// absolute count, like for likes
 				regiorgs = data.regiorgs;
 			} else {
-				({ regiorged, regiorgs } = before);
+				if (shown) ({ regiorged, regiorgs } = before);
 				if (res.status !== 401) alert((await errorOf(res)).message || 'Could not regiorgio');
 			}
 		} catch {
-			({ regiorged, regiorgs } = before);
+			if (shown) ({ regiorged, regiorgs } = before);
 		} finally {
 			regiorgBusy = false;
 		}
 	}
+
+	// ---- like / regiorgio as another of your profiles: a list of the account's profiles with what
+	// each already did (GET /posts/:id/viewers), opened by a right click, a chevron or a long press
+	async function showAsPicker(kind: 'like' | 'regiorg') {
+		if (!multi || asPicker === kind) return;
+		menuOpen = false;
+		asPicker = kind;
+		viewers = null;
+		try {
+			const res = await api<{ items: Viewer[] }>(`posts/${post.id}/viewers`, { as: null });
+			if (asPicker === kind) viewers = res.items;
+		} catch (e) {
+			if (asPicker !== kind) return;
+			asPicker = null;
+			showToast(messageOf(e, 'Could not load your profiles'));
+		}
+	}
+
+	const asEntries = $derived(
+		profiles.map((p) => {
+			const v = viewers?.find((x) => x.username === p.username);
+			const done = asPicker === 'like' ? v?.liked : v?.regiorged;
+			return {
+				...p,
+				current: p.username === me,
+				note: done ? (asPicker === 'like' ? 'Liked' : 'Regiorged') : undefined
+			};
+		})
+	);
+
+	function pickAs(username: string) {
+		const kind = asPicker;
+		const v = viewers?.find((x) => x.username === username);
+		asPicker = null;
+		if (!kind || !v) return;
+		// the profile in use acts without a header
+		const as = username === $user?.username ? null : username;
+		if (kind === 'like') setLike(!v.liked, as);
+		else setRegiorg(!v.regiorged, as);
+	}
+
+	// a long press on touch screens (and the right click or long press browsers turn into a
+	// contextmenu event) opens the list; the tap that ends a long press must not also toggle
+	const LONG_PRESS_MS = 500;
+	const LONG_PRESS_SLOP = 10;
+	let pressTimer: ReturnType<typeof setTimeout> | undefined;
+	let pressFrom: { x: number; y: number } | null = null;
+	let longPressed = false;
+
+	function pressStart(e: PointerEvent, kind: 'like' | 'regiorg') {
+		if (!multi || e.pointerType === 'mouse') return;
+		longPressed = false;
+		pressFrom = { x: e.clientX, y: e.clientY };
+		clearTimeout(pressTimer);
+		pressTimer = setTimeout(() => {
+			longPressed = true;
+			navigator.vibrate?.(12);
+			showAsPicker(kind);
+		}, LONG_PRESS_MS);
+	}
+
+	function pressMove(e: PointerEvent) {
+		if (pressFrom && Math.hypot(e.clientX - pressFrom.x, e.clientY - pressFrom.y) > LONG_PRESS_SLOP)
+			clearTimeout(pressTimer);
+	}
+
+	function pressEnd() {
+		clearTimeout(pressTimer);
+		pressFrom = null;
+		// the click that follows the release
+		if (longPressed) setTimeout(() => (longPressed = false), 400);
+	}
+
+	function contextMenu(e: MouseEvent, kind: 'like' | 'regiorg') {
+		if (!multi) return;
+		e.preventDefault();
+		e.stopPropagation();
+		longPressed = true;
+		showAsPicker(kind);
+	}
+
+	/** false for the click that ends a long press */
+	function pressClicked() {
+		const swallow = longPressed;
+		longPressed = false;
+		return !swallow;
+	}
+
+	onMount(() => () => clearTimeout(pressTimer));
 
 	function openRegiorgMenu() {
 		if (!$user) return goto('/login');
@@ -384,6 +509,7 @@
 		menuOpen = false;
 		shareOpen = false;
 		quoting = false;
+		asPicker = null;
 	});
 
 	// back closes the dialogs
@@ -555,7 +681,7 @@
 	<div class="flex h-full items-center justify-center">
 		<div class={dialogContentClass} data-modal-panel>
 			<p>
-				Are you sure you want to delete this post{$user && $user.username !== post.user.username
+				Are you sure you want to delete this post{$user && me !== post.user.username
 					? ' as a moderator'
 					: ''}?
 			</p>
@@ -665,7 +791,7 @@
 		{#if post.regiorged_by}
 			<a
 				class="ml-0.75 flex items-center gap-[5px] text-[0.85em] text-muted"
-				href={'/@' + post.regiorged_by.username}
+				href={withAs('/@' + post.regiorged_by.username)}
 			>
 				<Repeat size={14} class="text-muted" />
 				{post.regiorged_by.username === $user?.username ? 'You' : post.regiorged_by.name}
@@ -677,13 +803,13 @@
 			</a>
 		{/if}
 		{#if post.reply_to && (showReplyTo || post.regiorged_by)}
-			<a class="ml-0.75" href={'/@' + post.reply_to.username + '/' + post.reply_to.id}
+			<a class="ml-0.75" href={withAs('/@' + post.reply_to.username + '/' + post.reply_to.id)}
 				>Replying to @{post.reply_to.username}</a
 			>
 		{/if}
 		<div
 			bind:this={postElement}
-			class="relative flex cursor-pointer touch-manipulation gap-2.5 rounded-[5px] p-2.5 [-webkit-tap-highlight-color:transparent] {armed
+			class="group/post relative flex cursor-pointer touch-manipulation gap-2.5 rounded-[5px] p-2.5 [-webkit-tap-highlight-color:transparent] {armed
 				? 'select-none [-webkit-touch-callout:none]'
 				: ''} {showThread
 				? 'before:absolute before:top-[27.5px] before:-left-5 before:block before:h-1.5 before:w-[21px] before:rounded-bl-[10px] before:border-b before:border-l before:border-accent'
@@ -726,7 +852,9 @@
 				>
 			{/each}
 			<div class="flex self-start" use:profileHover={post.user.username}>
-				<Avatar size={45} user={post.user} />
+				<a class="flex" href={withAs('/@' + post.user.username)}>
+					<Avatar size={45} user={post.user} clickable={false} />
+				</a>
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-0.75">
 				<div class="flex flex-wrap items-center justify-between gap-[5px]">
@@ -735,7 +863,7 @@
 					<p class="min-w-0 font-extrabold wrap-anywhere">
 						<a
 							class="text-inherit"
-							href={'/@' + post.user.username}
+							href={withAs('/@' + post.user.username)}
 							use:profileHover={post.user.username}
 							>{post.user.name}
 							<span class="font-medium opacity-80">@{post.user.username}</span></a
@@ -760,10 +888,10 @@
 										rel="noopener noreferrer nofollow">{piece.url}</a
 									>{:else if piece.type === 'hashtag'}<a
 										onclick={stop}
-										href={hashtagHref(piece.tag)}>#{piece.tag}</a
+										href={withAs(hashtagHref(piece.tag))}>#{piece.tag}</a
 									>{:else if piece.type === 'mention'}<a
 										onclick={stop}
-										href={`/@${piece.username.toLowerCase()}`}
+										href={withAs(`/@${piece.username.toLowerCase()}`)}
 										use:profileHover={piece.username.toLowerCase()}>@{piece.username}</a
 									>{:else}{piece.text}{/if}{/each}
 						</p>
@@ -842,13 +970,18 @@
 							onclick={(e) => {
 								e.preventDefault();
 								e.stopPropagation();
-								openRegiorgMenu();
+								if (pressClicked()) openRegiorgMenu();
 							}}
-							class="group flex cursor-pointer items-center outline-none"
+							class="group flex cursor-pointer items-center outline-none select-none [-webkit-touch-callout:none]"
 							title={regiorged ? 'Regiorged' : 'Regiorgio or quote'}
 							aria-label="Regiorgio or quote"
 							aria-haspopup="menu"
 							aria-expanded={menuOpen}
+							onpointerdown={(e) => pressStart(e, 'regiorg')}
+							onpointermove={pressMove}
+							onpointerup={pressEnd}
+							onpointercancel={pressEnd}
+							oncontextmenu={(e) => contextMenu(e, 'regiorg')}
 						>
 							<Repeat
 								size={19}
@@ -873,9 +1006,19 @@
 										: ''}"
 									onclick={(e) => {
 										e.stopPropagation();
-										toggleRegiorg();
+										setRegiorg(!regiorged);
 									}}>{regiorged ? 'Undo regiorgio' : 'Regiorgio'}</button
 								>
+								{#if multi}
+									<button
+										role="menuitem"
+										class="cursor-pointer rounded-[5px] px-2.5 py-[5px] text-left outline-none hover:bg-white/5 focus-visible:bg-white/5"
+										onclick={(e) => {
+											e.stopPropagation();
+											showAsPicker('regiorg');
+										}}>Regiorgio as…</button
+									>
+								{/if}
 								<button
 									role="menuitem"
 									class="cursor-pointer rounded-[5px] px-2.5 py-[5px] text-left outline-none hover:bg-white/5 focus-visible:bg-white/5"
@@ -885,6 +1028,15 @@
 									}}>Quote</button
 								>
 							</div>
+						{/if}
+						{#if asPicker === 'regiorg'}
+							<ProfilePicker
+								title="Regiorgio as…"
+								profiles={asEntries}
+								loading={!viewers}
+								onpick={pickAs}
+								onclose={() => (asPicker = null)}
+							/>
 						{/if}
 					</div>
 					<div class="cursor-pointer hover:underline">
@@ -904,30 +1056,63 @@
 							{regiorgs + quotes}
 						</div>
 					</div>
-					<button
-						onclick={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							setLike(!liked);
-						}}
-						class="group flex cursor-pointer items-center outline-none"
-						title={liked ? 'Unlike' : 'Like'}
-						aria-label="Like"
-						aria-pressed={liked}
-					>
-						{#key likePop}
-							<span class="flex {likePop ? 'like-pop' : ''}"
-								><Heart
-									size={20}
-									class="{liked ? 'fill-danger text-danger' : 'text-foreground'} {$isMobile
-										? ''
-										: `transition-[fill,color] duration-100 ease-in-out ${
-												!liked && $user ? 'group-hover:fill-foreground' : ''
-										  }`}"
-								/></span
+					<div class="relative flex items-center">
+						<button
+							onclick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								if (pressClicked()) setLike(!liked);
+							}}
+							onpointerdown={(e) => pressStart(e, 'like')}
+							onpointermove={pressMove}
+							onpointerup={pressEnd}
+							onpointercancel={pressEnd}
+							oncontextmenu={(e) => contextMenu(e, 'like')}
+							class="group flex cursor-pointer items-center outline-none select-none [-webkit-touch-callout:none]"
+							title={liked ? 'Unlike' : 'Like'}
+							aria-label="Like"
+							aria-pressed={liked}
+						>
+							{#key likePop}
+								<span class="flex {likePop ? 'like-pop' : ''}"
+									><Heart
+										size={20}
+										class="{liked ? 'fill-danger text-danger' : 'text-foreground'} {$isMobile
+											? ''
+											: `transition-[fill,color] duration-100 ease-in-out ${
+													!liked && $user ? 'group-hover:fill-foreground' : ''
+											  }`}"
+									/></span
+								>
+							{/key}
+						</button>
+						{#if multi}
+							<!-- mouse devices: appears with the post; touch devices long press the heart -->
+							<button
+								type="button"
+								class="flex cursor-pointer items-center rounded-[5px] opacity-0 outline-none group-hover/post:opacity-60 hover:opacity-100! focus-visible:opacity-100 pointer-coarse:hidden"
+								title="Like as…"
+								aria-label="Like as another profile"
+								aria-haspopup="menu"
+								aria-expanded={asPicker === 'like'}
+								onclick={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									if (asPicker === 'like') asPicker = null;
+									else showAsPicker('like');
+								}}><ChevronDown size={14} /></button
 							>
-						{/key}
-					</button>
+						{/if}
+						{#if asPicker === 'like'}
+							<ProfilePicker
+								title="Like as…"
+								profiles={asEntries}
+								loading={!viewers}
+								onpick={pickAs}
+								onclose={() => (asPicker = null)}
+							/>
+						{/if}
+					</div>
 					<div class="cursor-pointer hover:underline">
 						<div
 							role="button"
@@ -1071,7 +1256,7 @@
 							/>
 						</button>
 					{/if}
-					{#if $user && ($user.username === post.user.username || page.data.role !== 'user')}
+					{#if $user && (me === post.user.username || page.data.role !== 'user')}
 						<button
 							class="group flex cursor-pointer items-center outline-none"
 							aria-label="Delete post"

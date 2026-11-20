@@ -11,7 +11,7 @@
 	import { api, withCursor, type Page } from '#lib/api.js';
 	import { closeStale } from '#lib/seen.js';
 	import { page } from '$app/state';
-	import { activeProfiles } from '#lib/inbox.js';
+	import { activeProfiles, withAs } from '#lib/inbox.js';
 	import { inboxUnread, setInboxUnread } from '#lib/inboxUnread.svelte.js';
 	import type { SwitcherAccount } from '#lib/types.js';
 	let { data }: { data: PageData } = $props();
@@ -76,20 +76,31 @@
 	// the profile a group is for: in the inbox of several profiles it is the recipient
 	const recipient = (group: NotificationGroup) =>
 		group.recipients?.[0]?.username ?? $user?.username;
-	const ownPost = (group: NotificationGroup) => `/@${recipient(group)}/${group.post?.id}`;
+	// opening a group of another profile shows its target as that profile, without switching: the
+	// profile in use comes first among the recipients when it is one of them
+	const asOf = (group: NotificationGroup) => {
+		const first = group.recipients?.[0]?.username;
+		return first && first !== $user?.username ? first : null;
+	};
+	const to = (group: NotificationGroup, href: string) => withAs(href, asOf(group));
+	const ownPost = (group: NotificationGroup) =>
+		to(group, `/@${recipient(group)}/${group.post?.id}`);
 	// recipients other than the profile in use: they get their avatars and a "to" line
 	const foreign = (group: NotificationGroup) =>
 		!!group.recipients?.some((r) => r.username !== $user?.username);
 	const senderPost = (group: NotificationGroup) =>
-		`/@${group.senders[0]?.username}/${group.post?.id}`;
+		to(group, `/@${group.senders[0]?.username}/${group.post?.id}`);
 
 	/** Where clicking the group goes. */
 	function target(group: NotificationGroup) {
 		const sender = group.senders[0];
 		if (group.type === 'invites') return '/settings/invites';
 		if (group.type === 'follow')
-			return group.count > 1 ? `/@${recipient(group)}/followers` : `/@${sender?.username}`;
-		if (!group.post) return `/@${sender?.username}`;
+			return to(
+				group,
+				group.count > 1 ? `/@${recipient(group)}/followers` : `/@${sender?.username}`
+			);
+		if (!group.post) return to(group, `/@${sender?.username}`);
 		if (group.type === 'like' || group.type === 'ratioed_by_you' || group.type === 'regiorg')
 			return ownPost(group);
 		return senderPost(group);
@@ -242,7 +253,8 @@
 						{@const { parts, others } = people(group)}
 						<p>
 							{#each parts as part (part.user.id)}
-								<a href={`/@${part.user.username}`}>@{part.user.username}</a>{part.sep}{' '}
+								<a href={to(group, `/@${part.user.username}`)}>@{part.user.username}</a
+								>{part.sep}{' '}
 							{/each}
 							{#if others > 0}
 								and {others}
@@ -262,7 +274,7 @@
 					{:else if group.type === 'invites'}
 						{@const n = group.invites ?? 0}
 						<p>
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							gave you {n}
 							{n === 1 ? 'invite' : 'invites'}
 						</p>
@@ -273,7 +285,7 @@
 						<!-- the post was deleted along with the notification, so this can't happen -->
 					{:else if group.type === 'quote'}
 						<p>
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							<a href={senderPost(group)}>quoted</a>
 							{group.recipients ? 'a post' : 'your post'}
 						</p>
@@ -282,25 +294,25 @@
 						{/if}
 					{:else if group.type === 'mention'}
 						<p>
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							mentioned {group.recipients ? '' : 'you '}in
 							<a href={senderPost(group)}>a post</a>
 						</p>
 					{:else if group.type === 'ratio'}
 						<p>
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							ratioed
 							<a href={senderPost(group)}>{group.recipients ? 'a post' : 'your post'}</a>
 						</p>
 					{:else if group.type === 'ratioed_by_you'}
 						<p>
 							You ratioed
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							with <a href={ownPost(group)}>your reply</a>
 						</p>
 					{:else if group.type === 'reply'}
 						<p>
-							<a href={`/@${sender.username}`}>@{sender.username}</a>
+							<a href={to(group, `/@${sender.username}`)}>@{sender.username}</a>
 							replied to
 							<a href={senderPost(group)}>{group.recipients ? 'a post' : 'your post'}</a>
 						</p>

@@ -24,3 +24,26 @@ export function activeProfiles(accounts: SwitcherAccount[]): SwitcherProfile[] {
 	const account = accounts.find((a) => a.active || a.identities.some((i) => i.active));
 	return account ? [account, ...account.identities] : [];
 }
+
+/**
+ * The profile a page is shown as (`?as=username`), when it is one of the account's other
+ * profiles: its own, an identity or one shared with it, and not the profile in use. Anything
+ * else is ignored, so a stale or edited link shows the page as the profile in use.
+ */
+export function contextProfile(
+	url: { searchParams: { get(name: string): string | null } },
+	accounts: SwitcherAccount[]
+): SwitcherProfile | null {
+	const as = url.searchParams.get('as')?.replace(/^@/, '').toLowerCase();
+	if (!as) return null;
+	return activeProfiles(accounts).find((p) => !p.active && p.username === as) ?? null;
+}
+
+/** `href` (a same-site path) in the context of the profile `as`; unchanged without one. */
+export function withAs(href: string, as: string | null | undefined): string {
+	if (!as || !href.startsWith('/') || href.startsWith('//')) return href;
+	const hash = href.indexOf('#');
+	const [path, fragment] = hash < 0 ? [href, ''] : [href.slice(0, hash), href.slice(hash)];
+	if (/[?&]as=/.test(path)) return href;
+	return `${path}${path.includes('?') ? '&' : '?'}as=${encodeURIComponent(as)}${fragment}`;
+}

@@ -1,13 +1,14 @@
 <script lang="ts">
 	import '@fontsource-variable/manrope';
 	import '../app.css';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
 	import Rail from '#lib/components/Rail.svelte';
 	import TopBar from '#lib/components/TopBar.svelte';
 	import BottomNav from '#lib/components/BottomNav.svelte';
 	import MobileHeader from '#lib/components/MobileHeader.svelte';
-	import type { LayoutData } from './$types';
+	import ActingAsBar from '#lib/components/ActingAsBar.svelte';
+	import type { LayoutProps } from './$types';
 	import { user, isMobile, notisCount, messagesCount } from '#lib/store.js';
 	import { resetInboxUnread, setInboxUnread } from '#lib/inboxUnread.svelte.js';
 	import { page } from '$app/state';
@@ -36,11 +37,10 @@
 	import { watchKeyboard } from '#lib/keyboard.svelte.js';
 	import { watchAppUpdates } from '#lib/appUpdate.js';
 
-	export let data: LayoutData;
+	let { data, children }: LayoutProps = $props();
 
 	// an open chat fills the screen: narrow screens drop the header for it (its back arrow shows
-	// the unread count instead). the layout is legacy syntax, where `$:` doesn't re-run on a
-	// navigation (`page` isn't a local variable), so these are called from the template
+	// the unread count instead)
 	const isChat = (id: string | null) =>
 		id === '/messages/[username]' || id === '/messages/groups/[id]';
 	// the messages index is wide too: conversation list beside an empty chat
@@ -51,11 +51,19 @@
 	const isSplit = (id: string | null) => id === '/' || id === '/@[username]/[post]';
 	// sizes of the centred group on mouse devices (app.css)
 	const frame = (id: string | null) => `frame frame-sidebar ${isWide(id) ? 'frame-wide' : ''}`;
-	$user = data.user;
-	$notisCount = data.notisCount;
-	// a load brings fresh per-profile counts
-	$: if (data.accounts) resetInboxUnread();
-	$messagesCount = data.messagesCount;
+	// what the stores hold comes from the layout's load: set at once (the server renders with it)
+	// and again whenever a load brings new data, such as after a switch of the profile in use
+	function applyData() {
+		$user = data.user;
+		$notisCount = data.notisCount;
+		$messagesCount = data.messagesCount;
+	}
+	applyData();
+	$effect.pre(() => {
+		applyData();
+		// a load brings fresh per-profile counts
+		if (data.accounts) untrack(resetInboxUnread);
+	});
 
 	// a post or a profile drawn as on the site (#lib/server/socialCard.ts)
 	const socialCard = () => `${PUBLIC_URL || page.url.origin}${page.url.pathname}/image.png`;
@@ -77,24 +85,28 @@
 	]);
 
 	// the stream is tied to the active profile (unread count), so reconnect when it changes
-	let mounted = false;
-	$: userId = data.user?.id ?? null;
+	let mounted = $state(false);
+	const userId = $derived(data.user?.id ?? null);
 	// signed out on a members-only instance the stream answers 401, and retrying it would only
 	// show "Reconnecting…" on the login page
-	$: if (mounted) {
-		if (userId === null && data.membersOnly) disconnectRealtime();
-		else connectRealtime();
-	}
+	$effect(() => {
+		if (!mounted) return;
+		const stop = userId === null && data.membersOnly;
+		untrack(() => (stop ? disconnectRealtime() : connectRealtime()));
+	});
 
 	// push subscriptions belong to a session: bind this browser's one to the profile now in use
-	$: if (mounted && userId !== null) syncPush().catch(() => {});
+	$effect(() => {
+		if (mounted && userId !== null) untrack(() => syncPush().catch(() => {}));
+	});
 
 	// unread count on the installed app's icon
-	$: if (mounted && 'setAppBadge' in navigator) {
+	$effect(() => {
+		if (!mounted || !('setAppBadge' in navigator)) return;
 		if ($notisCount + $messagesCount > 0)
 			navigator.setAppBadge($notisCount + $messagesCount).catch(() => {});
 		else navigator.clearAppBadge().catch(() => {});
-	}
+	});
 
 	// unread count in the tab title too. pages set their own <title> (Svelte writes
 	// document.title), so the prefix is re-applied whenever the title changes
@@ -105,7 +117,9 @@
 		// guard: setting the title fires the observer below again
 		if (document.title !== title) document.title = title;
 	};
-	$: if (mounted) applyTitleCount($notisCount + $messagesCount);
+	$effect(() => {
+		if (mounted) applyTitleCount($notisCount + $messagesCount);
+	});
 
 	onMount(() => {
 		const titleObserver = new MutationObserver(() => applyTitleCount($notisCount + $messagesCount));
@@ -375,7 +389,12 @@
 			{#if !isWide(page.route.id)}
 				<MobileHeader />
 			{/if}
-			<slot />
+			<ActingAsBar split={isSplit(page.route.id)} />
+			<!-- a switch of the profile in use starts the page again, so nothing it kept in its own
+				state (a list, a draft) belongs to the previous profile -->
+			{#key userId}
+				{@render children()}
+			{/key}
 		</div>
 		<!-- shows itself when a page change is slow -->
 		<LoadingOverlay />

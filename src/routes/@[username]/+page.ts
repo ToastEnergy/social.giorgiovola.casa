@@ -1,6 +1,6 @@
 import type { PageLoad } from './$types';
 import type { Page } from '#lib/api.js';
-import { apiGet } from '#lib/apiLoad.js';
+import { apiGet, loadAs } from '#lib/apiLoad.js';
 import { cachedPage } from '#lib/pageCache.js';
 import type { FollowedBy, Post } from '#lib/types.js';
 
@@ -31,21 +31,29 @@ type Profile = {
 };
 
 // universal, so back and forward can show it from the cache (#lib/pageCache.ts)
-export const load = (async ({ params, fetch, depends, url }) => {
+export const load = (async ({ params, fetch, depends, url, parent }) => {
 	depends('app:posts');
-	return cachedPage(url, () => loadProfile(params.username, url, fetch));
+	// ?as=: followed and liked as another of your profiles. the cache is keyed by url
+	return cachedPage(url, async () =>
+		loadProfile(params.username, url, fetch, await loadAs(url, parent))
+	);
 }) satisfies PageLoad;
 
-async function loadProfile(username: string, url: URL, fetch: typeof globalThis.fetch) {
+async function loadProfile(
+	username: string,
+	url: URL,
+	fetch: typeof globalThis.fetch,
+	as: string | null
+) {
 	const name = encodeURIComponent(username.toLowerCase());
 	const asked = url.searchParams.get('tab');
 	const tab = asked === 'replies' || asked === 'regiorgs' ? asked : 'posts';
 	const source = `/api/v1/users/${name}/posts?tab=${tab}&limit=${PAGE_SIZE}`;
 	const [profile, page, pinned] = await Promise.all([
-		apiGet<Profile>(fetch, `/users/${name}`, { login: false }),
-		apiGet<Page<Post>>(fetch, source.slice('/api/v1'.length), { login: false }),
+		apiGet<Profile>(fetch, `/users/${name}`, { login: false, as }),
+		apiGet<Page<Post>>(fetch, source.slice('/api/v1'.length), { login: false, as }),
 		tab === 'posts'
-			? apiGet<{ post: Post | null }>(fetch, `/users/${name}/pinned`, { login: false })
+			? apiGet<{ post: Post | null }>(fetch, `/users/${name}/pinned`, { login: false, as })
 			: { post: null }
 	]);
 	return {

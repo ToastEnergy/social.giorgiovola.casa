@@ -70,11 +70,12 @@
 	async function switchProfile(username: string) {
 		switching = true;
 		try {
-			await switchTo(username, page.url.pathname);
+			await switchTo(username);
 		} catch (e) {
-			switching = false;
 			alert(e instanceof Error ? e.message : "Couldn't switch profile");
 		}
+		switching = false;
+		open = false;
 	}
 
 	const accounts = () => (page.data.accounts ?? []) as SwitcherAccount[];

@@ -248,7 +248,7 @@ export function tokenError(locals: App.Locals): Response | null {
  * Returns the error response for a profile the account can't use.
  */
 async function actAs(locals: App.Locals, raw: string | null): Promise<Response | null> {
-	const name = raw?.trim().replace(/^@/, '');
+	const name = raw?.trim().replace(/^@/, '').toLowerCase();
 	if (!name || locals.accountId === null || !locals.user) return null;
 	const accountId = locals.accountId;
 	const refused = () => apiError(403, `Can't act as @${name.slice(0, 64)}`);

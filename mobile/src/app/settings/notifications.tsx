@@ -2,7 +2,9 @@ import { Stack } from 'expo-router/stack';
 import { ChevronRight } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Choice } from '@/components/Choice';
 import { Button, Hint, Notice, Section, Txt } from '@/components/ui';
+import { setInboxAll, useInboxAll } from '@/lib/inboxScope';
 import {
 	channels,
 	importance,
@@ -29,6 +31,7 @@ const row = {
 /** Push on this phone: on or off for every account here, the permission and Android's channels. */
 export default function NotificationSettings() {
 	const { accounts } = useSession();
+	const inboxAll = useInboxAll();
 	const { enabled, token, unavailable } = usePushState();
 	const [permission, setPermission] = useState<Permission | null>(null);
 	// whether each channel is on in Android's settings
@@ -61,6 +64,24 @@ export default function NotificationSettings() {
 		refresh().catch(() => {});
 	}
 
+	// which profiles' notifications the notifications tab and its badge cover: a setting of this phone
+	const inboxSection = (
+		<Section title="Notifications from">
+			<Choice
+				label="All my profiles"
+				hint="One inbox for your account and its identities, with a filter for each."
+				selected={inboxAll}
+				onPress={() => setInboxAll(true)}
+			/>
+			<Choice
+				label="Only the profile in use"
+				hint="The tab and its badge follow the profile you switch to."
+				selected={!inboxAll}
+				onPress={() => setInboxAll(false)}
+			/>
+		</Section>
+	);
+
 	if (!pushSupported)
 		return (
 			<ScrollView contentContainerStyle={{ padding: 20 }}>
@@ -73,6 +94,7 @@ export default function NotificationSettings() {
 						Unread counts and new messages still arrive live while the app is open.
 					</Hint>
 				</Section>
+				{inboxSection}
 			</ScrollView>
 		);
 
@@ -171,6 +193,8 @@ export default function NotificationSettings() {
 					/>
 				</Section>
 			) : null}
+
+			{inboxSection}
 
 			<Section title="Conversations">
 				<Hint>

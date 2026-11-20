@@ -7,6 +7,7 @@ import { refreshColors } from '@/components/PostList';
 import { Button, ErrorBanner, Field, Hint, Loading, Section, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { expiresIn, linkOf } from '@/lib/invites';
+import { seeInvites } from '@/lib/seen';
 import { useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import type { Invite, InviteBalance, Page } from '@/lib/types';
@@ -44,6 +45,7 @@ export default function InviteSettings() {
 	}, []);
 	useEffect(() => {
 		load();
+		seeInvites();
 	}, [load]);
 
 	// the counts in /me (the settings list) follow

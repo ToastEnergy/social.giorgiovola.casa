@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import { Avatar, ListState, TabRow, Txt, UserRow } from '@/components/ui';
+import { seeEngagement } from '@/lib/seen';
 import { colors } from '@/lib/theme';
 import type { User } from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
@@ -17,6 +18,10 @@ export default function PostPeople() {
 	const list = usePaged<User | Quote>(`posts/${id}/${tab}`, (item) =>
 		'id' in item ? item.id : item.username
 	);
+	// the likes and regiorgs of the post were looked at
+	useEffect(() => {
+		if (id) seeEngagement(Number(id));
+	}, [id, tab]);
 	return (
 		<View style={{ flex: 1 }}>
 			<Stack.Screen options={{ title: 'Post activity' }} />

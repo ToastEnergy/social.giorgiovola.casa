@@ -9,15 +9,18 @@ import {
 	TrendingUp,
 	UserPlus
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { refreshColors } from '@/components/PostList';
 import { Avatar, Button, ListState, Txt } from '@/components/ui';
+import { useAccountProfiles } from '@/lib/accountProfiles';
 import { api } from '@/lib/api';
 import { count, timeAgo } from '@/lib/format';
+import { useInboxAll } from '@/lib/inboxScope';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
-import type { NotificationGroup, NotificationType } from '@/lib/types';
+import { clearTray } from '@/lib/tray';
+import type { NotificationGroup, NotificationType, SwitcherProfile } from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
 
 const verbs: Record<NotificationType, string> = {
@@ -32,8 +35,19 @@ const verbs: Record<NotificationType, string> = {
 	invites: 'gave you invites'
 };
 
+// a post that reached several profiles is one group of the inbox of all of them, so it can't say
+// 'you' (like the website)
+const merged: Partial<Record<NotificationType, string>> = {
+	reply: 'replied to a post',
+	mention: 'mentioned you in a post',
+	quote: 'quoted a post',
+	ratio: 'ratioed a post'
+};
+
 /** What follows the senders' names: an invites notification says how many. */
 function verbOf(group: NotificationGroup) {
+	const generic = group.recipients && merged[group.type];
+	if (generic) return generic;
 	if (group.type !== 'invites' || !group.invites) return verbs[group.type] ?? '';
 	return `gave you ${count(group.invites)} ${group.invites === 1 ? 'invite' : 'invites'}`;
 }
@@ -62,18 +76,98 @@ function TypeIcon({ type }: { type: NotificationType }) {
 
 /** "Alice, Bob and 3 others" */
 function people(group: NotificationGroup) {
-	const shown = group.senders.slice(0, group.count <= 3 ? 3 : 2).map((u) => u.name);
-	const others = group.count - shown.length;
+	// likes, regiorgs and follows are a row per person; a post group reaching several profiles has
+	// a row per profile, all from its one author
+	const people = ['like', 'regiorg', 'follow'].includes(group.type)
+		? group.count
+		: group.senders.length;
+	const shown = group.senders.slice(0, people <= 3 ? 3 : 2).map((u) => u.name);
+	const others = people - shown.length;
 	if (others > 0)
 		return `${shown.join(', ')} and ${count(others)} ${others === 1 ? 'other' : 'others'}`;
 	if (shown.length <= 1) return shown[0] ?? 'Someone';
 	return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
 }
 
+/** The profile a group is for: in the inbox of several profiles that is its recipient. */
+function recipientOf(group: NotificationGroup, own?: string) {
+	return group.recipients?.[0]?.username ?? own;
+}
+
+function FilterChip({
+	label,
+	unread,
+	active,
+	avatar,
+	onPress
+}: {
+	label: string;
+	unread: number;
+	active: boolean;
+	avatar?: SwitcherProfile;
+	onPress: () => void;
+}) {
+	return (
+		<Pressable
+			onPress={onPress}
+			accessibilityRole="tab"
+			accessibilityState={{ selected: active }}
+			style={{
+				flexDirection: 'row',
+				alignItems: 'center',
+				gap: 6,
+				paddingHorizontal: 10,
+				paddingVertical: 10,
+				borderBottomWidth: 2,
+				borderBottomColor: active ? colors.accent : 'transparent',
+				opacity: active ? 1 : 0.6
+			}}
+		>
+			{avatar ? <Avatar user={avatar} size={20} /> : null}
+			<Txt size={14} numberOfLines={1}>
+				{label}
+			</Txt>
+			{unread > 0 ? (
+				<Txt size={12} accent bold>
+					{unread > 99 ? '99+' : unread}
+				</Txt>
+			) : null}
+		</Pressable>
+	);
+}
+
 export default function Notifications() {
-	const { me, unread, setUnread } = useSession();
-	const list = usePaged<NotificationGroup>('notifications/grouped', (g) => g.key);
+	const { me, unread, setUnread, profileCounts } = useSession();
+	const inboxAll = useInboxAll();
+	const profiles = useAccountProfiles();
+	// `all` or a profile of the account; the setting "only the profile in use" has no filter
+	const [filter, setFilter] = useState('all');
+	const several = inboxAll && profiles.length > 1;
+	const scope = !inboxAll
+		? null
+		: several && profiles.some((p) => p.username === filter)
+		? filter
+		: 'all';
+	const scopeQuery = scope ? `?profiles=${encodeURIComponent(scope)}` : '';
+	const list = usePaged<NotificationGroup>(`notifications/grouped${scopeQuery}`, (g) => g.key);
 	const { items, setItems, reload } = list;
+	// each profile's unread count, fetched fresh whenever the badge's total changes (a frame, a read,
+	// the tab opened): realtime frames alone can miss a read made elsewhere
+	const [counts, setCounts] = useState<Record<string, number>>({});
+	const refreshCounts = useCallback(() => {
+		if (!inboxAll) return;
+		api<{ profiles: { username: string; notifications: number }[] }>(
+			'notifications/unread?profiles=all'
+		)
+			.then((res) =>
+				setCounts(Object.fromEntries(res.profiles.map((p) => [p.username, p.notifications])))
+			)
+			.catch(() => {});
+	}, [inboxAll]);
+	useEffect(refreshCounts, [refreshCounts, unread.notifications, profileCounts]);
+	const countOf = (p: SwitcherProfile) => counts[p.username] ?? p.unread;
+	// the badge's total, which the session keeps up to date
+	const allUnread = unread.notifications;
 
 	// reloaded when the tab is opened again and when the unread count grows
 	const last = useRef(unread.notifications);
@@ -84,16 +178,24 @@ export default function Notifications() {
 	const first = useRef(true);
 	useFocusEffect(
 		useCallback(() => {
-			if (!first.current) reload(true);
+			if (!first.current) {
+				reload(true);
+				refreshCounts();
+			}
 			first.current = false;
-		}, [reload])
+		}, [reload, refreshCounts])
 	);
 
 	function open(group: NotificationGroup) {
 		if (group.unread > 0) {
-			api(`notifications/groups/${encodeURIComponent(group.key)}/read`, { method: 'POST' }).catch(
-				() => {}
-			);
+			api(`notifications/groups/${encodeURIComponent(group.key)}/read${scopeQuery}`, {
+				method: 'POST'
+			})
+				.then(() => {
+					clearTray('read');
+					refreshCounts();
+				})
+				.catch(() => {});
 			setUnread({ notifications: Math.max(0, unread.notifications - group.unread) });
 			const now = new Date().toISOString();
 			setItems((groups) =>
@@ -104,7 +206,9 @@ export default function Notifications() {
 		if (group.type === 'invites') router.push('/settings/invites');
 		else if (group.type === 'follow')
 			router.push(
-				group.count > 1 ? `/user/${me?.user.username}/followers` : `/user/${sender?.username}`
+				group.count > 1
+					? `/user/${recipientOf(group, me?.user.username)}/followers`
+					: `/user/${sender?.username}`
 			);
 		else if (group.post) router.push(`/post/${group.post.id}`);
 		else if (sender) router.push(`/user/${sender.username}`);
@@ -112,13 +216,17 @@ export default function Notifications() {
 
 	async function readAll() {
 		try {
-			await api('notifications/read', { method: 'POST' });
+			await api(`notifications/read${scopeQuery}`, { method: 'POST' });
 		} catch {
 			return;
 		}
-		setUnread({ notifications: 0 });
+		// one profile: only its share of the badge goes
+		const own = scope && scope !== 'all' ? profiles.find((p) => p.username === scope) : null;
+		setUnread({ notifications: own ? Math.max(0, unread.notifications - countOf(own)) : 0 });
 		const now = new Date().toISOString();
 		setItems((groups) => groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now })));
+		clearTray('read');
+		refreshCounts();
 	}
 
 	return (
@@ -126,11 +234,38 @@ export default function Notifications() {
 			data={items}
 			keyExtractor={(group) => group.key}
 			ListHeaderComponent={
-				items.some((g) => !g.read_at) ? (
-					<View style={{ paddingHorizontal: 20, paddingBottom: 10, alignItems: 'flex-start' }}>
-						<Button size="sm" label="Mark all as read" onPress={readAll} />
-					</View>
-				) : undefined
+				<View>
+					{several ? (
+						<ScrollView
+							horizontal
+							showsHorizontalScrollIndicator={false}
+							accessibilityLabel="Notifications of"
+							style={{ borderBottomWidth: 1, borderBottomColor: colors.line, marginBottom: 10 }}
+						>
+							<FilterChip
+								label="All"
+								unread={allUnread}
+								active={scope === 'all'}
+								onPress={() => setFilter('all')}
+							/>
+							{profiles.map((p) => (
+								<FilterChip
+									key={p.username}
+									label={`@${p.username}`}
+									avatar={p}
+									unread={countOf(p)}
+									active={scope === p.username}
+									onPress={() => setFilter(p.username)}
+								/>
+							))}
+						</ScrollView>
+					) : null}
+					{items.some((g) => !g.read_at) ? (
+						<View style={{ paddingHorizontal: 20, paddingBottom: 10, alignItems: 'flex-start' }}>
+							<Button size="sm" label="Mark all as read" onPress={readAll} />
+						</View>
+					) : null}
+				</View>
 			}
 			ListEmptyComponent={
 				<ListState loading={list.loading} error={list.error} empty="No notifications yet." />
@@ -140,53 +275,71 @@ export default function Notifications() {
 			refreshControl={
 				<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} {...refreshColors} />
 			}
-			renderItem={({ item }) => (
-				<Pressable
-					onPress={() => open(item)}
-					style={({ pressed }) => ({
-						flexDirection: 'row',
-						gap: 10,
-						paddingVertical: 12,
-						paddingHorizontal: 20,
-						borderLeftWidth: 3,
-						borderLeftColor: item.read_at ? 'transparent' : colors.accent,
-						backgroundColor: pressed ? colors.hover : 'transparent'
-					})}
-				>
-					<View style={{ paddingTop: 4 }}>
-						<TypeIcon type={item.type} />
-					</View>
-					<View style={{ flex: 1, gap: 5 }}>
-						<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-							{item.senders.map((sender, index) => (
-								<View key={sender.username} style={{ marginLeft: index ? -8 : 0 }}>
-									<Avatar user={sender} size={28} />
-								</View>
-							))}
-							<View style={{ flex: 1 }} />
-							<Txt size={13} muted>
-								{timeAgo(item.created_at)}
-							</Txt>
+			renderItem={({ item }) => {
+				// recipients other than the profile in use get their avatars and a "to" line
+				const foreign = item.recipients?.some((r) => r.username !== me?.user.username);
+				return (
+					<Pressable
+						onPress={() => open(item)}
+						style={({ pressed }) => ({
+							flexDirection: 'row',
+							gap: 10,
+							paddingVertical: 12,
+							paddingHorizontal: 20,
+							borderLeftWidth: 3,
+							borderLeftColor: item.read_at ? 'transparent' : colors.accent,
+							backgroundColor: pressed ? colors.hover : 'transparent'
+						})}
+					>
+						<View style={{ paddingTop: 4 }}>
+							<TypeIcon type={item.type} />
 						</View>
-						<Txt size={15}>
-							<Txt bold size={15}>
-								{people(item)}
-							</Txt>{' '}
-							{verbOf(item)}
-						</Txt>
-						{item.type === 'invites' ? (
-							<Txt size={14} muted>
-								Invite someone to join
+						<View style={{ flex: 1, gap: 5 }}>
+							<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+								{item.senders.map((sender, index) => (
+									<View key={sender.username} style={{ marginLeft: index ? -8 : 0 }}>
+										<Avatar user={sender} size={28} />
+									</View>
+								))}
+								<View style={{ flex: 1 }} />
+								<Txt size={13} muted>
+									{timeAgo(item.created_at)}
+								</Txt>
+							</View>
+							<Txt size={15}>
+								<Txt bold size={15}>
+									{people(item)}
+								</Txt>{' '}
+								{verbOf(item)}
 							</Txt>
-						) : null}
-						{item.post?.content ? (
-							<Txt size={14} muted numberOfLines={2}>
-								{item.post.content}
-							</Txt>
-						) : null}
-					</View>
-				</Pressable>
-			)}
+							{item.type === 'invites' ? (
+								<Txt size={14} muted>
+									Invite someone to join
+								</Txt>
+							) : null}
+							{item.post?.content ? (
+								<Txt size={14} muted numberOfLines={2}>
+									{item.post.content}
+								</Txt>
+							) : null}
+							{item.recipients && foreign ? (
+								<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+									<View style={{ flexDirection: 'row' }}>
+										{item.recipients.slice(0, 3).map((r, index) => (
+											<View key={r.username} style={{ marginLeft: index ? -6 : 0 }}>
+												<Avatar user={r} size={18} />
+											</View>
+										))}
+									</View>
+									<Txt size={13} muted numberOfLines={1} style={{ flex: 1 }}>
+										to {item.recipients.map((r) => `@${r.username}`).join(', ')}
+									</Txt>
+								</View>
+							) : null}
+						</View>
+					</Pressable>
+				);
+			}}
 		/>
 	);
 }

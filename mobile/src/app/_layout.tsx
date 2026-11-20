@@ -17,6 +17,7 @@ import { PostingStatus } from '@/components/PostingStatus';
 import { Button, Txt } from '@/components/ui';
 import { NowPlayingOverlay } from '@/components/voice';
 import { PushNotifications } from '@/lib/push';
+import { TrayCleaner } from '@/lib/tray';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors, fonts } from '@/lib/theme';
 import { VoicePlayerHost } from '@/lib/voicePlayer';
@@ -131,6 +132,7 @@ export default function RootLayout() {
 						<PostingStatus />
 						<Overlays />
 						<PushNotifications />
+						<TrayCleaner />
 						<AppUpdate />
 					</SessionProvider>
 				</ThemeProvider>

@@ -11,6 +11,7 @@ import {
 import { AppState } from 'react-native';
 import { api, auth, setUnauthorizedHandler } from './api';
 import { emit, useBus } from './bus';
+import { useInboxAll } from './inboxScope';
 import { startStream, stopStream } from './realtime';
 import type { Instance, LoginResult, Me } from './types';
 
@@ -39,7 +40,11 @@ type SessionValue = {
 	current: number;
 	/** changes whenever the profile in use does: screens reload on it */
 	profileKey: string;
+	/** `notifications` is the badge: the total over the account's profiles (or the profile in use's,
+	 * with the setting "only the profile in use") */
 	unread: { notifications: number; messages: number };
+	/** unread notifications per profile (username) of the account, live; empty until known */
+	profileCounts: Record<string, number>;
 	setUnread: (unread: Partial<SessionValue['unread']>) => void;
 	signIn: (server: string, result: LoginResult) => Promise<void>;
 	/** signs out the account in use (or the one at `index`) */
@@ -77,6 +82,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 	const [me, setMeState] = useState<Me | null>(null);
 	const [instance, setInstance] = useState<Instance | null>(null);
 	const [unread, setUnreadState] = useState({ notifications: 0, messages: 0 });
+	const inboxAll = useInboxAll();
+	const inboxAllRef = useRef(inboxAll);
+	inboxAllRef.current = inboxAll;
+	const [profileCounts, setProfileCounts] = useState<Record<string, number>>({});
+	// the total of the account's profiles is known (fetched or from an `inbox` frame): the old
+	// `notifications` frame, the profile in use's share only, is then ignored
+	const hasTotal = useRef(false);
 	const storedRef = useRef(stored);
 	storedRef.current = stored;
 	// the profile in use and the one before it, newest first
@@ -87,10 +99,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 	const setMe = useCallback((next: Me | null) => {
 		setMeState(next);
 		if (next)
-			setUnreadState({
-				notifications: next.unread.notifications,
+			setUnreadState((u) => ({
+				// the badge of all the profiles isn't the profile in use's count
+				notifications:
+					inboxAllRef.current && hasTotal.current ? u.notifications : next.unread.notifications,
 				messages: next.unread.messages + next.unread.reactions
-			});
+			}));
 	}, []);
 
 	/** makes `next` the session: its current account's token is used from now on */
@@ -226,9 +240,45 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 		[apply, setMe]
 	);
 
-	useBus('notifications', (e: { count: number }) =>
-		setUnreadState((u) => ({ ...u, notifications: e.count }))
-	);
+	// the badge and the per-profile counts: the total of the account's profiles at first, then its
+	// `inbox` frames; `notifications` (the profile in use) only until a total is known
+	const username = me?.user.username;
+	useEffect(() => {
+		hasTotal.current = false;
+		setProfileCounts({});
+		if (!profileKey) return;
+		let stale = false;
+		api<{
+			notifications: number;
+			total?: number;
+			profiles?: { username: string; notifications: number }[];
+		}>(inboxAll ? 'notifications/unread?profiles=all' : 'notifications/unread')
+			.then((res) => {
+				if (stale) return;
+				const total = inboxAll && typeof res.total === 'number' ? res.total : null;
+				if (total !== null) hasTotal.current = true;
+				setUnreadState((u) => ({ ...u, notifications: total ?? res.notifications }));
+				if (res.profiles)
+					setProfileCounts(
+						Object.fromEntries(res.profiles.map((p) => [p.username, p.notifications]))
+					);
+			})
+			.catch(() => {});
+		return () => {
+			stale = true;
+		};
+	}, [profileKey, inboxAll]);
+	useBus('inbox', (e: { profile: string; count: number; total: number }) => {
+		setProfileCounts((now) => ({ ...now, [e.profile]: e.count }));
+		if (inboxAllRef.current) {
+			hasTotal.current = true;
+			setUnreadState((u) => ({ ...u, notifications: e.total }));
+		} else if (e.profile === username) setUnreadState((u) => ({ ...u, notifications: e.count }));
+	});
+	useBus('notifications', (e: { count: number }) => {
+		if (inboxAllRef.current && hasTotal.current) return;
+		setUnreadState((u) => ({ ...u, notifications: e.count }));
+	});
 	useBus('messages_unread', (e: { count: number; reactions?: number }) =>
 		setUnreadState((u) => ({ ...u, messages: e.count + (e.reactions ?? 0) }))
 	);
@@ -243,6 +293,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			current: stored.current,
 			profileKey,
 			unread,
+			profileCounts,
 			setUnread: (next) => setUnreadState((u) => ({ ...u, ...next })),
 			signIn: async (server, result) => {
 				const now = storedRef.current;
@@ -283,7 +334,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 			},
 			setMe
 		}),
-		[ready, stored, me, instance, profileKey, unread, apply, setMe, actAs, backTarget]
+		[
+			ready,
+			stored,
+			me,
+			instance,
+			profileKey,
+			unread,
+			profileCounts,
+			apply,
+			setMe,
+			actAs,
+			backTarget
+		]
 	);
 
 	return <Context.Provider value={value}>{children}</Context.Provider>;

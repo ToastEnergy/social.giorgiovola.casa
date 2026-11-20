@@ -2,6 +2,7 @@ import { useScrollToTop } from 'expo-router';
 import { useRef } from 'react';
 import { FlatList, RefreshControl } from 'react-native';
 import { usePostSync } from '@/lib/posts';
+import { useSeenPosts } from '@/lib/useSeenPosts';
 import { colors } from '@/lib/theme';
 import type { Post } from '@/lib/types';
 import { usePaged } from '@/lib/usePaged';
@@ -35,6 +36,7 @@ export function PostList({
 	usePostSync(setItems);
 	const ref = useRef<FlatList<Post>>(null);
 	useScrollToTop(ref);
+	const seen = useSeenPosts();
 	return (
 		<FlatList
 			ref={ref}
@@ -43,6 +45,8 @@ export function PostList({
 			renderItem={({ item }) => <PostCard post={item} />}
 			ListHeaderComponent={header ?? undefined}
 			ListEmptyComponent={<ListState loading={loading} error={error} empty={empty} />}
+			onViewableItemsChanged={seen.onViewableItemsChanged}
+			viewabilityConfig={seen.viewabilityConfig}
 			onEndReached={loadMore}
 			onEndReachedThreshold={0.6}
 			refreshControl={

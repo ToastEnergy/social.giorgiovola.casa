@@ -9,20 +9,24 @@ import { Avatar, ListState, Txt } from '@/components/ui';
 import { api, errorMessage, getPage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
 import { usePostSync } from '@/lib/posts';
+import { seeEngagement, seePost } from '@/lib/seen';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Page, Post } from '@/lib/types';
+import { useSeenPosts } from '@/lib/useSeenPosts';
 
 /** An open post: the thread above it, the post, and its replies. */
 export default function PostScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	const { me, profileKey } = useSession();
+	const myName = me?.user.username;
 	const insets = useSafeAreaInsets();
 	const [post, setPostState] = useState<Post | null>(null);
 	const [ancestors, setAncestors] = useState<Post[]>([]);
 	const [replies, setReplies] = useState<Post[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
+	const seen = useSeenPosts();
 	const next = useRef<string | null>(null);
 	const loadingMore = useRef(false);
 
@@ -38,14 +42,17 @@ export default function PostScreen() {
 			setReplies(below.items);
 			next.current = below.next_cursor;
 			setError(null);
-			// opening a post reads the mention notification for it
-			api(`posts/${id}/seen`, { method: 'POST' }).catch(() => {});
+			// opening a post reads what is about it: the post and the thread above are on screen (the
+			// replies are reported as they scroll into view) and so are its likes and counts
+			for (const shown of [main, ...above.items])
+				if (shown.user.username !== myName) seePost(shown.id);
+			seeEngagement(main.id);
 		} catch (e) {
 			setError(errorMessage(e));
 		} finally {
 			setRefreshing(false);
 		}
-	}, [id]);
+	}, [id, myName]);
 
 	useEffect(() => {
 		load();
@@ -118,6 +125,8 @@ export default function PostScreen() {
 						<ListState loading={!error} error={error} empty="" />
 					)
 				}
+				onViewableItemsChanged={seen.onViewableItemsChanged}
+				viewabilityConfig={seen.viewabilityConfig}
 				onEndReached={loadMore}
 				onEndReachedThreshold={0.6}
 				refreshControl={

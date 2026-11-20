@@ -5,6 +5,7 @@
 	import { user } from '#lib/store.js';
 	import { isActive } from '#lib/nav.js';
 	import { leaveOverlays, motion, trackSections } from '#lib/history.svelte.js';
+	import { flushSeen } from '#lib/seen.js';
 	import { clearPageCache, endTraversal, startTraversal } from '#lib/pageCache.js';
 
 	// the app's history behaviour (#lib/history.svelte.ts), mounted once in the root layout
@@ -23,6 +24,8 @@
 
 	beforeNavigate((nav) => {
 		if (nav.shallow) return;
+		// what was looked at on this page is reported before the next one
+		flushSeen();
 		leaveOverlays(nav);
 		// a new build is out (#lib/appUpdate.ts): a clicked link loads the page in full instead of
 		// rendering it with this old code (SvelteKit's `version` docs). with overlays open,

@@ -6,6 +6,7 @@
 	import type { Action } from 'svelte/action';
 	import Avatar from './Avatar.svelte';
 	import Button from './Button.svelte';
+	import { seeFollowers } from '#lib/seen.js';
 
 	type Props = {
 		data: {
@@ -35,6 +36,11 @@
 	let error = $state<string | null>(null);
 
 	const nf = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+	// opening the followers list reads the follow notifications (the server ignores other profiles)
+	$effect(() => {
+		if ($user && data.list === 'followers') seeFollowers(data.profile.username);
+	});
+
 	const own = $derived($user?.username === data.profile.username);
 
 	const tabs = $derived([

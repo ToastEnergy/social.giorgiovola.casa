@@ -25,21 +25,3 @@ export function splitMentions(text: string): (string | { username: string })[] {
 /** Whether the text mentions `username` (lowercase, like every username). */
 export const mentions = (text: string, username: string) =>
 	[...text.matchAll(MENTION_RE)].some((m) => m[1].toLowerCase() === username);
-
-// posts already reported, so scrolling past one again doesn't repeat the request
-const reported = new Set<string>();
-
-/** Marks the current profile's mention notification for a post as read. */
-export function markMentionSeen(userId: number, postId: number) {
-	const key = `${userId}:${postId}`;
-	if (reported.has(key)) return;
-	reported.add(key);
-	fetch(`/api/v1/posts/${postId}/seen`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' }
-	})
-		.then((res) => {
-			if (!res.ok) reported.delete(key);
-		})
-		.catch(() => reported.delete(key));
-}

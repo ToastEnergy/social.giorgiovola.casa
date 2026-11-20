@@ -11,6 +11,7 @@
 	import { onRealtime } from '#lib/realtime.js';
 	import { PUBLIC_NO_REPLIES_MESSAGE } from '$app/env/public';
 	import { onMount, tick } from 'svelte';
+	import { seeEngagement } from '#lib/seen.js';
 
 	let { data }: PageProps = $props();
 
@@ -21,6 +22,11 @@
 	// after hydrating only the right one stays mounted
 	let hydrated = $state(false);
 	onMount(() => (hydrated = true));
+
+	// the page shows the post's counts: its like and regiorg notifications are read
+	$effect(() => {
+		if ($user) seeEngagement(data.post.id);
+	});
 
 	let replies: PostType[] = $state([]);
 	let loaded = $state(false);

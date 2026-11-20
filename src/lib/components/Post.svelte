@@ -29,7 +29,7 @@
 	import VoiceNotePlayer from './VoiceNotePlayer.svelte';
 	import { onMount } from 'svelte';
 	import { onRealtime } from '#lib/realtime.js';
-	import { markMentionSeen, mentions } from '#lib/mentions.js';
+	import { seePost } from '#lib/seen.js';
 	import { isRatio, ratioPercent, unwrapMarkdownImages } from '#lib/utils.js';
 	import { hashtagHref } from '#lib/hashtags.js';
 	import { richText } from '#lib/richText.js';
@@ -119,18 +119,13 @@
 	const ratio = $derived(isRatio(ratioPost));
 	const percent = $derived(ratioPercent(ratioPost));
 
-	// a mention notification is read as soon as the post it points at is actually on screen
+	// the notifications about a post are read as soon as it is actually on screen
 	let postElement: HTMLDivElement | undefined = $state();
 	let onScreen = $state(false);
 	let visibilityState: Document['visibilityState'] | undefined = $state();
 	$effect(() => {
-		if (
-			$user &&
-			onScreen &&
-			visibilityState === 'visible' &&
-			mentions(post.content, $user.username)
-		)
-			markMentionSeen($user.id, post.id);
+		if ($user && onScreen && visibilityState === 'visible' && post.user.username !== $user.username)
+			seePost(post.id);
 	});
 
 	onMount(() => {

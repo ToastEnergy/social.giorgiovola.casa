@@ -11,7 +11,8 @@ import { PUSH_CHANNEL } from './pushOutbox.js';
  * wrote the event. This is the only writer of these rows. Each function returns the rows the
  * event created or removed, for realtime (unread counts).
  *
- * - Nobody is notified of their own actions.
+ * - Nobody is notified of their own actions, nor of actions of another profile of the same account
+ *   (an identity and its owner, or two identities of one owner). Bots still notify their owner.
  * - No row is created between two profiles when either blocks the other. Rows from before the
  *   block stay.
  * - Rows are created without pushed_at: the push worker (pushOutbox.ts) sends them after commit.
@@ -56,7 +57,7 @@ const removedKey = (r: NewNotification) =>
 		AND ${inbox_removed.post_id} IS NOT DISTINCT FROM ${r.post_id} AND ${inbox_removed.type} = ${r.type})`;
 
 /**
- * Inserts the rows, skipping self-notifications, blocked pairs and rows that exist, and returns
+ * Inserts the rows, skipping self-notifications, same-account pairs, blocked pairs and rows that exist, and returns
  * those it created.
  */
 async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notification[]> {
@@ -77,6 +78,25 @@ async function insert(tx: Tx, candidates: NewNotification[]): Promise<Notificati
 				(x.blocker_id === a && x.blocked_id === b) || (x.blocker_id === b && x.blocked_id === a)
 		);
 	rows = rows.filter((r) => !isBlocked(r.user_id, r.sender_id));
+	if (rows.length === 0) return [];
+
+	// the inbox is per account, so one account's profiles would notify each other of its own
+	// actions. a bot sender is real activity (it replying to its owner), so it still notifies
+	const ids = [...new Set(rows.flatMap((r) => [r.user_id, r.sender_id]))];
+	const profiles = await tx
+		.select({
+			id: users.id,
+			owner: sql<number>`COALESCE(${users.owner_id}, ${users.id})`,
+			bot: users.bot
+		})
+		.from(users)
+		.where(inArray(users.id, ids));
+	const info = new Map(profiles.map((p) => [p.id, p]));
+	rows = rows.filter((r) => {
+		const s = info.get(r.sender_id);
+		const u = info.get(r.user_id);
+		return !s || !u || s.bot || s.owner !== u.owner;
+	});
 	if (rows.length === 0) return [];
 
 	// the same notification, removed by an undo not long after its push, comes back as it was. the

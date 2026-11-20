@@ -270,8 +270,17 @@ Notification:
   - Unliking, undoing a regiorg and unfollowing delete the "like", "regiorg" or "follow"
     notification they created (ratio notifications stay). Doing it again within a day
     brings it back as it was (read if it had been read) and sends no second push.
+  - Acting on a post reads what you were told about it: replying to, quoting, liking or
+    regiorging a post marks the unread mention, reply, quote and ratio notifications about it
+    read, and following a profile marks its unread "follow" notification read. This covers
+    every profile of your account (your own, the identities you own, the ones shared with
+    you), not only the one that acted.
   Every change to your notifications sends a realtime "notifications" event with the new
   unread count.
+
+Seen means read, across profiles: the inbox belongs to the account, so reading something as one
+profile reads it for all the profiles your account can use (your own, the identities you own and
+the ones shared with you; a bot token only has the bot's own profile).
 
 NotificationGroup (GET /notifications/grouped):
   { "key": "like-123-20261109", "type", "senders": [ { "id", "username", "name",
@@ -630,7 +639,9 @@ PUT /posts/:id/vote   { "option": index }  → { "voted", "votes": [..] }  30 a 
   changeable until the poll ends; 400 when it ended.
 PUT /posts/:id/pin / DELETE     your own top-level post on your profile → { "pinned" }
 PUT /posts/:id/timeline-pin / DELETE   staff only → { "pinned" }; 409 when 3 are pinned
-POST /posts/:id/seen            marks your mention notification for it read → 204
+POST /posts/:id/seen            the post was on your screen: its unread mention, reply, quote
+  and ratio notifications are marked read, for every profile your account can use → 204
+  (same as POST /notifications/seen with "posts": [id])
   The counts in responses are absolute: set them, don't add to them.
 
 ### Users
@@ -684,6 +695,31 @@ GET /notifications/unread             signed in → { "notifications": 2, "messa
   (messages: unread direct and group messages; reactions: unread reactions others made to
   your messages; muted chats left out of both. The website's messages badge shows the sum.)
 POST /notifications/read              marks all read → 204
+POST /notifications/seen              signed in (bots too, for their own profile). Tells the server
+  what you have shown, so the notifications about it are read for every profile of your account.
+  Body (all optional, JSON): { "posts": [12, 15], "engagement": [12], "followers": ["alice"],
+  "invites": false }
+  - "posts": ids of posts that were on screen (at most 100): reads their unread "mention",
+    "reply", "quote" and "ratio" notifications.
+  - "engagement": ids of posts whose page or people list was opened (at most 100): reads their
+    unread "like", "regiorg" and "ratioed_by_you" notifications.
+  - "followers": usernames of your profiles whose followers list was opened (at most 20):
+    reads their unread "follow" notifications. Usernames that aren't one of your profiles are
+    ignored. "invites": true reads every unread "invites" notification.
+  Answers { "read": 3 } (how many notifications were marked read), and sends the new unread
+  count of each profile it changed as a "notifications" realtime event. Unknown or foreign
+  post ids are ignored. 400 for a non-array, more than 100 ids, an id that isn't a positive
+  integer, or "followers" that isn't a list of at most 20 usernames. Rate limit: 120 a minute per account, so batch what you saw and send it every few
+  seconds.
+POST /notifications/stale             account tokens and browser sessions only (bots: 403).
+  Body: { "tags": ["like:12", "message:bob:alice"] } (at most 100 strings of up to 100
+  characters, else 400). Answers { "stale": ["like:12"] }: the tags that have nothing unread
+  left for the profiles of your account, which a client can take out of its notification
+  tray. Tags are those of the pushes: "<type>:<post id>" (like, regiorg, reply, mention,
+  quote, ratio, ratioed_by_you), "follow:<username>", "invites:<user id>",
+  "message:<sender username>:<recipient username>" and "group:<group id>:<recipient
+  username>". Tags in any other format, or for a profile your account can't use, are left out
+  of "stale", not an error. Rate limit: 60 a minute.
 POST /notifications/:id/read          marks one read → 204
 
 ### Direct messages

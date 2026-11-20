@@ -523,8 +523,8 @@ export async function publishPost(postId: number, notifications: Notification[])
  * Notifications were created or removed (see notify.ts): the recipients' unread counts. Their
  * pushes are sent by the push worker (pushOutbox.ts).
  */
-export async function publishNotifications({ created, removed }: NotificationChanges) {
-	await pushUnread([...created, ...removed].map((n) => n.user_id));
+export async function publishNotifications({ created, removed, read = [] }: NotificationChanges) {
+	await pushUnread([...created, ...removed, ...read].map((n) => n.user_id));
 }
 
 /** The quote count of a post changed. */

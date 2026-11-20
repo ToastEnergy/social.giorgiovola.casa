@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { db, follows, users } from './db/index.js';
-import { onFollow, onUnfollow, type NotificationChanges } from './notify.js';
+import { markActedOnFollow, onFollow, onUnfollow, type NotificationChanges } from './notify.js';
 import type { FollowedBy, FollowListEntry, ProfileCard } from '#lib/types.js';
 
 /**
@@ -21,7 +21,8 @@ export async function setFollowing(
 				.onConflictDoNothing()
 				.returning({ id: follows.follower_id });
 			const created = inserted.length ? await onFollow(tx, followerId, followedId) : [];
-			return { created, removed: [] };
+			const read = inserted.length ? await markActedOnFollow(tx, followerId, followedId) : [];
+			return { created, removed: [], read };
 		}
 		const deleted = await tx
 			.delete(follows)

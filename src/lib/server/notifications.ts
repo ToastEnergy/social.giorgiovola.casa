@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import type { Notification, NotificationGroup, NotificationType } from '#lib/types.js';
 import { db, inbox } from './db/index.js';
 import { unreadMessageCount } from './messages.js';
@@ -224,19 +224,49 @@ export async function markAllNotificationsRead(userId: number) {
 	void pushUnread([userId]);
 }
 
-/** The post was on the viewer's screen: their mention notification for it is now read. */
-export async function markPostSeen(userId: number, postId: number) {
-	const updated = await db
-		.update(inbox)
-		.set({ read_at: sql`NOW()` })
-		.where(
-			and(
-				eq(inbox.user_id, userId),
-				eq(inbox.post_id, postId),
-				eq(inbox.type, 'mention'),
-				isNull(inbox.read_at)
-			)
-		)
-		.returning({ id: inbox.id });
-	if (updated.length > 0) void pushUnread([userId]);
+/** What was seen, see markSeen. */
+export type Seen = {
+	/** posts that were on screen */
+	posts?: number[];
+	/** posts whose page or people list was opened */
+	engagement?: number[];
+	/** the profiles (ids) whose followers list was opened */
+	followers?: number[];
+	/** the invites page was opened */
+	invites?: boolean;
+};
+
+const POST_TYPES = ['mention', 'reply', 'quote', 'ratio'] as const;
+const ENGAGEMENT_TYPES = ['like', 'regiorg', 'ratioed_by_you'] as const;
+
+/**
+ * Seen means read: marks the unread notifications of `profileIds` (the profiles an account can
+ * use, the inbox is per account) about what was seen. One update per kind, by inbox_post_id.
+ * Returns how many were read; the profiles it changed get their fresh unread count.
+ */
+export async function markSeen(profileIds: number[], seen: Seen) {
+	if (profileIds.length === 0) return 0;
+	const ofProfiles = inArray(inbox.user_id, profileIds);
+	const changed = new Set<number>();
+	let read = 0;
+	const run = async (where: SQL | undefined) => {
+		const rows = await db
+			.update(inbox)
+			.set({ read_at: sql`NOW()` })
+			.where(and(ofProfiles, isNull(inbox.read_at), where))
+			.returning({ user_id: inbox.user_id });
+		read += rows.length;
+		for (const r of rows) changed.add(r.user_id);
+	};
+	if (seen.posts?.length)
+		await run(and(inArray(inbox.post_id, seen.posts), inArray(inbox.type, [...POST_TYPES])));
+	if (seen.engagement?.length)
+		await run(
+			and(inArray(inbox.post_id, seen.engagement), inArray(inbox.type, [...ENGAGEMENT_TYPES]))
+		);
+	if (seen.followers?.length)
+		await run(and(inArray(inbox.user_id, seen.followers), eq(inbox.type, 'follow')));
+	if (seen.invites) await run(eq(inbox.type, 'invites'));
+	if (changed.size > 0) void pushUnread(changed);
+	return read;
 }

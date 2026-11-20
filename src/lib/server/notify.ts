@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-
 import { blocks, db, inbox, inbox_removed, likes, posts, users } from './db/index.js';
 import { mentionedUsernames } from '#lib/mentions.js';
 import type { NotificationType } from '#lib/types.js';
+import { siblingProfileIds } from './accountProfiles.js';
 import { newGroupKey } from './notifications.js';
 import { PUSH_CHANNEL } from './pushOutbox.js';
 
@@ -30,7 +31,12 @@ export type Notification = {
 };
 
 /** What an event did to the notifications, for realtime and push (see publishNotifications). */
-export type NotificationChanges = { created: Notification[]; removed: Notification[] };
+export type NotificationChanges = {
+	created: Notification[];
+	removed: Notification[];
+	/** rows read because their account acted on them (markActedRead): unread counts only */
+	read?: Notification[];
+};
 
 type NewNotification = Omit<Notification, 'id' | 'sender_id'> & { sender_id: number };
 
@@ -301,4 +307,42 @@ export function onUnfollow(tx: Tx, followerId: number, followedId: number) {
 		'follow',
 		and(eq(inbox.sender_id, followerId), eq(inbox.user_id, followedId), isNull(inbox.post_id))!
 	);
+}
+
+/**
+ * `actorId` acted on a post (replied, quoted, liked, regiorged): what the account's profiles
+ * were told about it (mention, reply, quote, ratio) is read, there is nothing left to see. In
+ * the transaction of the action. Returns the rows read, for their unread counts.
+ */
+export async function markActedOnPost(tx: Tx, actorId: number, postId: number) {
+	const profiles = await siblingProfileIds(actorId, tx);
+	return tx
+		.update(inbox)
+		.set({ read_at: sql`NOW()` })
+		.where(
+			and(
+				inArray(inbox.user_id, profiles),
+				eq(inbox.post_id, postId),
+				inArray(inbox.type, ['mention', 'reply', 'quote', 'ratio']),
+				isNull(inbox.read_at)
+			)
+		)
+		.returning(columns);
+}
+
+/** `actorId` followed `followedId`: the account's unread follow notifications from them are read. */
+export async function markActedOnFollow(tx: Tx, actorId: number, followedId: number) {
+	const profiles = await siblingProfileIds(actorId, tx);
+	return tx
+		.update(inbox)
+		.set({ read_at: sql`NOW()` })
+		.where(
+			and(
+				inArray(inbox.user_id, profiles),
+				eq(inbox.sender_id, followedId),
+				eq(inbox.type, 'follow'),
+				isNull(inbox.read_at)
+			)
+		)
+		.returning(columns);
 }

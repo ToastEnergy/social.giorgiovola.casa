@@ -102,14 +102,19 @@ export async function listNotificationGroups(
 	userId: number,
 	limit: number,
 	cursor: GroupCursor | null,
-	offset = 0
+	offset = 0,
+	unreadOnly = false
 ) {
 	const at =
 		cursor && sql`('epoch'::timestamptz + ${cursor.at}::bigint * interval '1 microsecond')`;
 	const start = cursor ? sql`(inbox.created_at, inbox.id) < (${at}, ${cursor.id}::int)` : sql`true`;
 	// the group of a row met by the walk has no notification at or above the cursor ('n-<id>' is
 	// that one row). OFFSET 0 keeps it from being inlined, and run, twice
-	const above = cursor && sql`(m.created_at, m.id) >= (${at}, ${cursor.id}::int)`;
+	const above =
+		cursor &&
+		sql`(m.created_at, m.id) >= (${at}, ${cursor.id}::int)${
+			unreadOnly ? sql` AND m.read_at IS NULL` : sql``
+		}`;
 	const onPage = cursor
 		? sql`(SELECT r.key LIKE 'n-%' OR NOT (
 			EXISTS (SELECT 1 FROM inbox m
@@ -120,9 +125,11 @@ export async function listNotificationGroups(
 		) AS on_page OFFSET 0)`
 		: sql`(SELECT true AS on_page)`;
 	// the next row, after `after`, of a group not in `seen`
+	const unread = unreadOnly ? sql`AND inbox.read_at IS NULL` : sql``;
 	const next = (after: SQL, seen: SQL) => sql`(
 		SELECT inbox.created_at, inbox.id, ${keyOf('inbox')} AS key FROM inbox
 		WHERE inbox.user_id = ${userId} AND ${after} AND ${keyOf('inbox')} <> ALL(${seen})
+			${unread}
 		ORDER BY inbox.created_at DESC, inbox.id DESC LIMIT 1
 	)`;
 	const rows = (await db.execute(sql`
@@ -211,20 +218,25 @@ const idArray = (ids: number[]) =>
  * listNotificationGroups for `profileIds` together (the inbox of an account), with the profiles
  * each group reached in `recipients`, `currentId` first. Same walk and cursors; the "next row" is
  * one LIMIT 1 index scan of inbox_user_created per profile (a LATERAL join over the ids), and the
- * newest of those, so the rows are never sorted across profiles.
+ * newest of those, so the rows are never sorted across profiles. `unreadOnly` as above.
  */
 export async function listNotificationGroupsOf(
 	profileIds: number[],
 	currentId: number,
 	limit: number,
 	cursor: GroupCursor | null,
-	offset = 0
+	offset = 0,
+	unreadOnly = false
 ) {
 	const ids = idArray(profileIds);
 	const at =
 		cursor && sql`('epoch'::timestamptz + ${cursor.at}::bigint * interval '1 microsecond')`;
 	const start = cursor ? sql`(inbox.created_at, inbox.id) < (${at}, ${cursor.id}::int)` : sql`true`;
-	const above = cursor && sql`(m.created_at, m.id) >= (${at}, ${cursor.id}::int)`;
+	const above =
+		cursor &&
+		sql`(m.created_at, m.id) >= (${at}, ${cursor.id}::int)${
+			unreadOnly ? sql` AND m.read_at IS NULL` : sql``
+		}`;
 	// is the group of this row (r) one without a notification at or above the cursor? a post
 	// group is its rows of the post across the profiles, the others one profile's group, as in
 	// listNotificationGroups
@@ -241,6 +253,7 @@ export async function listNotificationGroupsOf(
 					AND ${sql.raw(computedKey('m'))} = r.own_key AND ${above})
 		) AS on_page OFFSET 0)`
 		: sql`(SELECT true AS on_page)`;
+	const unread = unreadOnly ? sql`AND inbox.read_at IS NULL` : sql``;
 	const next = (after: SQL, seen: SQL) => sql`(
 		SELECT c.* FROM unnest(${ids}) AS prof(pid)
 		CROSS JOIN LATERAL (
@@ -250,6 +263,7 @@ export async function listNotificationGroupsOf(
 				${sql.raw(multiKey('inbox'))} AS key
 			FROM inbox
 			WHERE inbox.user_id = prof.pid AND ${after} AND ${sql.raw(multiKey('inbox'))} <> ALL(${seen})
+				${unread}
 			ORDER BY inbox.created_at DESC, inbox.id DESC LIMIT 1
 		) c
 		ORDER BY c.created_at DESC, c.id DESC LIMIT 1

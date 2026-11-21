@@ -18,9 +18,10 @@ export const load = (async ({ fetch, url, parent }) =>
 			const profile = url.searchParams.get('profile');
 			scope = activeProfiles(accounts).some((p) => p.username === profile) ? profile : 'all';
 		}
+		const unread = url.searchParams.get('unread') === '1';
 		const source = `/api/v1/notifications/grouped?limit=${PAGE_SIZE}${
 			scope ? `&profiles=${encodeURIComponent(scope)}` : ''
-		}`;
+		}${unread ? '&unread=1' : ''}`;
 		const page = await apiGet<Page<NotificationGroup>>(fetch, source.slice('/api/v1'.length));
-		return { groups: page.items, next: page.next_cursor, source, scope };
+		return { groups: page.items, next: page.next_cursor, source, scope, unread };
 	})) satisfies PageLoad;

@@ -12,6 +12,7 @@ import {
 	type TextStyle,
 	type ViewStyle
 } from 'react-native';
+import { useActingAs, withAs } from '@/lib/actAs';
 import { avatarImage } from '@/lib/api';
 import { colors, fonts } from '@/lib/theme';
 import type { User } from '@/lib/types';
@@ -46,6 +47,7 @@ export function Txt({ bold, extrabold, muted, accent, size = 16, dim, style, ...
 type ButtonProps = {
 	label?: string;
 	onPress?: () => void;
+	onLongPress?: () => void;
 	variant?: 'default' | 'primary' | 'danger';
 	size?: 'sm' | 'md' | 'lg';
 	disabled?: boolean;
@@ -58,6 +60,7 @@ type ButtonProps = {
 export function Button({
 	label,
 	onPress,
+	onLongPress,
 	variant = 'default',
 	size = 'md',
 	disabled,
@@ -72,6 +75,7 @@ export function Button({
 		<Pressable
 			accessibilityRole="button"
 			onPress={onPress}
+			onLongPress={onLongPress}
 			disabled={disabled || loading}
 			style={({ pressed }) => [
 				{
@@ -219,6 +223,7 @@ export function Avatar({
 	/** tapping opens the profile */
 	link?: boolean;
 }) {
+	const as = useActingAs();
 	const image = (
 		<Image
 			source={avatarImage(user, size * 3)}
@@ -230,7 +235,7 @@ export function Avatar({
 	if (!link) return image;
 	return (
 		<Pressable
-			onPress={() => router.push(`/user/${user.username}`)}
+			onPress={() => router.push(withAs(`/user/${user.username}`, as))}
 			accessibilityLabel={`@${user.username}`}
 			// a row would stretch it to its height, and the space under the picture would open the profile
 			style={{ alignSelf: 'flex-start' }}
@@ -289,9 +294,10 @@ export function UserRow({
 	right?: React.ReactNode;
 	onPress?: () => void;
 }) {
+	const as = useActingAs();
 	return (
 		<Pressable
-			onPress={onPress ?? (() => router.push(`/user/${user.username}`))}
+			onPress={onPress ?? (() => router.push(withAs(`/user/${user.username}`, as)))}
 			style={({ pressed }) => ({
 				flexDirection: 'row',
 				alignItems: 'center',

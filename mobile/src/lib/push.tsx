@@ -6,7 +6,9 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Linking, Platform } from 'react-native';
+import { withAs } from './actAs';
 import { api } from './api';
+import { knownProfiles, loadAccountProfiles } from './profilesStore';
 import { useSession } from './session';
 import { colors } from './theme';
 
@@ -107,6 +109,9 @@ export async function openNotificationSettings(channelId?: string) {
 
 /** what the server puts in each push (the FCM `body` field, see /api.txt) */
 type PushData = { url?: string; profile?: string };
+
+/** the screens shown as another profile of the account (an `as` route param) */
+const inContext = (path: string) => /^\/(post|user|hashtag)\//.test(path);
 
 /** The app screen for a web path of the instance; null when the app has none. */
 export function appPath(url: string): string | null {
@@ -257,8 +262,19 @@ export function PushNotifications() {
 		Notifications.clearLastNotificationResponseAsync().catch(() => {});
 		const data = (response.notification.request.content.data ?? {}) as PushData;
 		(async () => {
-			// for another profile signed in here: switch to it first, trying the account in use first
-			if (data.profile && data.profile !== me?.user.username) {
+			const path = data.url ? appPath(data.url) : null;
+			// posts, profiles and hashtags open as the profile the push is for, without switching, when
+			// it is one of this account's; the other screens (chats, settings) belong to the profile in use
+			let as: string | null = null;
+			if (data.profile && data.profile !== me?.user.username && path && inContext(path)) {
+				const list = knownProfiles().length
+					? knownProfiles()
+					: await loadAccountProfiles().catch(() => []);
+				if (list.some((p) => p.username === data.profile)) as = data.profile;
+			}
+			// for another profile signed in here (another account, or a screen that isn't in context):
+			// switch to it first, trying the account in use first
+			if (!as && data.profile && data.profile !== me?.user.username) {
 				const order = [current, ...accounts.map((_, i) => i).filter((i) => i !== current)];
 				for (const index of order) {
 					try {
@@ -270,9 +286,8 @@ export function PushNotifications() {
 				}
 			}
 			if (!data.url) return;
-			const path = appPath(data.url);
 			// pages the app doesn't have open on the website
-			if (path) router.push(path);
+			if (path) router.push(withAs(path, as));
 			else WebBrowser.openBrowserAsync(server + data.url).catch(() => {});
 		})();
 	}, [response, ready, signedIn, me, accounts, current, actAs, server]);

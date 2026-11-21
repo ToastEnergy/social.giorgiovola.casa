@@ -4,7 +4,9 @@ import { Stack } from 'expo-router/stack';
 import { FlatList, RefreshControl } from 'react-native';
 import { toast } from '@/components/overlays';
 import { refreshColors } from '@/components/PostList';
+import { ViewingAsBar } from '@/components/ViewingAsBar';
 import { Button, ListState, UserRow } from '@/components/ui';
+import { ActingAsProvider, useAsParam } from '@/lib/actAs';
 import { api, errorMessage } from '@/lib/api';
 import { seeFollowers } from '@/lib/seen';
 import type { FollowEntry } from '@/lib/types';
@@ -23,7 +25,13 @@ export default function FollowList() {
 		list: keyof typeof lists;
 	}>();
 	const config = lists[kind] ?? lists.followers;
-	const list = usePaged<FollowEntry>(`users/${username}/${config.path}`, (u) => u.username);
+	const as = useAsParam();
+	const list = usePaged<FollowEntry>(
+		`users/${username}/${config.path}`,
+		(u) => u.username,
+		undefined,
+		as
+	);
 
 	// the followers of your profile were looked at (the server ignores other profiles)
 	useEffect(() => {
@@ -33,7 +41,8 @@ export default function FollowList() {
 	async function toggle(entry: FollowEntry) {
 		try {
 			const res = await api<{ followed: boolean }>(`users/${entry.username}/follow`, {
-				method: entry.followed ? 'DELETE' : 'PUT'
+				method: entry.followed ? 'DELETE' : 'PUT',
+				as
 			});
 			list.setItems((items) =>
 				items.map((u) => (u.username === entry.username ? { ...u, followed: res.followed } : u))
@@ -44,8 +53,9 @@ export default function FollowList() {
 	}
 
 	return (
-		<>
+		<ActingAsProvider value={as}>
 			<Stack.Screen options={{ title: `${config.title} · @${username}` }} />
+			<ViewingAsBar as={as} />
 			<FlatList
 				data={list.items}
 				keyExtractor={(user) => user.username}
@@ -78,6 +88,6 @@ export default function FollowList() {
 					/>
 				)}
 			/>
-		</>
+		</ActingAsProvider>
 	);
 }

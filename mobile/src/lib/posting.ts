@@ -80,9 +80,12 @@ export function startPost(options: {
 	savedAt: number;
 	/** the profile's token at the time: switching profile meanwhile mustn't change who posts */
 	token: string | null;
+	/** another profile of the account to post as (X-Act-As), also for its uploads */
+	as?: string | null;
 	onSent?: () => void;
 }) {
 	const { composer, owner, draft, savedAt, token } = options;
+	const as = options.as ?? null;
 	const key = nextKey++;
 	set([...outgoing, { key, composer, owner, draft, progress: draft.images.map(() => 0) }]);
 	const [kind, id] = composer.split(':');
@@ -98,6 +101,7 @@ export function startPost(options: {
 				await uploadImage(image, {
 					server: owner.server,
 					token,
+					as,
 					onProgress: (share) => setProgress(i, share)
 				})
 			);
@@ -106,7 +110,7 @@ export function startPost(options: {
 		return ids;
 	};
 	const voice = draft.voice ?? null;
-	const who = { server: owner.server, token };
+	const who = { server: owner.server, token, as };
 	/** the voice note's staged upload, uploaded now if the composer hadn't yet */
 	const audio = async () => {
 		if (!voice) return null;
@@ -118,6 +122,7 @@ export function startPost(options: {
 			method: 'POST',
 			server: owner.server,
 			token,
+			as,
 			body: {
 				content: draft.content,
 				uploads: await upload(),
@@ -180,7 +185,7 @@ export function startPost(options: {
 					});
 					// the stream may miss the event (offline meanwhile): ask now and then too
 					const poll = setInterval(() => {
-						api<AudioUpload>(`uploads/audio/${id}`, { server: owner.server, token })
+						api<AudioUpload>(`uploads/audio/${id}`, { server: owner.server, token, as })
 							.then((u) => {
 								if (u.status === 'sent') finish(false);
 								else if (u.status === 'failed') finish(u.error);

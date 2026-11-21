@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -55,7 +55,7 @@ export default function AccountSettings() {
 	async function use(profile: string) {
 		try {
 			await session.switchProfile(profile);
-			router.dismissTo('/');
+			toast(`Using @${profile}`);
 		} catch (e) {
 			setError(errorMessage(e));
 		}

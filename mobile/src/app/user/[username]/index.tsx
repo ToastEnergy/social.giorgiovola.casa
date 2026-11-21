@@ -1,13 +1,14 @@
 import * as Clipboard from 'expo-clipboard';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { Bot, Ellipsis, Flag, Link as LinkIcon, Shield } from 'lucide-react-native';
+import { Bot, ChevronDown, Ellipsis, Flag, Link as LinkIcon, Shield } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
-import { showMenu, toast, viewImages } from '@/components/overlays';
+import { pickProfile, showMenu, toast, viewImages } from '@/components/overlays';
 import { PostCard } from '@/components/PostCard';
 import { PostList } from '@/components/PostList';
 import { openLink, RichText } from '@/components/RichText';
+import { ViewingAsBar } from '@/components/ViewingAsBar';
 import {
 	Avatar,
 	Button,
@@ -18,11 +19,13 @@ import {
 	TabRow,
 	Txt
 } from '@/components/ui';
+import { ActingAsProvider, useAsParam, withAs } from '@/lib/actAs';
 import { api, auth, avatarImage, errorMessage } from '@/lib/api';
 import { useBus } from '@/lib/bus';
 import { count, shortDate, websiteLabel } from '@/lib/format';
 import { actionHref, moderate, untilLabel } from '@/lib/moderation';
 import { usePostSync } from '@/lib/posts';
+import { useKnownProfiles } from '@/lib/profilesStore';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
 import type { Post, Profile } from '@/lib/types';
@@ -33,6 +36,8 @@ export default function UserScreen() {
 	const params = useLocalSearchParams<{ username: string }>();
 	const username = params.username.replace(/^@/, '').toLowerCase();
 	const { me, profileKey } = useSession();
+	const as = useAsParam();
+	const profiles = useKnownProfiles();
 	const [profile, setProfile] = useState<Profile | null>(null);
 	const [pinned, setPinned] = useState<Post[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -43,8 +48,8 @@ export default function UserScreen() {
 	const load = useCallback(async () => {
 		try {
 			const [user, pin] = await Promise.all([
-				api<Profile>(`users/${username}`),
-				api<{ post: Post | null }>(`users/${username}/pinned`)
+				api<Profile>(`users/${username}`, { as }),
+				api<{ post: Post | null }>(`users/${username}/pinned`, { as })
 			]);
 			setProfile(user);
 			setPinned(pin.post ? [pin.post] : []);
@@ -52,27 +57,63 @@ export default function UserScreen() {
 		} catch (e) {
 			setError(errorMessage(e));
 		}
-	}, [username]);
+	}, [username, as]);
 	useEffect(() => {
 		load();
 	}, [load, profileKey]);
 	useBus('pins_changed', load);
 	useBus('moderation_changed', load);
 
-	async function toggleFollow() {
+	/** follows or unfollows as `who` (null: the screen's profile); the buttons show the screen's */
+	async function setFollow(who: string | null, follow: boolean) {
 		if (!profile) return;
+		const mine = me?.user.username;
+		const shown = who === null || who === (as ?? mine);
+		const acting = who === mine ? null : who ?? as;
 		setBusy(true);
 		try {
 			const res = await api<{ followers: number; following: number; followed: boolean }>(
 				`users/${username}/follow`,
-				{ method: profile.followed ? 'DELETE' : 'PUT' }
+				{ method: follow ? 'PUT' : 'DELETE', as: acting }
 			);
-			setProfile({ ...profile, ...res });
+			// the counts are the profile's own; what the viewer follows only changes for the profile shown
+			setProfile({
+				...profile,
+				followers: res.followers,
+				...(shown ? { followed: res.followed } : {})
+			});
 		} catch (e) {
 			toast(errorMessage(e));
 		} finally {
 			setBusy(false);
 		}
+	}
+
+	const toggleFollow = () => profile && setFollow(null, !profile.followed);
+
+	/** "Follow as…": every profile of the account with whether it follows already */
+	async function followAs() {
+		if (!profile || !me) return;
+		const mine = me.user.username;
+		const others = profiles.filter((p) => p.username !== username);
+		const states = Promise.all(
+			others.map((p) =>
+				api<Profile>(`users/${username}`, { as: p.username === mine ? null : p.username })
+					.then((u) => [p.username, u.followed] as const)
+					.catch(() => [p.username, false] as const)
+			)
+		);
+		const picked = await pickProfile({
+			title: 'Follow as…',
+			profiles: others,
+			current: as ?? mine,
+			notes: states.then((list) =>
+				Object.fromEntries(list.filter(([, followed]) => followed).map(([n]) => [n, 'Following']))
+			)
+		});
+		if (!picked) return;
+		const following = (await states).find(([n]) => n === picked)?.[1] ?? false;
+		setFollow(picked, !following);
 	}
 
 	async function toggleBlock() {
@@ -132,9 +173,10 @@ export default function UserScreen() {
 
 	if (!profile)
 		return (
-			<View style={{ flex: 1, padding: 20 }}>
+			<View style={{ flex: 1 }}>
 				<Stack.Screen options={{ title: `@${username}` }} />
-				{error ? <ErrorBanner message={error} /> : <Loading />}
+				<ViewingAsBar as={as} />
+				<View style={{ padding: 20 }}>{error ? <ErrorBanner message={error} /> : <Loading />}</View>
 			</View>
 		);
 
@@ -175,13 +217,13 @@ export default function UserScreen() {
 					Joined {shortDate(profile.created_at)}
 				</Txt>
 				<View style={{ flexDirection: 'row', gap: 20 }}>
-					<Pressable onPress={() => router.push(`/user/${username}/followers`)}>
+					<Pressable onPress={() => router.push(withAs(`/user/${username}/followers`, as))}>
 						<Txt>
 							<Txt bold>{count(profile.followers)}</Txt>{' '}
 							<Txt muted>{profile.followers === 1 ? 'follower' : 'followers'}</Txt>
 						</Txt>
 					</Pressable>
-					<Pressable onPress={() => router.push(`/user/${username}/following`)}>
+					<Pressable onPress={() => router.push(withAs(`/user/${username}/following`, as))}>
 						<Txt>
 							<Txt bold>{count(profile.following)}</Txt> <Txt muted>following</Txt>
 						</Txt>
@@ -189,7 +231,7 @@ export default function UserScreen() {
 				</View>
 				{known.total > 0 && !profile.self ? (
 					<Pressable
-						onPress={() => router.push(`/user/${username}/known`)}
+						onPress={() => router.push(withAs(`/user/${username}/known`, as))}
 						style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
 					>
 						<View style={{ flexDirection: 'row' }}>
@@ -227,7 +269,13 @@ export default function UserScreen() {
 									label={profile.followed ? 'Following' : 'Follow'}
 									loading={busy}
 									onPress={toggleFollow}
+									onLongPress={profiles.length > 1 ? followAs : undefined}
 								/>
+								{profiles.length > 1 ? (
+									<Button size="sm" style={{ width: 32, paddingHorizontal: 0 }} onPress={followAs}>
+										<ChevronDown size={16} color={colors.foreground} />
+									</Button>
+								) : null}
 								{!profile.blocked && !profile.blocks_you ? (
 									<Button
 										size="sm"
@@ -266,15 +314,18 @@ export default function UserScreen() {
 	);
 
 	return (
-		<View style={{ flex: 1 }}>
-			<Stack.Screen options={{ title: `@${profile.username}` }} />
-			<PostList
-				path={`users/${username}/posts?tab=${tab}`}
-				header={header}
-				onRefresh={load}
-				empty={tab === 'posts' && pinned.length ? '' : 'Nothing here yet.'}
-			/>
-		</View>
+		<ActingAsProvider value={as}>
+			<View style={{ flex: 1 }}>
+				<Stack.Screen options={{ title: `@${profile.username}` }} />
+				<ViewingAsBar as={as} />
+				<PostList
+					path={`users/${username}/posts?tab=${tab}`}
+					header={header}
+					onRefresh={load}
+					empty={tab === 'posts' && pinned.length ? '' : 'Nothing here yet.'}
+				/>
+			</View>
+		</ActingAsProvider>
 	);
 }
 

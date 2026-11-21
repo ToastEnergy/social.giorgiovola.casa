@@ -2,7 +2,9 @@ import { router } from 'expo-router';
 import { Hash } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { ViewingAsBar } from '@/components/ViewingAsBar';
 import { ErrorBanner, Input, Loading, Txt, UserRow } from '@/components/ui';
+import { ActingAsProvider, useAsParam, withAs } from '@/lib/actAs';
 import { api, errorMessage, withQuery } from '@/lib/api';
 import { count } from '@/lib/format';
 import { useSession } from '@/lib/session';
@@ -13,6 +15,7 @@ type Results = { query: string; users: User[]; hashtags: { tag: string; posts: n
 
 export default function Search() {
 	const { profileKey } = useSession();
+	const as = useAsParam();
 	const [query, setQuery] = useState('');
 	const [results, setResults] = useState<Results | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -23,7 +26,8 @@ export default function Search() {
 		const timer = setTimeout(
 			() => {
 				api<Results>(withQuery('search', { q: query.trim(), limit: 20 }), {
-					signal: controller.signal
+					signal: controller.signal,
+					as
 				})
 					.then((res) => {
 						setResults(res);
@@ -39,64 +43,70 @@ export default function Search() {
 			clearTimeout(timer);
 			controller.abort();
 		};
-	}, [query, profileKey]);
+	}, [query, profileKey, as]);
 
 	const trending = !query.trim();
 	return (
-		<View style={{ flex: 1 }}>
-			<View style={{ paddingHorizontal: 20, paddingBottom: 10 }}>
-				<Input
-					value={query}
-					onChangeText={setQuery}
-					placeholder="Search people and #hashtags"
-					autoCorrect={false}
-					returnKeyType="search"
-					clearButtonMode="while-editing"
-				/>
+		<ActingAsProvider value={as}>
+			<View style={{ flex: 1 }}>
+				<ViewingAsBar as={as} />
+				<View style={{ paddingHorizontal: 20, paddingBottom: 10 }}>
+					<Input
+						value={query}
+						onChangeText={setQuery}
+						placeholder="Search people and #hashtags"
+						autoCorrect={false}
+						returnKeyType="search"
+						clearButtonMode="while-editing"
+					/>
+				</View>
+				<ScrollView
+					keyboardShouldPersistTaps="handled"
+					contentContainerStyle={{ paddingBottom: 40 }}
+				>
+					{error ? (
+						<View style={{ padding: 20 }}>
+							<ErrorBanner message={error} />
+						</View>
+					) : null}
+					{!results && !error ? <Loading /> : null}
+					{results?.users.map((user) => (
+						<UserRow key={user.username} user={user} />
+					))}
+					{results?.hashtags.length ? (
+						<Txt bold size={14} muted style={{ paddingHorizontal: 20, paddingTop: 15 }}>
+							{trending ? 'Trending' : 'Hashtags'}
+						</Txt>
+					) : null}
+					{results?.hashtags.map((hashtag) => (
+						<Pressable
+							key={hashtag.tag}
+							onPress={() => router.push(withAs(`/hashtag/${encodeURIComponent(hashtag.tag)}`, as))}
+							style={({ pressed }) => ({
+								flexDirection: 'row',
+								alignItems: 'center',
+								gap: 10,
+								paddingVertical: 10,
+								paddingHorizontal: 20,
+								backgroundColor: pressed ? colors.hover : 'transparent'
+							})}
+						>
+							<Hash size={20} color={colors.accent} />
+							<Txt bold style={{ flex: 1 }} numberOfLines={1}>
+								{hashtag.tag}
+							</Txt>
+							<Txt size={14} muted>
+								{count(hashtag.posts)} {hashtag.posts === 1 ? 'post' : 'posts'}
+							</Txt>
+						</Pressable>
+					))}
+					{results && !results.users.length && !results.hashtags.length ? (
+						<Txt muted style={{ textAlign: 'center', padding: 40 }}>
+							{trending ? 'No trending hashtags yet.' : 'Nothing found.'}
+						</Txt>
+					) : null}
+				</ScrollView>
 			</View>
-			<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-				{error ? (
-					<View style={{ padding: 20 }}>
-						<ErrorBanner message={error} />
-					</View>
-				) : null}
-				{!results && !error ? <Loading /> : null}
-				{results?.users.map((user) => (
-					<UserRow key={user.username} user={user} />
-				))}
-				{results?.hashtags.length ? (
-					<Txt bold size={14} muted style={{ paddingHorizontal: 20, paddingTop: 15 }}>
-						{trending ? 'Trending' : 'Hashtags'}
-					</Txt>
-				) : null}
-				{results?.hashtags.map((hashtag) => (
-					<Pressable
-						key={hashtag.tag}
-						onPress={() => router.push(`/hashtag/${encodeURIComponent(hashtag.tag)}`)}
-						style={({ pressed }) => ({
-							flexDirection: 'row',
-							alignItems: 'center',
-							gap: 10,
-							paddingVertical: 10,
-							paddingHorizontal: 20,
-							backgroundColor: pressed ? colors.hover : 'transparent'
-						})}
-					>
-						<Hash size={20} color={colors.accent} />
-						<Txt bold style={{ flex: 1 }} numberOfLines={1}>
-							{hashtag.tag}
-						</Txt>
-						<Txt size={14} muted>
-							{count(hashtag.posts)} {hashtag.posts === 1 ? 'post' : 'posts'}
-						</Txt>
-					</Pressable>
-				))}
-				{results && !results.users.length && !results.hashtags.length ? (
-					<Txt muted style={{ textAlign: 'center', padding: 40 }}>
-						{trending ? 'No trending hashtags yet.' : 'Nothing found.'}
-					</Txt>
-				) : null}
-			</ScrollView>
-		</View>
+		</ActingAsProvider>
 	);
 }

@@ -23,6 +23,8 @@ export type ComposerDraft = {
 	voice?: LocalVoice | null;
 	/** why the post this draft was sent as didn't go out */
 	error?: string | null;
+	/** the other profile of the account it is written as ("Posting as"); null: the profile in use */
+	as?: string | null;
 };
 
 /** whose drafts: a profile on an instance */
@@ -126,6 +128,7 @@ export async function saveDraft(owner: DraftOwner, composer: string, draft: Comp
 				  }
 				: null,
 			error: draft.error ?? null,
+			as: draft.as ?? null,
 			savedAt
 		};
 	write();

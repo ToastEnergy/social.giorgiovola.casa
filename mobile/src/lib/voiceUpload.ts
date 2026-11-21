@@ -27,7 +27,7 @@ export type LocalVoice = {
 };
 
 /** who uploads: the profile at the time (switching profile meanwhile mustn't change it) */
-export type Uploader = { server: string; token: string | null };
+export type Uploader = { server: string; token: string | null; as?: string | null };
 
 /** one request carries at most about 52 MB (the server's body limit): larger notes go in chunks */
 const ONE_SHOT_MAX = 45 * 1024 * 1024;
@@ -79,7 +79,9 @@ export function useVoiceUpload(uri: string | null | undefined): UploadState | nu
 
 const headers = (who: Uploader): Record<string, string> => ({
 	Accept: 'application/json',
-	...(who.token ? { Authorization: `Bearer ${who.token}` } : {})
+	...(who.token ? { Authorization: `Bearer ${who.token}` } : {}),
+	// a staged upload belongs to the profile that sent it, which posts it
+	...(who.as ? { 'X-Act-As': who.as } : {})
 });
 
 function parse(body: string): Record<string, unknown> {
@@ -141,12 +143,12 @@ async function uploadWhole(job: Job, file: File, size: number) {
 
 /** In chunks, skipping those the session already has (after an interruption). */
 async function uploadChunked(job: Job, file: File, size: number) {
-	const { server, token } = job.who;
+	const { server, token, as } = job.who;
 	const count = Math.ceil(size / CHUNK_BYTES);
 	let have = new Set<number>();
 	if (job.session) {
 		try {
-			const status = await api<AudioUpload>(`uploads/audio/${job.session}`, { server, token });
+			const status = await api<AudioUpload>(`uploads/audio/${job.session}`, { server, token, as });
 			if (status.status === 'receiving') have = new Set(status.chunks ?? []);
 			else if (status.status === 'failed') job.session = null;
 			// already completed (the answer got lost): it's ready or being processed
@@ -161,7 +163,8 @@ async function uploadChunked(job: Job, file: File, size: number) {
 		const created = await api<AudioUpload>('uploads/audio/sessions', {
 			method: 'POST',
 			server,
-			token
+			token,
+			as
 		});
 		job.session = created.id;
 		have = new Set();
@@ -207,6 +210,7 @@ async function uploadChunked(job: Job, file: File, size: number) {
 		method: 'POST',
 		server,
 		token,
+		as,
 		body: { chunks: count }
 	});
 	return id;
@@ -268,7 +272,7 @@ async function run(job: Job): Promise<string> {
  */
 export function startVoiceUpload(uri: string, who: Uploader = { ...auth }): Promise<string> {
 	let job = jobs.get(uri);
-	if (job && job.who.token !== who.token) {
+	if (job && (job.who.token !== who.token || (job.who.as ?? null) !== (who.as ?? null))) {
 		// another profile: its upload isn't this one's
 		job.controller.abort();
 		job = undefined;
@@ -331,9 +335,12 @@ export function discardVoice(voice: { uri: string; upload?: string | null }) {
 	const who = job?.who ?? { ...auth };
 	forgetUpload(voice.uri);
 	if (id)
-		api(`uploads/${id}`, { method: 'DELETE', server: who.server, token: who.token }).catch(
-			() => {}
-		);
+		api(`uploads/${id}`, {
+			method: 'DELETE',
+			server: who.server,
+			token: who.token,
+			as: who.as
+		}).catch(() => {});
 	deleteRecording(voice.uri);
 }
 

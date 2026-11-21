@@ -2,12 +2,15 @@ import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useEffect, useState } from 'react';
 import { PostList } from '@/components/PostList';
+import { ViewingAsBar } from '@/components/ViewingAsBar';
+import { ActingAsProvider, useAsParam } from '@/lib/actAs';
 import { Txt } from '@/components/ui';
 import { api } from '@/lib/api';
 import { count } from '@/lib/format';
 
 export default function Hashtag() {
 	const { tag } = useLocalSearchParams<{ tag: string }>();
+	const as = useAsParam();
 	const [info, setInfo] = useState<{ tag: string; posts: number } | null>(null);
 	useEffect(() => {
 		api<{ tag: string; posts: number }>(`hashtags/${encodeURIComponent(tag)}`)
@@ -15,8 +18,9 @@ export default function Hashtag() {
 			.catch(() => {});
 	}, [tag]);
 	return (
-		<>
+		<ActingAsProvider value={as}>
 			<Stack.Screen options={{ title: `#${info?.tag ?? tag}` }} />
+			<ViewingAsBar as={as} />
 			<PostList
 				path={`hashtags/${encodeURIComponent(tag)}/posts`}
 				header={
@@ -28,6 +32,6 @@ export default function Hashtag() {
 				}
 				empty="No posts with this hashtag."
 			/>
-		</>
+		</ActingAsProvider>
 	);
 }

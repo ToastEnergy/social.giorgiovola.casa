@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { Fragment, useMemo } from 'react';
 import type { TextProps } from 'react-native';
+import { useActingAs, withAs } from '@/lib/actAs';
 import { auth } from '@/lib/api';
 import {
 	internalRoute,
@@ -14,9 +15,9 @@ import {
 import { Txt } from './ui';
 
 /** Opens a link: posts, profiles and hashtags of this instance in the app, the rest in a browser. */
-export function openLink(url: string) {
+export function openLink(url: string, as?: string | null) {
 	const route = internalRoute(url, auth.server);
-	if (route) router.push(route);
+	if (route) router.push(withAs(route, as));
 	else WebBrowser.openBrowserAsync(url).catch(() => {});
 }
 
@@ -24,6 +25,7 @@ type Props = TextProps & { content: string; size?: number; muted?: boolean };
 
 /** Post and message text with its @mentions, #hashtags and links tappable. */
 export function RichText({ content, size, muted, ...props }: Props) {
+	const as = useActingAs();
 	const parts = useMemo(() => {
 		const out: React.ReactNode[] = [];
 		const link = (key: number, text: string, onPress: () => void) => (
@@ -36,7 +38,7 @@ export function RichText({ content, size, muted, ...props }: Props) {
 			.forEach((word, i) => {
 				if (!word) return;
 				if (isHttpLink(word)) {
-					out.push(link(i, word.replace(/^https?:\/\//, ''), () => openLink(word)));
+					out.push(link(i, word.replace(/^https?:\/\//, ''), () => openLink(word, as)));
 					return;
 				}
 				const hashtag = parseHashtag(word);
@@ -44,7 +46,7 @@ export function RichText({ content, size, muted, ...props }: Props) {
 					const tag = encodeURIComponent(normalizeTag(hashtag.tag));
 					out.push(
 						<Fragment key={i}>
-							{link(i, `#${hashtag.tag}`, () => router.push(`/hashtag/${tag}`))}
+							{link(i, `#${hashtag.tag}`, () => router.push(withAs(`/hashtag/${tag}`, as)))}
 							{hashtag.rest}
 						</Fragment>
 					);
@@ -59,13 +61,15 @@ export function RichText({ content, size, muted, ...props }: Props) {
 						{splitMentions(word).map((part, j) =>
 							typeof part === 'string'
 								? part
-								: link(j, `@${part.username}`, () => router.push(`/user/${part.username}`))
+								: link(j, `@${part.username}`, () =>
+										router.push(withAs(`/user/${part.username}`, as))
+								  )
 						)}
 					</Fragment>
 				);
 			});
 		return out;
-	}, [content, size]);
+	}, [content, size, as]);
 	return (
 		<Txt size={size} muted={muted} {...props}>
 			{parts}

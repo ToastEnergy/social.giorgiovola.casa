@@ -14,6 +14,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useUpdateMenuItem } from '@/components/AppUpdate';
 import { confirm, toast } from '@/components/overlays';
+import { UnreadBadges } from '@/components/UnreadBadges';
 import { UploadProgress } from '@/components/UploadProgress';
 import { Avatar, Txt } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -138,7 +139,6 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 
 	const profileRow = (index: number, profile: SwitcherProfile, identity: boolean) => {
 		const active = index === session.current && profile.username === me?.user.username;
-		const unread = profile.unread + profile.unreadMessages + profile.unreadReactions;
 		return (
 			<Pressable
 				key={`${index}:${profile.username}`}
@@ -164,20 +164,11 @@ export function ProfileMenu({ sheet }: { sheet?: boolean }) {
 						{profile.sharedBy ? ` · shared by @${profile.sharedBy}` : ''}
 					</Txt>
 				</View>
-				{unread > 0 && !active ? (
-					<View
-						style={{
-							backgroundColor: colors.accent,
-							borderRadius: 10,
-							minWidth: 20,
-							paddingHorizontal: 6,
-							alignItems: 'center'
-						}}
-					>
-						<Txt size={12} bold style={{ color: colors.background }}>
-							{unread > 99 ? '99+' : unread}
-						</Txt>
-					</View>
+				{!active ? (
+					<UnreadBadges
+						notifications={profile.unread}
+						messages={profile.unreadMessages + profile.unreadReactions}
+					/>
 				) : null}
 				{active ? <Check size={18} color={colors.accent} /> : null}
 			</Pressable>

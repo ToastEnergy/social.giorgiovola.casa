@@ -1006,7 +1006,7 @@ export const v1Groups: V1Group[] = [
 				path: '/api/v1/notifications/grouped',
 				auth: 'signed in',
 				summary:
-					'your notifications, likes, regiorgs and follows grouped per day; ?profiles=all (or usernames) for every profile of your account, merged by post, with recipients (bots: ignored)'
+					'your notifications, likes, regiorgs and follows grouped per day; ?profiles=all (or usernames) for every profile of your account, merged by post, with recipients (bots: ignored); ?unread=1 only groups with unread notifications'
 			},
 			{
 				method: 'POST',

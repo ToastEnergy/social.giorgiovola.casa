@@ -57,6 +57,14 @@
 	const allUnread = $derived(profiles.reduce((n, p) => n + unreadOf(p), 0));
 	// ?profiles= of the reads: the filter, as in the list (nothing: only the profile in use)
 	const scopeQuery = $derived(data.scope ? `?profiles=${encodeURIComponent(data.scope)}` : '');
+	// the filter links keep the other one: the profile tabs the unread toggle, and the other way round
+	const filterHref = (profile: string | null, unreadOnly: boolean) => {
+		const params = new URLSearchParams();
+		if (profile) params.set('profile', profile);
+		if (unreadOnly) params.set('unread', '1');
+		const query = params.toString();
+		return query ? `/notifications?${query}` : '/notifications';
+	};
 	const tabClass = (active: boolean) =>
 		`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-foreground hover:no-underline ${
 			active ? 'border-accent' : 'border-transparent opacity-60 hover:opacity-100'
@@ -145,7 +153,10 @@
 		}
 		void closeStale();
 		const now = new Date();
-		groups = groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now }));
+		// in the unread filter nothing is left to show
+		groups = data.unread
+			? []
+			: groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now }));
 	};
 
 	const clip = (text: string, max = 100) => (text.length > max ? `${text.slice(0, max)}...` : text);
@@ -168,9 +179,19 @@
 
 <div class="flex items-center justify-between gap-2.5">
 	<h1>Notifications</h1>
-	{#if groups.some((g) => !g.read_at)}
-		<Button onclick={readAll}>Mark all as read</Button>
-	{/if}
+	<div class="flex items-center gap-2.5">
+		<Button
+			size="sm"
+			variant={data.unread ? 'primary' : 'default'}
+			href={filterHref(data.scope && data.scope !== 'all' ? data.scope : null, !data.unread)}
+			data-sveltekit-replacestate
+			data-sveltekit-noscroll
+			aria-pressed={data.unread}>Unread</Button
+		>
+		{#if groups.some((g) => !g.read_at)}
+			<Button size="sm" onclick={readAll}>Mark all as read</Button>
+		{/if}
+	</div>
 </div>
 {#if push === 'off'}
 	<!-- turning push on lives in the settings; this only points there while it is off -->
@@ -186,7 +207,7 @@
 	>
 		<a
 			class={tabClass(data.scope === 'all')}
-			href="/notifications"
+			href={filterHref(null, data.unread)}
 			data-sveltekit-replacestate
 			data-sveltekit-noscroll
 			aria-current={data.scope === 'all' ? 'page' : undefined}
@@ -197,7 +218,7 @@
 		{#each profiles as p (p.username)}
 			<a
 				class={tabClass(data.scope === p.username)}
-				href={`/notifications?profile=${encodeURIComponent(p.username)}`}
+				href={filterHref(p.username, data.unread)}
 				data-sveltekit-replacestate
 				data-sveltekit-noscroll
 				aria-current={data.scope === p.username ? 'page' : undefined}
@@ -210,6 +231,9 @@
 	</nav>
 {/if}
 <div class="mt-2.5 flex flex-col gap-3.75">
+	{#if groups.length === 0}
+		<p class="text-muted">{data.unread ? 'No unread notifications' : 'No notifications yet.'}</p>
+	{/if}
 	{#each groups as group (group.key)}
 		{@const sender = group.senders[0]}
 		<div

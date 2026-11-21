@@ -1,0 +1,1 @@
+CREATE INDEX "inbox_user_unread_created" ON "inbox" USING btree ("user_id","created_at","id") WHERE "inbox"."read_at" IS NULL;

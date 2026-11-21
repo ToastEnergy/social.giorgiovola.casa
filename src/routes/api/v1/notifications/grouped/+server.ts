@@ -12,11 +12,12 @@ export const GET: RequestHandler = v1(async ({ locals, url }) => {
 	const user = requireUser(locals);
 	const limit = limitParam(url, 50, 200);
 	const { after, offset } = keysetCursor(url);
+	const unread = ['1', 'true'].includes(url.searchParams.get('unread') ?? '');
 	const profiles = await inboxProfileIds(locals, url);
 	if (profiles)
 		return keysetPage(
-			await listNotificationGroupsOf(profiles, user.id, limit, after, offset),
+			await listNotificationGroupsOf(profiles, user.id, limit, after, offset, unread),
 			limit
 		);
-	return keysetPage(await listNotificationGroups(user.id, limit, after, offset), limit);
+	return keysetPage(await listNotificationGroups(user.id, limit, after, offset, unread), limit);
 });

@@ -724,6 +724,10 @@ GET /notifications/grouped            signed in, paginated (default 50, at most 
   notification moves back to the top. Later pages (?cursor) leave out every group that is
   now above where the previous page ended, so they never repeat or skip a group: fetch the
   first page again to see the ones that moved up, and replace your copy of each by "key".
+  Optional ?unread=1 (or true) lists only the groups with at least one unread notification,
+  ordered by their newest unread notification; each group is still whole (count, unread,
+  senders as always). It combines with ?profiles, ?cursor and ?limit. Use it to find old
+  unread notifications buried under newer read ones.
   Optional ?profiles=all (or ?profiles=alice,alice_art: usernames, comma separated) answers
   for the whole inbox of your account instead of only the profile in use: its own profile,
   the identities it owns and the ones shared with it (not bots). A name that isn't one of

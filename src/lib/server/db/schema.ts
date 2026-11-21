@@ -294,6 +294,11 @@ export const inbox = pgTable(
 			.where(sql`${t.read_at} IS NULL`),
 		// the notifications page, newest first (scanned backwards)
 		index('inbox_user_created').on(t.user_id, t.created_at, t.id),
+		// the unread filter of the notifications page (?unread=1): its walk only meets unread
+		// rows, so an old one isn't found by scanning every read row above it
+		index('inbox_user_unread_created')
+			.on(t.user_id, t.created_at, t.id)
+			.where(sql`${t.read_at} IS NULL`),
 		// the members of a group
 		index('inbox_user_group_key')
 			.on(t.user_id, t.group_key)

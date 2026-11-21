@@ -48,13 +48,15 @@
 	read as one block. the field is as far from the sides as from the links. while writing the bar
 	steps aside and the field takes its place (at the bottom edge, or on iOS on the keyboard,
 	which only shrinks the visual viewport: a bar fixed to the bottom would stay under it). it
-	places itself, so the layout doesn't scroll it into view (data-keyboard-fit) -->
+	places itself, so the layout doesn't scroll it into view (data-keyboard-fit). while its
+	"posting as" sheet is open it goes over the bottom bar: the sheet and its backdrop are inside
+	it, so they can't be above a layer the bar itself is under -->
 <div
 	bind:offsetHeight={height}
 	data-keyboard-fit
 	data-bottom-cover
 	{...writingHandlers}
-	class="fixed right-0 left-0 z-998 border-t border-line bg-background p-2.5 {keyboard.inset ||
+	class="fixed right-0 left-0 z-998 has-[[data-profile-picker]]:z-1000 border-t border-line bg-background p-2.5 {keyboard.inset ||
 	!keyboard.hideBar
 		? ''
 		: 'pb-[calc(10px+env(safe-area-inset-bottom))]'}"

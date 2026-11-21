@@ -150,7 +150,10 @@ export default function Notifications() {
 		? filter
 		: 'all';
 	const scopeQuery = scope ? `?profiles=${encodeURIComponent(scope)}` : '';
-	const list = usePaged<NotificationGroup>(`notifications/grouped${scopeQuery}`, (g) => g.key);
+	// only groups with something unread (the old ones the list would bury); the reads keep the scope
+	const [unreadOnly, setUnreadOnly] = useState(false);
+	const groupedQuery = unreadOnly ? `${scopeQuery}${scope ? '&' : '?'}unread=1` : scopeQuery;
+	const list = usePaged<NotificationGroup>(`notifications/grouped${groupedQuery}`, (g) => g.key);
 	const { items, setItems, reload } = list;
 	// each profile's unread count, fetched fresh whenever the badge's total changes (a frame, a read,
 	// the tab opened): realtime frames alone can miss a read made elsewhere
@@ -233,7 +236,9 @@ export default function Notifications() {
 		const own = scope && scope !== 'all' ? profiles.find((p) => p.username === scope) : null;
 		setUnread({ notifications: own ? Math.max(0, unread.notifications - countOf(own)) : 0 });
 		const now = new Date().toISOString();
-		setItems((groups) => groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now })));
+		setItems((groups) =>
+			unreadOnly ? [] : groups.map((g) => (g.read_at ? g : { ...g, unread: 0, read_at: now }))
+		);
 		clearTray('read');
 		refreshCounts();
 	}
@@ -269,15 +274,33 @@ export default function Notifications() {
 							))}
 						</ScrollView>
 					) : null}
-					{items.some((g) => !g.read_at) ? (
-						<View style={{ paddingHorizontal: 20, paddingBottom: 10, alignItems: 'flex-start' }}>
+					<View
+						style={{
+							paddingHorizontal: 20,
+							paddingBottom: 10,
+							flexDirection: 'row',
+							gap: 10,
+							alignItems: 'flex-start'
+						}}
+					>
+						<Button
+							size="sm"
+							label="Unread"
+							variant={unreadOnly ? 'primary' : 'default'}
+							onPress={() => setUnreadOnly((on) => !on)}
+						/>
+						{items.some((g) => !g.read_at) ? (
 							<Button size="sm" label="Mark all as read" onPress={readAll} />
-						</View>
-					) : null}
+						) : null}
+					</View>
 				</View>
 			}
 			ListEmptyComponent={
-				<ListState loading={list.loading} error={list.error} empty="No notifications yet." />
+				<ListState
+					loading={list.loading}
+					error={list.error}
+					empty={unreadOnly ? 'No unread notifications' : 'No notifications yet.'}
+				/>
 			}
 			onEndReached={list.loadMore}
 			onEndReachedThreshold={0.6}

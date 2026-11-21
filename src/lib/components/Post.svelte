@@ -4,7 +4,6 @@
 	import Repeat from '@lucide/svelte/icons/repeat';
 	import Heart from '@lucide/svelte/icons/heart';
 	import MessageCircle from '@lucide/svelte/icons/message-circle';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Forward from '@lucide/svelte/icons/forward';
 	import LinkIcon from '@lucide/svelte/icons/link';
 	import Share from '@lucide/svelte/icons/share';
@@ -399,7 +398,7 @@
 	}
 
 	// ---- like / regiorgio as another of your profiles: a list of the account's profiles with what
-	// each already did (GET /posts/:id/viewers), opened by a right click, a chevron or a long press
+	// each already did (GET /posts/:id/viewers), opened by a right click or a long press
 	async function showAsPicker(kind: 'like' | 'regiorg') {
 		if (!multi || asPicker === kind) return;
 		menuOpen = false;
@@ -1086,23 +1085,6 @@
 								>
 							{/key}
 						</button>
-						{#if multi}
-							<!-- mouse devices: appears with the post; touch devices long press the heart -->
-							<button
-								type="button"
-								class="flex cursor-pointer items-center rounded-[5px] opacity-0 outline-none group-hover/post:opacity-60 hover:opacity-100! focus-visible:opacity-100 pointer-coarse:hidden"
-								title="Like as…"
-								aria-label="Like as another profile"
-								aria-haspopup="menu"
-								aria-expanded={asPicker === 'like'}
-								onclick={(e) => {
-									e.preventDefault();
-									e.stopPropagation();
-									if (asPicker === 'like') asPicker = null;
-									else showAsPicker('like');
-								}}><ChevronDown size={14} /></button
-							>
-						{/if}
 						{#if asPicker === 'like'}
 							<ProfilePicker
 								title="Like as…"

@@ -26,6 +26,18 @@
 		/* what the touch bottom bar covers (56px links, 4px padding, 1px border, safe area) until
 		   BottomNav measures it, and 0 while it steps aside for the keyboard */
 		--bottom-bar: calc(61px + env(safe-area-inset-bottom));
+		/* what scrolling a field or the caret into view keeps clear: on mouse devices the fixed frame
+		   around the panel (+layout: 20px, plus the search and profile bar above it without the
+		   rail), on touch devices the bottom bar */
+		scroll-padding: 75px 0 30px;
+
+		@variant rail {
+			scroll-padding-top: 30px;
+		}
+
+		@media (pointer: coarse) {
+			scroll-padding: 0 0 calc(var(--bottom-bar) + 10px);
+		}
 	}
 
 	body {

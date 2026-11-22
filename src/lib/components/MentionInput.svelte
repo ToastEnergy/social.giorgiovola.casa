@@ -65,6 +65,7 @@
 	$effect(() => {
 		void value;
 		if (!input) return;
+		const before = input.offsetHeight;
 		input.style.height = 'auto';
 		input.style.overflowY = 'hidden';
 		// scrollHeight leaves out the bottom border
@@ -72,6 +73,15 @@
 		// only scroll once the height limit cuts the text off: scrollHeight is rounded, so on some
 		// browsers (chrome android) text that fits still overflows by a fraction of a pixel
 		if (input.scrollHeight > input.clientHeight + 1) input.style.overflowY = 'auto';
+		// the browser brought the caret into view before the field grew, so the new line ends up
+		// below the window (or under the frame around the panel): bring the field's end back. not
+		// the reply bar and the full screen composer, which place themselves (data-keyboard-fit)
+		if (
+			input.offsetHeight > before &&
+			document.activeElement === input &&
+			!input.closest('[data-keyboard-fit]')
+		)
+			input.scrollIntoView({ block: 'nearest' });
 	});
 
 	function close() {

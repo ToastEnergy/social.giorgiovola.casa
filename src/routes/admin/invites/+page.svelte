@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { wheelScroll } from '#lib/wheelScroll.js';
 	import type { PageProps } from './$types';
 	import Avatar from '#lib/components/Avatar.svelte';
 	import Button from '#lib/components/Button.svelte';
@@ -223,7 +224,11 @@
 
 <section class="flex flex-col gap-3">
 	<h2>Invite links</h2>
-	<nav class="flex overflow-x-auto [scrollbar-width:none]" aria-label="Invite status">
+	<nav
+		class="flex overflow-x-auto [scrollbar-width:none]"
+		use:wheelScroll
+		aria-label="Invite status"
+	>
 		{#each ['all', 'pending', 'used', 'expired', 'revoked'] as status (status)}
 			{@const active = data.status === status}
 			<a

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { wheelScroll } from '#lib/wheelScroll.js';
 	import type { LayoutProps } from './$types';
 	import { page } from '$app/state';
 	import { settingsSections } from '#lib/settings.js';
@@ -32,6 +33,7 @@
 <h1>Settings</h1>
 <nav
 	class="relative mt-2.5 mb-5 flex overflow-x-auto [scrollbar-width:none]"
+	use:wheelScroll
 	aria-label="Settings sections"
 	bind:this={tabs}
 >

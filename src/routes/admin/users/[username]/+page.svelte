@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { wheelScroll } from '#lib/wheelScroll.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import type { PageProps } from './$types';
 	import Avatar from '#lib/components/Avatar.svelte';
@@ -373,7 +374,11 @@
 	</section>
 
 	<div class="flex flex-col">
-		<nav class="mb-2.5 flex overflow-x-auto [scrollbar-width:none]" aria-label="Case sections">
+		<nav
+			class="mb-2.5 flex overflow-x-auto [scrollbar-width:none]"
+			use:wheelScroll
+			aria-label="Case sections"
+		>
 			{#each tabs as t (t.value)}
 				<button
 					type="button"

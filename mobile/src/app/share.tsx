@@ -9,20 +9,24 @@ import { api, auth, errorMessage } from '@/lib/api';
 import { emit } from '@/lib/bus';
 import { useSession } from '@/lib/session';
 import { colors } from '@/lib/theme';
-import type { ShareTarget } from '@/lib/types';
+import type { GroupSummary, ShareTarget } from '@/lib/types';
 
 /** Sending a post to someone or a group: a message with its link, which shows the post. */
 export default function SharePost() {
 	const { post, username } = useLocalSearchParams<{ post: string; username: string }>();
 	const { me } = useSession();
 	const [targets, setTargets] = useState<ShareTarget[]>([]);
+	const [groups, setGroups] = useState<GroupSummary[]>([]);
 	const [note, setNote] = useState('');
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 
 	useEffect(() => {
-		api<{ recent: ShareTarget[] }>('share-targets')
-			.then((res) => setTargets(res.recent))
+		api<{ recent: ShareTarget[]; groups: { group: GroupSummary }[] }>('share-targets')
+			.then((res) => {
+				setTargets(res.recent);
+				setGroups(res.groups.map((g) => g.group));
+			})
 			.catch(() => {});
 	}, []);
 
@@ -46,9 +50,11 @@ export default function SharePost() {
 
 	return (
 		<UserPicker
-			placeholder="Search people"
+			placeholder="Search people and groups"
 			exclude={me ? [me.user.username] : []}
 			onPick={(user) => send(`conversations/${user.username}`, user.name)}
+			groups={groups}
+			onPickGroup={(group) => send(`groups/${group.id}`, group.name)}
 			header={
 				<View style={{ padding: 20, paddingBottom: 10, gap: 12 }}>
 					<ErrorBanner message={error} />

@@ -31,7 +31,9 @@
 	// button it opens from (the parent is `relative`)
 	const touch = new MediaQuery('(pointer: coarse)');
 	let root: HTMLDivElement | undefined = $state();
+	let list: HTMLDivElement | undefined = $state();
 	let up = $state(false);
+	let maxHeight: number | undefined = $state();
 	let atRight = $derived(right);
 
 	// back (or the gesture) closes the sheet
@@ -42,11 +44,21 @@
 	);
 	afterPageChange(() => onclose());
 
-	// the popover opens upwards, or against the other edge, when it wouldn't fit
+	// the popover opens upwards when there's more room above, or against the other edge, when it
+	// wouldn't fit. a long list scrolls within the room it has: the page under a dialog can't
+	// scroll to reach the rest
 	$effect(() => {
-		if (!root || touch.current) return;
+		void profiles.length;
+		void loading;
+		if (!root || !list || touch.current) return;
+		const anchor = (root.parentElement ?? root).getBoundingClientRect();
+		const below = visibleBottom() - anchor.bottom - 15;
+		const above = anchor.top - 15;
+		// its full height, as if the list didn't scroll
+		const height = root.offsetHeight - list.clientHeight + list.scrollHeight;
+		up = height > below && above > below;
+		maxHeight = Math.max(120, up ? above : below);
 		const rect = root.getBoundingClientRect();
-		if (!up && rect.bottom > visibleBottom() && rect.top - rect.height - 40 > 0) up = true;
 		if (rect.right > window.innerWidth - 10) atRight = true;
 		else if (rect.left < 10) atRight = false;
 	});
@@ -103,11 +115,12 @@
 		: 'not-pointer-coarse:top-full not-pointer-coarse:mt-[5px]'} {atRight
 		? 'not-pointer-coarse:right-0'
 		: 'not-pointer-coarse:left-0'}"
+	style:max-height={maxHeight !== undefined && !touch.current ? `${maxHeight}px` : undefined}
 	onclick={stop}
 	oncontextmenu={stop}
 >
 	<p class="px-2.5 py-[5px] text-[0.8em] text-muted">{title}</p>
-	<div class="flex min-h-0 flex-col overflow-y-auto overscroll-contain">
+	<div bind:this={list} class="flex min-h-0 flex-col overflow-y-auto overscroll-contain">
 		{#each profiles as profile (profile.username)}
 			<button
 				type="button"

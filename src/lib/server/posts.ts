@@ -1,9 +1,7 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import type { Gif, ImageSize, Post, User, VoiceNote } from '#lib/types.js';
 import { extractHashtags } from '#lib/hashtags.js';
-import { getAvatar } from '#lib/utils.js';
-import { DISCORD_WEBHOOK_URL } from '$app/env/private';
-import { PUBLIC_URL } from '$app/env/public';
+import { announcePost } from './discord.js';
 import { db, follows, likes, polls, post_hashtags, posts, regiorgs, users } from './db/index.js';
 import type { PollInput } from './validation.js';
 import { imagesOfPostTrees, removeUploads } from './images.js';
@@ -402,25 +400,7 @@ export async function createPost(
 	const [post] = await getPosts({ postId: created.id, loggedUser: user });
 
 	void publishPost(post.id, notifications);
-	// a broken or slow webhook shouldn't make posting fail or wait: it isn't awaited, and gives up
-	// after a few seconds
-	if (!reply_to && DISCORD_WEBHOOK_URL)
-		void fetch(DISCORD_WEBHOOK_URL + '?wait=false', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				content: `${PUBLIC_URL}/@${post.user.username}/${post.id}`,
-				username: post.user.name,
-				avatar_url: getAvatar(post.user, 512, true),
-				// the link only: nobody can be pinged through a post
-				allowed_mentions: { parse: [] }
-			}),
-			signal: AbortSignal.timeout(5000)
-		})
-			.then((res) => res.body?.cancel())
-			.catch((e) => console.error('Discord webhook failed', e));
+	void announcePost(post);
 	return post;
 }
 

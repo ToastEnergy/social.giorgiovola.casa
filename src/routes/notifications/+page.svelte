@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { wheelScroll } from '#lib/wheelScroll.js';
 	import Check from '@lucide/svelte/icons/check';
 	import Button from '#lib/components/Button.svelte';
 	import type { PageData } from './$types';
@@ -203,6 +204,7 @@
 {#if data.scope && profiles.length > 1}
 	<nav
 		class="mt-2.5 flex overflow-x-auto border-b border-line [scrollbar-width:none]"
+		use:wheelScroll
 		aria-label="Notifications of"
 	>
 		<a

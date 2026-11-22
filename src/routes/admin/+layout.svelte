@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { wheelScroll } from '#lib/wheelScroll.js';
 	import type { LayoutProps } from './$types';
 	import { page } from '$app/state';
 
@@ -74,6 +75,7 @@
 
 <nav
 	class="mb-5 flex overflow-x-auto [scrollbar-width:none]"
+	use:wheelScroll
 	aria-label="Moderation sections"
 	bind:this={nav}
 >

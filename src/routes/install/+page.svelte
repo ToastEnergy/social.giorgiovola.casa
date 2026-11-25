@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { ADD_ALTSTORE_SOURCE } from '#lib/altStore.js';
 	import Button from '#lib/components/Button.svelte';
 	import { installState, promptInstall } from '#lib/install.svelte.js';
 
@@ -11,10 +12,6 @@
 	// and GitHub redirects /releases/latest/download/<file> to the newest one
 	const repo = 'https://github.com/ToastEnergy/social.giorgiovola.casa';
 	const latest = (file: string) => `${repo}/releases/latest/download/${file}`;
-	// mobile-ios publishes the source on the altstore branch. altstore.io takes its url without the
-	// scheme and opens AltStore with it
-	const altStoreSource =
-		'https://altstore.io/source/raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/altstore/source.json';
 
 	const guides = [
 		{
@@ -87,7 +84,7 @@
 	</p>
 	<div class="flex flex-wrap gap-2.5">
 		<Button href={latest('SocialGiorgiovolaCasa.apk')} rel="external">Android (.apk)</Button>
-		<Button href={altStoreSource} rel="external">Add to AltStore (iPhone)</Button>
+		<Button href={ADD_ALTSTORE_SOURCE} rel="external">Add to AltStore (iPhone)</Button>
 		<Button href={latest('SocialGiorgiovolaCasa.ipa')} rel="external">iPhone (.ipa)</Button>
 	</div>
 	<ul class="flex list-disc flex-col gap-[5px] pl-5 text-[0.85em] text-muted">

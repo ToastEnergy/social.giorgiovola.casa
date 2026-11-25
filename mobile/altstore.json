@@ -1,0 +1,39 @@
+{
+	"name": "Social Giorgiovola Casa",
+	"subtitle": "shitposting at its finest",
+	"description": "shitposting at its finest",
+	"iconURL": "https://raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/main/mobile/assets/icon.png",
+	"website": "https://social.giorgiovola.casa",
+	"tintColor": "#799a74",
+	"apps": [
+		{
+			"name": "SGC",
+			"bundleIdentifier": "casa.giorgiovola.social",
+			"developerName": "ToastEnergy",
+			"localizedDescription": "shitposting at its finest",
+			"iconURL": "https://raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/main/mobile/assets/icon.png",
+			"tintColor": "#799a74",
+			"category": "social",
+			"versions": [
+				{
+					"version": "1.0.12",
+					"buildVersion": "1",
+					"date": "2026-11-25T22:22:55Z",
+					"downloadURL": "https://github.com/ToastEnergy/social.giorgiovola.casa/releases/download/mobile-v1.0.12/SocialGiorgiovolaCasa.ipa",
+					"size": 15019091,
+					"minOSVersion": "16.4"
+				}
+			],
+			"appPermissions": {
+				"entitlements": [],
+				"privacy": {
+					"NSPhotoLibraryUsageDescription": "Choose images for your posts, messages and profile picture.",
+					"NSCameraUsageDescription": "Take photos for your posts and messages.",
+					"NSPhotoLibraryAddUsageDescription": "Save images from posts and messages to your photos.",
+					"NSMicrophoneUsageDescription": "Record voice notes for your messages and posts.",
+					"NSFaceIDUsageDescription": "Allow SocialGiorgiovolaCasa to access your Face ID biometric data."
+				}
+			}
+		}
+	]
+}

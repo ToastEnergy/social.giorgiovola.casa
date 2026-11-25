@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Avatar from '#lib/components/Avatar.svelte';
+	import AvatarInput from '#lib/components/AvatarInput.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import LocalTime from '#lib/components/LocalTime.svelte';
 	import NewTokenPanel from './NewToken.svelte';
@@ -15,6 +16,15 @@
 	let newToken = $state<NewToken | null>(null);
 	// the bot whose profile form is open
 	let editingBot = $state<number | null>(null);
+	// its picked picture and remove choice, applied on save; opening another bot starts over
+	let botAvatar: File | null = $derived.by(() => {
+		void editingBot;
+		return null;
+	});
+	let removeBotAvatar = $derived.by(() => {
+		void editingBot;
+		return false;
+	});
 
 	const canAddBot = $derived(bots.length < max);
 
@@ -68,7 +78,8 @@
 	async function saveBot(e: SubmitEvent, username: string) {
 		e.preventDefault();
 		const form = new FormData(e.currentTarget as HTMLFormElement);
-		const avatar = form.get('avatar');
+		const avatar = botAvatar;
+		const removeAvatar = removeBotAvatar;
 		const ok = await run(async () => {
 			await api(`me/bots/${username}`, {
 				method: 'PATCH',
@@ -84,11 +95,11 @@
 				.trim()
 				.replace(/^@/, '')
 				.toLowerCase();
-			if (avatar instanceof File && avatar.size > 0) {
+			if (avatar) {
 				const upload = new FormData();
 				upload.set('avatar', avatar);
 				await api(`me/bots/${current}/avatar`, { method: 'PUT', body: upload });
-			} else if (form.get('removeAvatar')) {
+			} else if (removeAvatar) {
 				await api(`me/bots/${current}/avatar`, { method: 'DELETE' });
 			}
 		});
@@ -153,22 +164,14 @@
 							method="POST"
 							onsubmit={(e) => saveBot(e, bot.username)}
 						>
-							<div class="flex flex-col">
-								<label class="text-[0.8em] opacity-80" for="bot-avatar-{bot.id}">Picture</label>
-								<input
-									class="border-b border-line outline-none file:mr-1 file:cursor-pointer file:rounded-sm file:border file:border-line file:px-1.5"
-									id="bot-avatar-{bot.id}"
-									name="avatar"
-									type="file"
-									accept="image/*"
-								/>
-							</div>
-							{#if bot.avatar}
-								<label class="flex items-center gap-1.5 text-[0.85em]">
-									<input type="checkbox" name="removeAvatar" value="1" />
-									Remove the current picture
-								</label>
-							{/if}
+							<AvatarInput
+								id="bot-avatar-{bot.id}"
+								label="Picture"
+								user={bot}
+								disabled={busy}
+								bind:file={botAvatar}
+								bind:remove={removeBotAvatar}
+							/>
 							<div class="flex flex-col">
 								<label class="text-[0.8em] opacity-80" for="bot-name-{bot.id}">Name</label>
 								<input

@@ -19,6 +19,8 @@ src/lib/components/Search.svelte
 src/routes/search/+page.svelte
 src/lib/components/Loading.svelte
 src/lib/components/PhotoEditor.svelte
+# prettier 2 self-closes its empty elements, which svelte 5 warns about
+src/lib/components/AvatarCropper.svelte
 src/routes/messages/+layout.svelte
 src/lib/components/BottomNav.svelte
 src/lib/components/MobileHeader.svelte

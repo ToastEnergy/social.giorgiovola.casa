@@ -15,6 +15,7 @@
 	import LoadingOverlay from '#lib/components/LoadingOverlay.svelte';
 	import ImageViewer from '#lib/components/ImageViewer.svelte';
 	import PhotoEditor from '#lib/components/PhotoEditor.svelte';
+	import AvatarCropper from '#lib/components/AvatarCropper.svelte';
 	import ProfileCard from '#lib/components/ProfileCard.svelte';
 	import ShareDialog from '#lib/components/ShareDialog.svelte';
 	import ReportDialog from '#lib/components/ReportDialog.svelte';
@@ -231,6 +232,7 @@
 	<ComposeSheet />
 	<ConnectionStatus />
 	<PhotoEditor />
+	<AvatarCropper />
 	<PullToRefresh />
 	<NavHistory />
 	<Splash />

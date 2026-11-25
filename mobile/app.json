@@ -61,7 +61,8 @@
 			[
 				"expo-image-picker",
 				{
-					"photosPermission": "Choose images for your posts, messages and profile picture."
+					"photosPermission": "Choose images for your posts, messages and profile picture.",
+					"cameraPermission": "Take photos for your posts and messages."
 				}
 			],
 			[

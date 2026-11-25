@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams, usePreventRemove } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { ChartNoAxesColumn, ChevronDown, ImagePlus, Mic, X } from 'lucide-react-native';
+import { Camera, ChartNoAxesColumn, ChevronDown, ImagePlus, Mic, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import {
 	AppState,
@@ -15,6 +15,7 @@ import {
 	AttachmentStrip,
 	PasteImageButton,
 	pickImages,
+	takePhoto,
 	useClipboardImage,
 	type Picked
 } from '@/components/attachments';
@@ -486,6 +487,19 @@ export default function Compose() {
 						}}
 					>
 						<ImagePlus size={22} color={iconColor} />
+					</IconButton>
+					<IconButton
+						label="Take a photo"
+						onPress={async () => {
+							if (gif) return setError('A post can have a GIF or images, not both.');
+							if (recPhase !== 'idle') return setError(VOICE_ONLY);
+							if (images.length >= maxImages)
+								return setError(`You can attach at most ${maxImages} images.`);
+							const photo = await takePhoto();
+							if (photo) setImages((now) => [...now, photo].slice(0, maxImages));
+						}}
+					>
+						<Camera size={22} color={iconColor} />
 					</IconButton>
 					{instance?.gifs ? (
 						<IconButton

@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Directory, File, Paths } from 'expo-file-system';
 import { ClipboardPaste, Pencil, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { AppState, Pressable, ScrollView, View } from 'react-native';
+import { Alert, AppState, Linking, Pressable, ScrollView, View } from 'react-native';
 import { colors } from '@/lib/theme';
 import type { Gif } from '@/lib/types';
 import { canEdit, PhotoEditor } from './PhotoEditor';
@@ -25,6 +25,34 @@ export async function pickImages(limit: number): Promise<Picked[]> {
 	});
 	if (result.canceled) return [];
 	return result.assets.slice(0, limit).map((a) => ({ uri: a.uri, mimeType: a.mimeType }));
+}
+
+/**
+ * A photo taken with the camera, or null when cancelled. Without camera access it explains
+ * where to turn it on and returns null.
+ */
+export async function takePhoto(): Promise<Picked | null> {
+	const permission = await ImagePicker.requestCameraPermissionsAsync();
+	if (!permission.granted) {
+		Alert.alert(
+			'Camera access needed',
+			'Allow camera access in Settings to take photos.',
+			permission.canAskAgain
+				? [{ text: 'OK' }]
+				: [
+						{ text: 'Cancel', style: 'cancel' },
+						{ text: 'Open Settings', onPress: () => Linking.openSettings() }
+				  ]
+		);
+		return null;
+	}
+	const result = await ImagePicker.launchCameraAsync({
+		mediaTypes: ['images'],
+		// a full quality photo from a recent camera can pass the server's 10 MB upload limit
+		quality: 0.9
+	});
+	if (result.canceled || !result.assets[0]) return null;
+	return { uri: result.assets[0].uri, mimeType: result.assets[0].mimeType };
 }
 
 /** One image cropped square, for a profile picture. */

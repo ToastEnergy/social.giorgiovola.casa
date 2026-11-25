@@ -5,6 +5,7 @@ import { useHeaderHeight } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router/stack';
 import {
 	BellOff,
+	Camera,
 	Ellipsis,
 	ImagePlus,
 	Pencil,
@@ -58,6 +59,7 @@ import {
 	AttachmentStrip,
 	PasteImageButton,
 	pickImages,
+	takePhoto,
 	useClipboardImage,
 	type Picked
 } from './attachments';
@@ -1323,6 +1325,19 @@ export function ChatView(props: Props) {
 										}}
 									>
 										<ImagePlus size={22} color={colors.accent} />
+									</IconButton>
+									<IconButton
+										label="Take a photo"
+										style={{ paddingBottom: 8 }}
+										onPress={async () => {
+											if (gif) return toast('A message can have a GIF or images, not both');
+											if (images.length >= maxImages)
+												return toast(`You can attach at most ${maxImages} images`);
+											const photo = await takePhoto();
+											if (photo) setImages((now) => [...now, photo].slice(0, maxImages));
+										}}
+									>
+										<Camera size={22} color={colors.accent} />
 									</IconButton>
 									{instance?.gifs ? (
 										<IconButton

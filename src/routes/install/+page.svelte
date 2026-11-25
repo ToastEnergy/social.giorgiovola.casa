@@ -11,6 +11,10 @@
 	// and GitHub redirects /releases/latest/download/<file> to the newest one
 	const repo = 'https://github.com/ToastEnergy/social.giorgiovola.casa';
 	const latest = (file: string) => `${repo}/releases/latest/download/${file}`;
+	// mobile-ios publishes the source on the altstore branch. altstore.io takes its url without the
+	// scheme and opens AltStore with it
+	const altStoreSource =
+		'https://altstore.io/source/raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/altstore/source.json';
 
 	const guides = [
 		{
@@ -79,11 +83,11 @@
 <section class="mt-10 flex flex-col gap-2.5">
 	<h2 class="font-bold">Mobile app</h2>
 	<p class="text-muted">
-		There is also a native app for phones, outside the app stores. Download it from the latest
-		release:
+		There is also a native app for phones, outside the app stores. Get it from the latest release:
 	</p>
 	<div class="flex flex-wrap gap-2.5">
 		<Button href={latest('SocialGiorgiovolaCasa.apk')} rel="external">Android (.apk)</Button>
+		<Button href={altStoreSource} rel="external">Add to AltStore (iPhone)</Button>
 		<Button href={latest('SocialGiorgiovolaCasa.ipa')} rel="external">iPhone (.ipa)</Button>
 	</div>
 	<ul class="flex list-disc flex-col gap-[5px] pl-5 text-[0.85em] text-muted">
@@ -92,9 +96,9 @@
 			then updates itself.
 		</li>
 		<li>
-			iPhone: the .ipa is unsigned, install it with <a href="https://altstore.io" rel="external"
-				>AltStore</a
-			>, which signs it with your Apple ID.
+			iPhone: install <a href="https://altstore.io" rel="external">AltStore</a>, add the source and
+			install the app from it to get updates there. AltStore signs it with your Apple ID, and can
+			also open the .ipa by itself.
 		</li>
 		<li>
 			<a href={`${repo}/releases`} rel="external">All releases</a>

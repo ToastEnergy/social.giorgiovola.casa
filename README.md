@@ -1,5 +1,7 @@
 self-hosted social network
 
+<a href="https://altstore.io/source/raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/altstore/source.json"><img src="docs/altstore-badge.png" alt="Add the iOS app's source to AltStore" width="200"></a>
+
 ## running with Docker
 
 ```
@@ -378,10 +380,12 @@ _Mute_, at the top of a chat, silences that conversation for you only: no push n
 
 GitHub Actions builds the Expo app in `mobile/` for sideloading: run **mobile-ios** or **mobile-android** by hand (Actions → the workflow → _Run workflow_), or push a `mobile-v*` tag (`git tag mobile-v1.0.0 && git push origin mobile-v1.0.0`) to run both and attach their files to that tag's GitHub release. Each run also keeps them as a workflow artifact (on the run's page, under _Artifacts_).
 
-- **iOS:** `SocialGiorgiovolaCasa.ipa`, unsigned (`mobile/generate-ipa.sh`); AltStore signs it with your Apple ID when you install it.
+- **iOS:** `SocialGiorgiovolaCasa.ipa`, unsigned (`mobile/generate-ipa.sh`); AltStore signs it with your Apple ID when you install it. Its version comes from the tag, like Android's.
 - **Android:** `SocialGiorgiovolaCasa.apk`, for 64-bit ARM (`arm64-v8a`: phones, not old 32-bit ones or x86 emulators), signed with the keystore in the repository secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` (`mobile/plugins/android-release-signing.js` passes them to Gradle). Without them it is signed with the public debug keystore, which is fine for testing but lets anyone sign an update; Android only installs an update signed with the same key, so pick the keystore before handing the app out. The run's summary shows the certificate's SHA-256 fingerprint to put in `ANDROID_APP_FINGERPRINTS` for passkeys.
 
-The install page (`/install`) links both files of the latest release (`/releases/latest/download/…`), so mark only `mobile-v*` releases as _latest_.
+A tag build also lists its `.ipa` in the [AltStore source](https://faq.altstore.io/developers/make-a-source), `source.json` on the `altstore` branch (the workflow creates the branch the first time). People [add the source to AltStore](https://altstore.io/source/raw.githubusercontent.com/ToastEnergy/social.giorgiovola.casa/altstore/source.json) once, and AltStore then offers every newer version. `mobile/altstore-source.js` writes the file, reading the version and the privacy permissions from the `.ipa`, because AltStore refuses to install an app that doesn't match its source. It lists no entitlements, as the `.ipa` is unsigned: a signed build or one with entitlements would need them listed. A fork changes the repository in `expo.extra.updateRepo` (`mobile/app.json`), the texts in that script and the links in the README and on `/install`.
+
+The install page (`/install`) links the AltStore source and both files of the latest release (`/releases/latest/download/…`), so mark only `mobile-v*` releases as _latest_.
 
 The Android app updates itself from those releases: when it starts or comes back to the foreground (at most every 6 hours), it looks for the newest `mobile-v*` release on GitHub (`expo.extra.updateRepo` in `mobile/app.json`) with a `SocialGiorgiovolaCasa.apk`, and when that is newer than its own version it offers to download it and opens Android's installer (which asks once to allow installs from the app). The download runs out of the way: a ring around the avatar in the tab bar fills up and the profile menu shows it, and a card asks to install once it is done. _Settings_ shows the installed version and can check for an update right away. A tag build takes its version from the tag (`mobile-v1.2.3` → `1.2.3`, `versionCode` 10203), so tag releases with increasing versions; a build run by hand keeps the version in `app.json` and is offered the latest release. Android only installs an update signed with the same key as the installed app.
 

@@ -7,9 +7,9 @@ module.exports = ({ config }) => {
 	// push in the mobile app). Without it the app builds the same, with no push
 	if (fs.existsSync(path.join(__dirname, 'google-services.json')))
 		config.android = { ...config.android, googleServicesFile: './google-services.json' };
-	// release builds take their version from the mobile-v* tag (SGC_APP_VERSION, set by
-	// mobile-android.yml): the in-app updater compares it with the latest release, and Android
-	// refuses an update whose versionCode is lower than the installed one
+	// release builds take their version from the mobile-v* tag (SGC_APP_VERSION, set by the mobile
+	// workflows): AltStore and the Android in-app updater compare it with the installed one, and
+	// Android refuses an update whose versionCode is lower than that
 	const version = /(\d+)\.(\d+)\.(\d+)/.exec(process.env.SGC_APP_VERSION ?? '');
 	if (version) {
 		const [, major, minor, patch] = version.map(Number);

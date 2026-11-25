@@ -1,6 +1,7 @@
 # builds an unsigned release .ipa of the mobile app for sideloading (AltStore signs it itself).
 # Run it by hand (Actions → mobile-ios → Run workflow) or push a mobile-v* tag, which also attaches
-# the .ipa to that tag's GitHub release. See "mobile app builds" in README.md.
+# the .ipa to that tag's GitHub release and lists it in the AltStore source (source.json on the
+# `altstore` branch). See "mobile app builds" in README.md.
 name: mobile-ios
 
 on:
@@ -23,6 +24,11 @@ jobs:
     defaults:
       run:
         working-directory: mobile
+    env:
+      # a tag build takes its version from the tag (app.config.js), which AltStore needs to offer
+      # updates; a build by hand keeps app.json's. Set for the whole job: prebuild writes the
+      # Info.plist, and the build evaluates the config again for the copy it embeds
+      SGC_APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/mobile-v') && github.ref_name || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,19 +58,31 @@ jobs:
           name: SocialGiorgiovolaCasa-ios
           path: mobile/build/SocialGiorgiovolaCasa.ipa
           if-no-files-found: error
+      - name: Write the AltStore source
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        run: bun altstore-source.js build/SocialGiorgiovolaCasa.ipa build/altstore/source.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        with:
+          name: altstore-source
+          path: mobile/build/altstore/source.json
+          if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/mobile-v')
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # only this job, which runs no third-party code, may write the release
+    # only this job, which runs no third-party code, may write the release and the altstore branch
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: SocialGiorgiovolaCasa-ios
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: altstore-source
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,3 +93,43 @@ jobs:
           gh release create "$TAG" --verify-tag --title "$TAG" --notes '' \
             || gh release view "$TAG" > /dev/null
           gh release upload "$TAG" SocialGiorgiovolaCasa.ipa --clobber
+      # after the upload, so the source never points to a file that isn't there. it has a branch of
+      # its own: its url stays the same across releases, and main isn't pushed to (which deploys)
+      - name: Publish the AltStore source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh auth setup-git
+          git init -q altstore
+          cd altstore
+          git remote add origin "https://github.com/$GH_REPO.git"
+          # exit code 2 means the branch doesn't exist yet, anything else is a real failure
+          found=0
+          git ls-remote --exit-code --heads origin altstore > /dev/null || found=$?
+          if [ "$found" = 0 ]; then
+            git fetch -q --depth 1 origin altstore
+            git checkout -q -b altstore FETCH_HEAD
+          elif [ "$found" = 2 ]; then
+            git checkout -q --orphan altstore
+          else
+            exit "$found"
+          fi
+          # re-running the build of an older tag must not take the source back to it
+          if [ -f source.json ]; then
+            old=$(jq -r '.apps[0].versions[0].version' source.json)
+            new=$(jq -r '.apps[0].versions[0].version' ../source.json)
+            if [ "$(printf '%s\n' "$old" "$new" | sort -V | tail -n 1)" != "$new" ]; then
+              echo "::notice::the source already lists $old, not going back to $new"
+              exit 0
+            fi
+          fi
+          cp ../source.json source.json
+          git add source.json
+          # nothing changes when only this job is run again
+          git diff --cached --quiet && exit 0
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -qm "altstore: $TAG"
+          git push -q origin altstore

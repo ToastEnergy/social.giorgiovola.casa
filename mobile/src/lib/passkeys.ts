@@ -1,3 +1,4 @@
+import { isRunningInExpoGo } from 'expo';
 import type * as PasskeysModule from 'react-native-passkeys';
 import { api, ApiError } from './api';
 import type { LoginResult } from './types';
@@ -11,9 +12,12 @@ type RequestOptions = Parameters<typeof PasskeysModule.get>[0];
 type CreationOptions = Parameters<typeof PasskeysModule.create>[0];
 
 // loaded on first use, not imported: the package throws while loading in a build without the
-// native module (a dev client from before passkeys), which would take the whole app down with it
+// native module (Expo Go, a dev client from before passkeys), which would take the whole app down
+// with it. Expo Go is checked first: Metro reports a module's load error as fatal itself, so the
+// catch below doesn't keep it off the screen
 let Passkeys: typeof PasskeysModule | null | undefined;
 function load() {
+	if (isRunningInExpoGo()) Passkeys = null;
 	if (Passkeys === undefined) {
 		try {
 			Passkeys = require('react-native-passkeys') as typeof PasskeysModule;

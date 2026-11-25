@@ -36,11 +36,13 @@ const privacy = Object.fromEntries(
 	plists.flatMap(Object.entries).filter(([key]) => key.includes('UsageDescription'))
 );
 
+const description = 'shitposting at its finest';
 const repo = expo.extra.updateRepo;
 const icon = `https://raw.githubusercontent.com/${repo}/main/mobile/assets/icon.png`;
 const source = {
 	name: expo.name,
-	subtitle: 'The mobile app of social.giorgiovola.casa',
+	subtitle: description,
+	description,
 	iconURL: icon,
 	website: 'https://social.giorgiovola.casa',
 	tintColor: '#799a74',
@@ -49,8 +51,7 @@ const source = {
 			name: info.CFBundleDisplayName,
 			bundleIdentifier: info.CFBundleIdentifier,
 			developerName: repo.split('/')[0],
-			localizedDescription:
-				'The mobile app of social.giorgiovola.casa: posts, replies, notifications and direct messages.',
+			localizedDescription: description,
 			iconURL: icon,
 			tintColor: '#799a74',
 			category: 'social',

@@ -17,7 +17,6 @@ export const hintClass = 'text-[0.85em] text-muted';
 export const fieldClass = 'flex flex-col';
 export const labelClass = 'text-[0.8em] opacity-80';
 export const inputClass = 'border-b border-line bg-transparent outline-none';
-export const fileInputClass = `${inputClass} file:mr-1 file:cursor-pointer file:rounded-sm file:border file:border-line file:px-1.5`;
 
 // dates in the reader's zone, through LocalTime (see time.svelte.ts)
 export const DAY: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' };

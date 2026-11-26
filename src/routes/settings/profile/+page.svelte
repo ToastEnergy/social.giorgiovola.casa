@@ -1,19 +1,13 @@
 <script lang="ts">
 	import Avatar from '#lib/components/Avatar.svelte';
+	import AvatarInput from '#lib/components/AvatarInput.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import type { PageProps } from './$types';
 	import { invalidateAll } from '$app/navigation';
 	import { api, messageOf } from '#lib/api.js';
 	import { userOf, type Me } from '#lib/me.js';
 	import { user } from '#lib/store.js';
-	import {
-		fieldClass,
-		fileInputClass,
-		hintClass,
-		inputClass,
-		labelClass,
-		sectionClass
-	} from '#lib/settings.js';
+	import { fieldClass, hintClass, inputClass, labelClass, sectionClass } from '#lib/settings.js';
 
 	let { data }: PageProps = $props();
 
@@ -22,27 +16,33 @@
 	let busy = $state(false);
 	let error = $state('');
 	let saved = $state(false);
+	// the picked picture and the remove choice, applied on save; another profile starts over
+	let avatar: File | null = $derived.by(() => {
+		void profile;
+		return null;
+	});
+	let removeAvatar = $derived.by(() => {
+		void profile;
+		return false;
+	});
 
 	// the profile in use: an identity is edited the same way as the account
 	async function save(e: SubmitEvent) {
 		e.preventDefault();
 		const fields = new FormData(e.currentTarget as HTMLFormElement);
-		const avatar = fields.get('avatar');
-		if (avatar instanceof File && avatar.size > 10 * 1024 * 1024) {
-			error = 'Avatar too big, max size is 10mb';
-			return;
-		}
 		busy = true;
 		error = '';
 		saved = false;
 		try {
-			if (avatar instanceof File && avatar.size > 0) {
+			if (avatar) {
 				const upload = new FormData();
 				upload.set('avatar', avatar);
 				await api('me/avatar', { method: 'PUT', body: upload });
-			} else if (fields.get('removeAvatar')) {
+			} else if (removeAvatar) {
 				await api('me/avatar', { method: 'DELETE' });
 			}
+			avatar = null;
+			removeAvatar = false;
 			const me = await api<Me>('me', {
 				method: 'PATCH',
 				json: {
@@ -92,16 +92,13 @@
 	<!-- keyed by the profile, so switching profile or saving refills the fields -->
 	{#key profile}
 		<form class="flex flex-col gap-3" onsubmit={save}>
-			<div class={fieldClass}>
-				<label class={labelClass} for="avatar">Avatar</label>
-				<input class={fileInputClass} id="avatar" name="avatar" type="file" accept="image/*" />
-			</div>
-			{#if profile.avatar}
-				<label class="flex items-center gap-1.5 text-[0.85em]">
-					<input type="checkbox" name="removeAvatar" value="1" />
-					Remove the current picture
-				</label>
-			{/if}
+			<AvatarInput
+				id="avatar"
+				user={profile}
+				disabled={busy}
+				bind:file={avatar}
+				bind:remove={removeAvatar}
+			/>
 			<div class={fieldClass}>
 				<label class={labelClass} for="name">Name</label>
 				<input
